@@ -157,9 +157,17 @@ problem.
 - Flask dev server (`app.run(...)`) is fine for a living-room game but
   not hardened — swap to gunicorn if this ever needs to handle more
   than a handful of concurrent players.
-- No auth on host URLs — knowing a room code is the only gate, and
-  anyone with it can hit that room's host endpoints. Fine for a home
-  LAN party game; would need a host token before exposing beyond that.
+- No auth on host URLs in the app itself — knowing a room code is the
+  only gate. In production Traefik puts `/ito/host/*` and
+  `/ito/settings/*` behind Authelia, so a guessed code only lets someone
+  watch a topic, not drive the game.
+- Room codes are throttled, not secret: `core/ratelimit.py` counts wrong
+  guesses per IP (15 per 5 min, then 429). Two invariants worth keeping
+  — only *failures* count (players poll every 2s), and a correct code
+  always works even from a blocked client and clears its failures, so a
+  scanner can't lock out a guest sharing their NAT.
+- `/healthz` deliberately reports no room count: it's public, and the
+  count tells a scanner whether guessing is worth the effort.
 - Topic editing (`/ito/api/topics`) is global and unauthenticated, so
   any player in any room can edit the shared topic list. It lives on
   `/ito/settings/<code>` rather than the host screen, which keeps the

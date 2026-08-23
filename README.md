@@ -41,6 +41,7 @@ Tests:
 ```
 app.py                 hub: routing, /join, QR endpoint, APP_VERSION
 core/rooms.py          room codes, expiry (in-memory, all games)
+core/ratelimit.py      throttles wrong-code guessing
 core/stats.py          win/loss history on disk, keyed by game
 games/registry.py      the list of games
 games/ito/game.py      ito's blueprint and topic logic

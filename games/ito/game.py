@@ -19,6 +19,7 @@ from flask import (
 from core import stats
 from core.paths import game_data_dir
 from core.qr import svg as qr_svg
+from core.ratelimit import code_guesses
 from core.rooms import rooms
 from games.registry import GameSpec
 
@@ -94,10 +95,18 @@ def new_room_state():
 
 
 def _room_or_404(code):
+    """Look up a room, throttling clients that keep guessing wrong codes."""
+    client = request.remote_addr or "unknown"
     room = rooms.get(code, GAME_ID)
-    if room is None:
-        abort(404, description="That room code isn't active. It may have expired.")
-    return room
+
+    if room is not None:
+        code_guesses.clear(client)
+        return room
+
+    if code_guesses.record_failure(client):
+        abort(429, description="Too many incorrect room codes from this device. "
+                               "Wait a few minutes, then try again.")
+    abort(404, description="That room code isn't active. It may have expired.")
 
 
 def _public_state(room):

@@ -262,7 +262,9 @@ def test_healthz_reports_the_running_version():
     body = client().get("/healthz").get_json()
     assert body["status"] == "ok"
     assert body["version"] == APP_VERSION
-    assert isinstance(body["rooms"], int)
+    # No room count: /healthz is public, and it would tell a scanner whether
+    # there's anything live worth guessing at.
+    assert "rooms" not in body
 
 
 def test_version_is_shown_in_the_ui():
@@ -296,3 +298,38 @@ def test_resume_banner_is_actually_hidden_when_it_has_no_room():
     css = (Path(__file__).resolve().parent.parent / "static" / "style.css").read_text()
     assert ".resume[hidden] { display: none; }" in css
     assert 'id="resume"' in client().get("/ito/").get_data(as_text=True)
+
+
+def test_wrong_codes_are_throttled_but_the_right_one_always_works():
+    """A 4-char code only means something if it can't be swept. Failures are
+    counted; correct codes are not, or a normal game's polling would trip it."""
+    from core.ratelimit import DEFAULT_LIMIT
+
+    c = client()
+    code = new_room(c)
+
+    for _ in range(DEFAULT_LIMIT):
+        assert c.get("/ito/api/ZZZZ/state").status_code == 404
+    assert c.get("/ito/api/ZZZZ/state").status_code == 429
+
+    # The real code still works from the same client, and clears the misses.
+    assert c.get(f"/ito/api/{code}/state").status_code == 200
+    assert c.get("/ito/api/YYYY/state").status_code == 404
+
+
+def test_polling_a_valid_room_is_never_throttled():
+    from core.ratelimit import DEFAULT_LIMIT
+
+    c = client()
+    code = new_room(c)
+    for _ in range(DEFAULT_LIMIT * 3):
+        assert c.get(f"/ito/api/{code}/state").status_code == 200
+
+
+def test_join_page_throttles_wrong_codes_too():
+    from core.ratelimit import DEFAULT_LIMIT
+
+    c = client()
+    for _ in range(DEFAULT_LIMIT):
+        assert c.get("/join?code=ZZZZ").status_code == 404
+    assert c.get("/join?code=ZZZZ").status_code == 429

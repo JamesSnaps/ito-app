@@ -28,4 +28,15 @@ def isolated_data(tmp_path, monkeypatch):
     stats_file.write_text(json.dumps({}))
     monkeypatch.setattr(paths, "STATS_PATH", stats_file)
     monkeypatch.setattr(stats, "STATS_PATH", stats_file)
+
+    # The guess throttle is a module-level singleton: without this, failed
+    # lookups in one test count against the next one.
+    from core.ratelimit import GuessThrottle
+    import core.ratelimit as ratelimit
+    from app import code_guesses as app_throttle  # noqa: F401
+
+    fresh = GuessThrottle()
+    monkeypatch.setattr(ratelimit, "code_guesses", fresh)
+    monkeypatch.setattr("app.code_guesses", fresh)
+    monkeypatch.setattr("games.ito.game.code_guesses", fresh)
     yield

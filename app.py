@@ -12,6 +12,7 @@ from flask import Flask, Response, redirect, render_template, request, url_for
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from core.qr import svg as qr_svg
+from core.ratelimit import code_guesses
 from core.rooms import rooms
 from games.registry import get_game, playable_games
 
@@ -20,7 +21,7 @@ APP_NAME = "Game Night"
 # Bump this in the same commit as any user-visible change, before pushing.
 # Watchtower deploys `latest`, so this is the only way to tell from a phone
 # which build the server is actually running. See CLAUDE.md.
-APP_VERSION = "1.0.1"
+APP_VERSION = "1.1.0"
 
 
 def create_app():
@@ -62,11 +63,7 @@ def create_app():
     def healthz():
         """For container health checks, and for confirming which build is
         live without opening a page."""
-        return {
-            "status": "ok",
-            "version": APP_VERSION,
-            "rooms": rooms.count(),
-        }
+        return {"status": "ok", "version": APP_VERSION}
 
     @app.route("/")
     def hub():
@@ -89,8 +86,16 @@ def create_app():
         if not code:
             return render_template("join.html", error=None, code="")
 
+        client = request.remote_addr or "unknown"
         room = rooms.get(code)
         if room is None:
+            if code_guesses.record_failure(client):
+                return render_template(
+                    "join.html",
+                    error="Too many incorrect codes from this device. Wait a few "
+                          "minutes, then try again.",
+                    code="",
+                ), 429
             return (
                 render_template(
                     "join.html",
@@ -99,6 +104,7 @@ def create_app():
                 ),
                 404,
             )
+        code_guesses.clear(client)
 
         game = get_game(room.game_id)
         if game is None:
@@ -116,6 +122,12 @@ def create_app():
     @app.errorhandler(404)
     def not_found(err):
         return render_template("error.html", message=getattr(err, "description", "Page not found.")), 404
+
+    @app.errorhandler(429)
+    def too_many(err):
+        return render_template(
+            "error.html", message=getattr(err, "description", "Too many attempts.")
+        ), 429
 
     @app.errorhandler(500)
     def server_error(err):
