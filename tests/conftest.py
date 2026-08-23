@@ -21,7 +21,7 @@ def isolated_data(tmp_path, monkeypatch):
     from games.ito import game
 
     topics = tmp_path / "topics.json"
-    shutil.copy(ROOT / "data" / "ito" / "topics.json", topics)
+    shutil.copy(ROOT / "games" / "ito" / "default_topics.json", topics)
     monkeypatch.setattr(game, "TOPICS_PATH", topics)
 
     stats_file = tmp_path / "stats.json"

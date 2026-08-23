@@ -44,7 +44,8 @@ core/rooms.py          room codes, expiry (in-memory, all games)
 core/stats.py          win/loss history on disk, keyed by game
 games/registry.py      the list of games
 games/ito/game.py      ito's blueprint and topic logic
-data/ito/topics.json   topic content, tracked in git
+games/ito/default_topics.json  shipped topics, tracked in git
+data/ito/topics.json   live topics, seeded on first run, gitignored
 data/stats.json        win/loss history — runtime state, gitignored
 templates/             hub-level pages
 static/style.css       shared styling

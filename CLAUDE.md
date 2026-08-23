@@ -76,6 +76,13 @@ problem.
   in `localStorage`; the landing page offers it back, but only after
   checking the room still exists — a dead code offered up is worse than
   no offer.
+- **Topics self-seed.** `games/ito/default_topics.json` ships in the
+  image; `data/ito/topics.json` is runtime and gitignored, copied from
+  the default on first read. `data/` is a bind mount in production,
+  which shadows whatever the image put there — baking topics into
+  `data/` meant a fresh deploy 500'd on the first host page. Edit the
+  default file to change the shipped set; the live file is edited
+  through Settings.
 - **The card is one shared Jinja macro** (`ito/_card.html`), used by
   both host and display views so they can't drift apart. Category icons
   are SVG symbols in `ito/_icons.html`, referenced by `<use>`.
@@ -204,6 +211,9 @@ into `docker-compose.sh` as the `gamenight` group.
   second worker would serve some requests from a process that's never
   heard of your room. Threads give the concurrency instead. Scaling past
   one process means moving room state out of memory first.
+- A bind mount shadows the image's `data/`, so anything the app needs
+  there must be seeded at runtime, not baked into the image. See the
+  topics note above; it cost a broken first deploy.
 - HTML is sent `no-store`; static files are cache-busted by the `asset()`
   helper's `?v=<mtime>`. A stale page against newer CSS produced a real
   bug once (card wouldn't change, round number still advanced).

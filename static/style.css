@@ -787,6 +787,10 @@ dialog.modal .qr { margin: 16px auto 0; }
 
 /* --- Resume banner ------------------------------------------------------- */
 
+/* `display` here overrides the browser's own [hidden] rule, so the attribute
+   needs restating — otherwise an empty banner shows for everyone. */
+.resume[hidden] { display: none; }
+
 .resume {
   display: block;
   width: 100%;

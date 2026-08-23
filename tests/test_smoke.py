@@ -272,3 +272,27 @@ def test_version_is_shown_in_the_ui():
     code = new_room(c)
     assert APP_VERSION in c.get("/ito/").get_data(as_text=True)
     assert APP_VERSION in c.get(f"/ito/settings/{code}").get_data(as_text=True)
+
+
+def test_missing_topics_file_is_seeded_not_a_500(tmp_path, monkeypatch):
+    """A fresh deploy's bind mount is empty. The room creates fine (that
+    doesn't read topics), and every page listing categories used to 500."""
+    from games.ito import game
+
+    missing = tmp_path / "fresh" / "topics.json"
+    monkeypatch.setattr(game, "TOPICS_PATH", missing)
+    assert not missing.exists()
+
+    c = client()
+    code = new_room(c)
+    assert c.get(f"/ito/host/{code}").status_code == 200
+    assert missing.exists(), "topics should have been seeded from the shipped copy"
+    assert c.post(f"/ito/api/{code}/draw", json={}).status_code == 200
+
+
+def test_resume_banner_is_actually_hidden_when_it_has_no_room():
+    """`hidden` alone wasn't enough: an author `display` rule beat the
+    browser's [hidden], so an empty banner showed for everyone."""
+    css = (Path(__file__).resolve().parent.parent / "static" / "style.css").read_text()
+    assert ".resume[hidden] { display: none; }" in css
+    assert 'id="resume"' in client().get("/ito/").get_data(as_text=True)

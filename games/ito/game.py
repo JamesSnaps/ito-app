@@ -8,6 +8,9 @@ use the same instance without stepping on each other.
 
 import json
 import random
+import shutil
+
+from pathlib import Path
 
 from flask import (
     Blueprint, abort, jsonify, redirect, render_template, request, url_for,
@@ -21,6 +24,12 @@ from games.registry import GameSpec
 
 GAME_ID = "ito"
 TOPICS_PATH = game_data_dir(GAME_ID) / "topics.json"
+
+# The shipped copy, inside the image and never mounted over. data/ is a bind
+# mount in production, which shadows whatever the image had there — so the
+# live topics file has to be seeded from here on first run rather than simply
+# baked into data/.
+DEFAULT_TOPICS_PATH = Path(__file__).resolve().parent / "default_topics.json"
 
 bp = Blueprint(
     GAME_ID, __name__, url_prefix="/ito", template_folder="templates"
@@ -47,7 +56,20 @@ def normalise_topic(entry):
     }
 
 
+def ensure_topics():
+    """Put the shipped topics in place if the data directory is empty.
+
+    Without this, a fresh deploy with an empty bind mount 500s on the first
+    draw — the room is created (that doesn't read topics), then every page
+    that lists categories fails."""
+    if TOPICS_PATH.exists():
+        return
+    TOPICS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(DEFAULT_TOPICS_PATH, TOPICS_PATH)
+
+
 def load_topics():
+    ensure_topics()
     with open(TOPICS_PATH, "r", encoding="utf-8") as f:
         raw = json.load(f)
     return {cat: [normalise_topic(t) for t in items] for cat, items in raw.items()}

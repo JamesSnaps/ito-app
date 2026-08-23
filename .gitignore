@@ -7,3 +7,6 @@ __pycache__/
 # server's copy lives in the Docker bind mount — committing it would mean
 # every game you play shows up as a diff.
 data/stats.json
+
+# Seeded from games/ito/default_topics.json on first run; edited in the app.
+data/ito/topics.json

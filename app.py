@@ -20,7 +20,7 @@ APP_NAME = "Game Night"
 # Bump this in the same commit as any user-visible change, before pushing.
 # Watchtower deploys `latest`, so this is the only way to tell from a phone
 # which build the server is actually running. See CLAUDE.md.
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.0.1"
 
 
 def create_app():
@@ -116,6 +116,15 @@ def create_app():
     @app.errorhandler(404)
     def not_found(err):
         return render_template("error.html", message=getattr(err, "description", "Page not found.")), 404
+
+    @app.errorhandler(500)
+    def server_error(err):
+        # The default page is a bare "Internal Server Error" with no way back.
+        app.logger.exception("Unhandled error")
+        return render_template(
+            "error.html",
+            message="Something went wrong at our end. The room is probably still fine — try again.",
+        ), 500
 
     return app
 
