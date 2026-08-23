@@ -1,0 +1,268 @@
+{% extends "base.html" %}
+{% from "ito/_card.html" import topic_card, deck_back, card_script %}
+{% from "ito/_appbar.html" import appbar %}
+{% block title %}ito — host ({{ code }}){% endblock %}
+{% block head %}
+<style>
+  /* Wide enough for two cards side by side once the viewport allows it. */
+  @media (min-width: 900px) { .wrap { max-width: 1100px; } }
+</style>
+{% endblock %}
+{% block body %}
+<div class="wrap">
+  {{ appbar(code=code, show_invite=True, on_host=True) }}
+
+  <div class="wheel-label">Draw from</div>
+  <div class="wheel" id="wheel">
+    <div class="wheel-track" id="wheel-track">
+      <button class="wheel-item selected" data-cat="">
+        <svg aria-hidden="true"><use href="#ic-ito"/></svg>Any
+      </button>
+      {% for c in categories %}
+      <button class="wheel-item" data-cat="{{ c }}" style="--cat-colour: var(--cat-{{ c }}, #fff);">
+        <svg aria-hidden="true"><use href="#ic-{{ c }}"/></svg>{{ c }}
+      </button>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="eyebrow" id="round-label" style="text-align:center; margin-bottom:10px;">
+    No round yet
+  </div>
+  {# The deck is the draw control: you tap the face-down stack, like picking
+     up a card off the table.
+
+     Wide screens get two cards side by side — the pile you draw from on the
+     left, the dealt card on the right — so the back artwork and the category
+     tab stay visible. Narrow screens show only the dealt card, which flips
+     from its own back and is itself the draw control. #}
+  <div class="host-stage">
+    <button class="deck-button stage-pile" id="draw-pile" aria-label="Draw a card">
+      {{ deck_back('deck') }}
+    </button>
+    <button class="deck-button stage-card" id="draw-btn" aria-label="Draw a card">
+      {{ topic_card('card') }}
+    </button>
+  </div>
+  <div class="deck-hint" id="deck-hint">Tap the deck to draw your first card</div>
+</div>
+
+<dialog class="modal" id="leave-dialog">
+  <button class="modal-close" id="leave-stay" aria-label="Stay in this room">&times;</button>
+  <div class="modal-body">
+    <h1>Leave this room?</h1>
+    <p class="hint" style="margin-bottom:6px;">
+      Your game isn't lost. Room <strong>{{ code }}</strong> stays open, and
+      everyone's phones stay on it.
+    </p>
+    <p class="hint" style="margin-bottom:18px;">
+      Come back any time from this device, or rejoin with the code. Rooms
+      close after six hours with nobody in them.
+    </p>
+    <a class="btn btn-primary big-action" href="{{ url_for('hub') }}"
+       style="margin-top:0;">Leave the room</a>
+  </div>
+</dialog>
+
+{# Asked at the moment you go for the next card, rather than parked further
+   down the page where it's easy to scroll past and miss. #}
+<dialog class="modal" id="result-dialog">
+  <button class="modal-close" id="cancel-result"
+          aria-label="Close without recording">&times;</button>
+  <div class="modal-body">
+    <div class="eyebrow">Round <span id="result-round">1</span></div>
+    <h1 style="margin-top:6px;">How did the reveal go?</h1>
+    <p class="hint" style="margin-bottom:18px;">
+      Turning your number cards face up one at a time from the zero card: did
+      they come out lowest to highest?
+    </p>
+    <div class="row big-choice">
+      <button class="win-btn" id="win-btn">
+        <span class="choice-mark">✓</span>
+        <span>In order</span>
+      </button>
+      <button class="lose-btn" id="lose-btn">
+        <span class="choice-mark">✗</span>
+        <span>Not in order</span>
+      </button>
+    </div>
+    <details class="result-explain" style="margin-top:14px;">
+      <summary>Why is it asking?</summary>
+      <p>
+        ito has no points: a round is simply won if every card comes up in
+        ascending order, and lost if any is out of sequence.
+      </p>
+      <p>
+        Your answer goes to the <a href="{{ url_for('ito.stats_view', code=code) }}">stats
+        page</a> as a win rate and streak, and nothing else — it doesn't change
+        the topics, which are always shuffled.
+      </p>
+    </details>
+  </div>
+</dialog>
+
+<dialog class="modal" id="invite-dialog">
+  <button class="modal-close" id="invite-close" aria-label="Close">&times;</button>
+  <div class="modal-body">
+    <div class="eyebrow">Room code</div>
+    <div class="code">{{ code }}</div>
+    <div class="hint">Scan the code, or go to <strong>/join</strong> and type it in.</div>
+    <div class="qr">{{ qr_svg|safe }}</div>
+    <a class="btn btn-secondary" href="{{ url_for('ito.player_view', code=code) }}"
+       target="_blank" rel="noopener" style="width:100%; margin-top:16px;">
+      Open display view &rarr;
+    </a>
+    <div class="hint">Full-screen card, for casting to a TV.</div>
+  </div>
+</dialog>
+
+{{ card_script() }}
+<script>
+  const CODE = {{ code|tojson }};
+  const deal = makeDealer('card');
+  let selectedCategory = "";
+  let lastRound = null;
+  let unscoredRound = false;
+
+  const winBtn = document.getElementById('win-btn');
+  const loseBtn = document.getElementById('lose-btn');
+  const deckHint = document.getElementById('deck-hint');
+  const resultDialog = document.getElementById('result-dialog');
+  const resultRound = document.getElementById('result-round');
+
+  // Set while the result dialog is open, so answering it (or skipping) can
+  // carry straight on into the draw the user actually asked for.
+  let pendingDraw = false;
+
+  // Remember this room so the landing page can offer it back. Cleared only
+  // when the room turns out to be gone.
+  try { localStorage.setItem('ito:last-room', CODE); } catch (e) { /* private mode */ }
+
+  const leaveDialog = document.getElementById('leave-dialog');
+  document.getElementById('hub-link').addEventListener('click', (e) => {
+    e.preventDefault();
+    leaveDialog.showModal();
+  });
+  document.getElementById('leave-stay').addEventListener('click', () => leaveDialog.close());
+
+  const dialog = document.getElementById('invite-dialog');
+  document.getElementById('invite-link').addEventListener('click', (e) => {
+    e.preventDefault();
+    dialog.showModal();
+  });
+  document.getElementById('invite-close').addEventListener('click', () => dialog.close());
+
+  // --- category wheel ----------------------------------------------------
+  const track = document.getElementById('wheel-track');
+  const items = [...track.querySelectorAll('.wheel-item')];
+
+  function markSelected() {
+    // Whichever row is nearest the middle slot is the selection.
+    const middle = track.scrollTop + track.clientHeight / 2;
+    let best = items[0], bestGap = Infinity;
+    for (const item of items) {
+      const gap = Math.abs(item.offsetTop + item.offsetHeight / 2 - middle);
+      if (gap < bestGap) { bestGap = gap; best = item; }
+    }
+    items.forEach(i => i.classList.toggle('selected', i === best));
+    selectedCategory = best.dataset.cat;
+    deal.setBackCategory(selectedCategory);   // the dealt card's own back
+    setBackChip('deck', selectedCategory);    // and the pile beside it
+  }
+
+  let settle;
+  track.addEventListener('scroll', () => {
+    clearTimeout(settle);
+    settle = setTimeout(markSelected, 60);
+  });
+  // Tapping a row that isn't centred scrolls it into the slot.
+  items.forEach(item => item.addEventListener('click', () => {
+    track.scrollTo({
+      top: item.offsetTop - track.clientHeight / 2 + item.offsetHeight / 2,
+      behavior: 'smooth',
+    });
+  }));
+  markSelected();
+
+  function renderState(data, forceDeal) {
+    document.getElementById('round-label').textContent =
+      data.round_number > 0 ? `Round ${data.round_number}` : 'No round yet';
+    deckHint.textContent = data.round_number > 0
+      ? 'Tap the deck for the next card'
+      : 'Tap the deck to draw your first card';
+
+    if (forceDeal || data.round_number !== lastRound) {
+      // Animate on a real draw, but not when first loading an existing room.
+      deal(data, forceDeal || lastRound !== null);
+      lastRound = data.round_number;
+    }
+
+    // Whether the *current* round still needs a result decides if the next
+    // deck tap stops to ask first.
+    unscoredRound = data.round_number > 0 && !data.scored;
+  }
+
+  async function refreshState() {
+    const res = await fetch(`/ito/api/${CODE}/state`);
+    if (res.ok) renderState(await res.json(), false);
+  }
+
+  async function drawCard() {
+    const res = await fetch(`/ito/api/${CODE}/draw`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ category: selectedCategory || null })
+    });
+    const data = await res.json();
+    renderState(data, true);   // every draw deals, even a repeat category
+    dialog.close();
+  }
+
+  // Either card is the draw control — whichever is on screen at this width.
+  function requestDraw() {
+    // Going for the next card is the natural moment to ask how the last one
+    // went — you've just finished revealing it.
+    if (unscoredRound) {
+      resultRound.textContent = lastRound;
+      pendingDraw = true;
+      resultDialog.showModal();
+      return;
+    }
+    drawCard();
+  }
+  document.getElementById('draw-btn').addEventListener('click', requestDraw);
+  document.getElementById('draw-pile').addEventListener('click', requestDraw);
+
+  // A mis-tap on the deck shouldn't cost you the card you're still playing.
+  document.getElementById('cancel-result').addEventListener('click', () => {
+    pendingDraw = false;       // leave unscoredRound alone: ask again next time
+    resultDialog.close();
+  });
+
+  // Esc and the backdrop close it too, and must not leave a draw armed.
+  resultDialog.addEventListener('close', () => { pendingDraw = false; });
+
+  async function recordResult(outcome) {
+    winBtn.disabled = loseBtn.disabled = true;
+    try {
+      await fetch(`/ito/api/${CODE}/result`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ outcome })
+      });
+    } finally {
+      winBtn.disabled = loseBtn.disabled = false;
+      resultDialog.close();
+      unscoredRound = false;
+      // Carry on into the draw that opened this dialog.
+      if (pendingDraw) { pendingDraw = false; drawCard(); }
+    }
+  }
+  winBtn.addEventListener('click', () => recordResult('win'));
+  loseBtn.addEventListener('click', () => recordResult('lose'));
+
+  refreshState();
+  // Keep in sync if someone else also has the host screen open.
+  setInterval(refreshState, 5000);
+</script>
+{% endblock %}

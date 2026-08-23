@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+
+# Runtime state, not content. The app creates it on first write, and the
+# server's copy lives in the Docker bind mount — committing it would mean
+# every game you play shows up as a diff.
+data/stats.json

@@ -1,0 +1,200 @@
+{# The topic card, shared by the host and display views so they can't drift.
+   Contents are filled in by JS from /ito/api/<code>/state. #}
+{% from "ito/_icons.html" import icon_defs %}
+{% macro topic_card(id='card') %}
+{{ icon_defs() }}
+<div class="deck" id="{{ id }}-deck">
+  <div class="play-card show-back" id="{{ id }}">
+    <div class="card-face card-front" id="{{ id }}-front" data-category="">
+      <div class="card-title" id="{{ id }}-title">&mdash;</div>
+      <div class="card-note" id="{{ id }}-note"></div>
+      <div class="card-scale">
+        <div class="pole">
+          <span class="pole-label" id="{{ id }}-low">Low</span>
+          <span class="pole-dot">1</span>
+        </div>
+        <div class="scale-line">
+          {# One unbroken stroke: straight, dip, hump, then a loop that
+             crosses itself — as on the printed cards. #}
+          <svg viewBox="0 0 260 60" aria-hidden="true">
+            <path d="M4 30 H74 C84 30 86 45 96 45 C106 45 108 13 120 13
+                     C132 13 134 30 144 30 C156 30 166 24 166 16
+                     C166 8 156 6 152 13 C147 22 156 30 170 30 H256"
+                  fill="none" stroke="currentColor" stroke-width="3"
+                  stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="pole">
+          <span class="pole-label" id="{{ id }}-high">High</span>
+          <span class="pole-dot high">100</span>
+        </div>
+      </div>
+      <div class="card-chip" id="{{ id }}-chip">
+        <svg class="chip-icon" aria-hidden="true"><use href="#ic-ito" id="{{ id }}-chip-icon"/></svg>
+        <span id="{{ id }}-chip-label">ito</span>
+      </div>
+    </div>
+    {# The back echoes the ito logo: a single gradient line that runs in from
+       the left, loops through the wordmark and away to the right. The line is
+       drawn twice — once behind the letters, once in front where it crosses —
+       to get the woven look. #}
+    <div class="card-face card-back">
+      <svg class="card-back-art" viewBox="0 0 360 200" aria-hidden="true">
+        <defs>
+          <linearGradient id="{{ id }}-swirl" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%"   stop-color="#e2674a"/>
+            <stop offset="20%"  stop-color="#f2c43d"/>
+            <stop offset="42%"  stop-color="#86c06a"/>
+            <stop offset="60%"  stop-color="#4fc3d9"/>
+            <stop offset="80%"  stop-color="#5b8ff5"/>
+            <stop offset="100%" stop-color="#8b6fd0"/>
+          </linearGradient>
+          <clipPath id="{{ id }}-weave">
+            {# Only the stretch that should pass in front of the letters. #}
+            <rect x="196" y="86" width="96" height="104"/>
+          </clipPath>
+        </defs>
+
+        <g fill="none" stroke="url(#{{ id }}-swirl)" stroke-width="7"
+           stroke-linecap="round" stroke-linejoin="round">
+          <path id="{{ id }}-swirl-path"
+                d="M2 96 H74 C96 96 96 60 118 60 C140 60 140 128 162 128
+                   C186 128 196 96 216 96 C244 96 262 122 262 146
+                   C262 168 244 178 230 168 C214 156 214 118 240 104
+                   C258 94 286 96 300 96 H358"/>
+          <use href="#{{ id }}-swirl-path" clip-path="url(#{{ id }}-weave)"/>
+        </g>
+
+        <text class="card-back-mark" x="180" y="132" text-anchor="middle">ito</text>
+      </svg>
+      {# Same tab as the front, showing what the next card will be drawn from. #}
+      <div class="card-chip card-back-chip" id="{{ id }}-back-chip" data-category="">
+        <svg class="chip-icon" aria-hidden="true"><use href="#ic-ito" id="{{ id }}-back-chip-icon"/></svg>
+        <span id="{{ id }}-back-chip-label">ito</span>
+      </div>
+    </div>
+  </div>
+</div>
+{% endmacro %}
+
+{# The draw pile: the same card back, never flipped. Shown beside the dealt
+   card when there's room for both, so the artwork and the category tab stay
+   on screen instead of living only in the flip. #}
+{% macro deck_back(id='deck') %}
+<div class="deck" id="{{ id }}-deck">
+  {# `show-back` is what makes the back face visible — it's the same class the
+     flipping card uses; this one simply never loses it. #}
+  <div class="play-card show-back" id="{{ id }}">
+    <div class="card-face card-back">
+      <svg class="card-back-art" viewBox="0 0 360 200" aria-hidden="true">
+        <defs>
+          <linearGradient id="{{ id }}-swirl" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%"   stop-color="#e2674a"/>
+            <stop offset="20%"  stop-color="#f2c43d"/>
+            <stop offset="42%"  stop-color="#86c06a"/>
+            <stop offset="60%"  stop-color="#4fc3d9"/>
+            <stop offset="80%"  stop-color="#5b8ff5"/>
+            <stop offset="100%" stop-color="#8b6fd0"/>
+          </linearGradient>
+          <clipPath id="{{ id }}-weave">
+            <rect x="196" y="86" width="96" height="104"/>
+          </clipPath>
+        </defs>
+        <g fill="none" stroke="url(#{{ id }}-swirl)" stroke-width="7"
+           stroke-linecap="round" stroke-linejoin="round">
+          <path id="{{ id }}-swirl-path"
+                d="M2 96 H74 C96 96 96 60 118 60 C140 60 140 128 162 128
+                   C186 128 196 96 216 96 C244 96 262 122 262 146
+                   C262 168 244 178 230 168 C214 156 214 118 240 104
+                   C258 94 286 96 300 96 H358"/>
+          <use href="#{{ id }}-swirl-path" clip-path="url(#{{ id }}-weave)"/>
+        </g>
+        <text class="card-back-mark" x="180" y="132" text-anchor="middle">ito</text>
+      </svg>
+      <div class="card-chip card-back-chip" id="{{ id }}-back-chip" data-category="">
+        <svg class="chip-icon" aria-hidden="true"><use href="#ic-ito" id="{{ id }}-back-chip-icon"/></svg>
+        <span id="{{ id }}-back-chip-label">any</span>
+      </div>
+    </div>
+  </div>
+</div>
+{% endmacro %}
+
+{# Shared card-dealing behaviour: flip face down, swap the content out of
+   sight, then flip back up. Returns a `deal(state)` function. #}
+{% macro card_script(id='card') %}
+<script>
+  // Half of the deal animation in style.css — the point the card is edge-on
+  // and its face can be swapped without anyone seeing it happen.
+  const FLIP_MIDPOINT_MS = 320;
+
+  // The back's tab tracks whatever the next card will be drawn from, so a
+  // face-down card already tells you what you're about to get.
+  function setBackChip(id, category) {
+    const chip = document.getElementById(id + '-back-chip');
+    if (!chip) return;
+    document.getElementById(id + '-back-chip-label').textContent = category || 'any';
+    document.getElementById(id + '-back-chip-icon')
+            .setAttribute('href', '#ic-' + (category || 'ito'));
+    chip.dataset.category = category || '';
+  }
+
+  function makeDealer(id) {
+    const card = document.getElementById(id);
+    const front = document.getElementById(id + '-front');
+    const els = {
+      title: document.getElementById(id + '-title'),
+      low: document.getElementById(id + '-low'),
+      high: document.getElementById(id + '-high'),
+      chip: document.getElementById(id + '-chip'),
+      chipLabel: document.getElementById(id + '-chip-label'),
+      chipIcon: document.getElementById(id + '-chip-icon'),
+      note: document.getElementById(id + '-note'),
+    };
+
+    const setBackCategory = (category) => setBackChip(id, category);
+
+    function fill(state) {
+      // Action topics carry their instruction in brackets ("… (mime it)").
+      // On the printed cards that's a note, not part of the title.
+      const raw = state.current_topic || '—';
+      const bracketed = raw.match(/^(.*?)\s*\(([^)]+)\)\s*$/);
+      const title = bracketed ? bracketed[1] : raw;
+
+      els.title.textContent = title;
+      els.note.textContent = bracketed ? bracketed[2] : '';
+      // Long titles get a smaller banner so they still fit the card.
+      els.title.dataset.length = title.length > 34 ? 'long'
+        : title.length > 22 ? 'medium' : 'short';
+
+      els.low.textContent = state.current_low || 'Low';
+      els.high.textContent = state.current_high || 'High';
+      const category = state.current_category || state.current_type || 'ito';
+      els.chipLabel.textContent = category;
+      els.chipIcon.setAttribute('href', '#ic-' + category);
+      front.dataset.category = state.current_category || state.current_type || '';
+    }
+
+    function deal(state, animate) {
+      if (!state.current_topic) { card.classList.add('show-back'); return; }
+      if (!animate) { fill(state); card.classList.remove('show-back'); return; }
+
+      try {
+        card.classList.add('show-back');
+        card.classList.remove('dealing');
+        void card.offsetWidth;   // reflow, so back-to-back draws restart it
+        card.classList.add('dealing');
+      } catch (e) {
+        // Never let presentation stop the card from actually changing.
+      }
+      setTimeout(() => {
+        fill(state);
+        card.classList.remove('show-back');
+      }, FLIP_MIDPOINT_MS);
+    }
+
+    deal.setBackCategory = setBackCategory;
+    return deal;
+  }
+</script>
+{% endmacro %}

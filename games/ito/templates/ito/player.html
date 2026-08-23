@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% from "ito/_card.html" import topic_card, card_script %}
+{% block title %}ito — room {{ code }}{% endblock %}
+{% block body_class %}display{% endblock %}
+{% block head %}
+<style>
+  /* The card should fill the screen it's cast to, whatever that is. */
+  .display { --card-w: min(88vw, 112vh); }
+  .display-waiting { font-size: clamp(1rem, 2.2vw, 1.7rem); color: var(--muted); }
+</style>
+{% endblock %}
+{% block body %}
+  <div class="display-round" id="round">Waiting for the host</div>
+  {{ topic_card('card') }}
+  <div class="display-waiting" id="waiting">The host is picking a topic&hellip;</div>
+  <div class="display-footer">Room {{ code }}</div>
+
+  {{ card_script() }}
+  <script>
+    const CODE = {{ code|tojson }};
+    const deal = makeDealer('card');
+    const roundEl = document.getElementById('round');
+    const waitingEl = document.getElementById('waiting');
+    let lastRound = null;
+
+    async function poll() {
+      try {
+        const res = await fetch(`/ito/api/${CODE}/state`);
+        if (res.status === 404) { location.href = '/join'; return; }
+        const data = await res.json();
+
+        roundEl.textContent = data.round_number > 0
+          ? `Round ${data.round_number}` : 'Waiting for the host';
+        waitingEl.style.visibility = data.current_topic ? 'hidden' : 'visible';
+
+        // Only deal when the round actually changed — every 2s poll would
+        // otherwise re-flip the card in everyone's face.
+        if (data.round_number !== lastRound) {
+          deal.setBackCategory(data.current_category || '');
+          deal(data, lastRound !== null);
+          lastRound = data.round_number;
+        }
+      } catch (e) {
+        // Silently retry on the next tick
+      }
+    }
+    poll();
+    setInterval(poll, 2000);
+  </script>
+{% endblock %}

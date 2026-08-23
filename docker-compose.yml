@@ -1,0 +1,11 @@
+services:
+  game-night:
+    build: .
+    container_name: game-night
+    ports:
+      # Host 5050, not 5000 — macOS AirPlay Receiver holds 5000.
+      - "5050:5000"
+    volumes:
+      # One mount for all persisted state: topics per game, plus stats.json.
+      - ./data:/app/data
+    restart: unless-stopped

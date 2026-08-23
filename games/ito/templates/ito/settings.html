@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% from "ito/_appbar.html" import appbar %}
+{% from "ito/_icons.html" import icon_defs %}
+{% block title %}ito — settings ({{ code }}){% endblock %}
+{% block body %}
+{{ icon_defs() }}
+<div class="wrap">
+  {{ appbar(code=code, active='settings') }}
+  <h1>Settings</h1>
+  <div class="sub">Topics are shared by every room.</div>
+
+  <div class="section" style="margin-top:0; border-top:none; padding-top:0;">
+    <h2>Add a topic</h2>
+    <select id="new-cat">
+      {% for c in topics.keys() %}
+      <option value="{{ c }}">{{ c }}</option>
+      {% endfor %}
+    </select>
+    <input id="new-text" type="text" placeholder="Topic text, e.g. Size of animals">
+    <div class="row" style="margin-bottom:0;">
+      <input id="new-low" type="text" placeholder="1 = e.g. Small">
+      <input id="new-high" type="text" placeholder="100 = e.g. Big">
+    </div>
+    <button class="btn-secondary" id="add-btn" style="width:100%;">Add</button>
+    <div class="hint" id="add-status">
+      The two labels name the ends of the card's scale. Leave them blank for a
+      plain Low/High card. Added topics are saved for good, and shared by every room.
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Topic list</h2>
+    {% for category, items in topics.items() %}
+    <details class="panel" data-cat="{{ category }}">
+      <summary>{{ category }} &mdash; {{ items|length }}</summary>
+      <div class="panel-body">
+        {% for topic in items %}
+        <div class="topic-row">
+          <span>
+            {{ topic.text }}
+            <span class="hint" style="margin-top:2px;">{{ topic.low }} &rarr; {{ topic.high }}</span>
+          </span>
+          <button class="delete-btn" data-cat="{{ category }}"
+                  data-text="{{ topic.text }}">Remove</button>
+        </div>
+        {% endfor %}
+      </div>
+    </details>
+    {% endfor %}
+  </div>
+
+  <div class="section">
+    <h2>Reset</h2>
+    <button class="btn-quiet" id="reset-session-btn" style="margin-bottom:8px;">
+      Clear this room's topic history
+    </button>
+    <div class="hint" style="margin-bottom:16px;">
+      Lets already-seen topics come up again in room {{ code }}. Stats are untouched.
+    </div>
+    <button class="btn-quiet" id="reset-stats-btn">Reset all ito stats</button>
+    <div class="hint">Wipes the win/loss record for every room, permanently.</div>
+  </div>
+
+  <a class="btn btn-secondary" href="{{ url_for('ito.host_view', code=code) }}"
+     style="margin-top:28px; width:100%;">&larr; Back to room {{ code }}</a>
+
+  <div class="version">{{ app_name }} v{{ app_version }}</div>
+</div>
+
+<script>
+  const CODE = {{ code|tojson }};
+  const status = document.getElementById('add-status');
+
+  document.getElementById('add-btn').addEventListener('click', async () => {
+    const category = document.getElementById('new-cat').value;
+    const text = document.getElementById('new-text').value;
+    if (!text.trim()) return;
+    const res = await fetch('/ito/api/topics', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        category, text,
+        low: document.getElementById('new-low').value,
+        high: document.getElementById('new-high').value,
+      })
+    });
+    if (res.ok) {
+      document.getElementById('new-text').value = '';
+      status.textContent = `Added to ${category}.`;
+      setTimeout(() => location.reload(), 600);
+    } else {
+      status.textContent = 'Could not add that one.';
+    }
+  });
+
+  document.querySelectorAll('.delete-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm(`Remove "${btn.dataset.text}"?`)) return;
+      const res = await fetch('/ito/api/topics/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ category: btn.dataset.cat, text: btn.dataset.text })
+      });
+      if (res.ok) btn.closest('.topic-row').remove();
+    });
+  });
+
+  document.getElementById('reset-session-btn').addEventListener('click', async () => {
+    if (!confirm('Clear topic history for this room? (Stats are kept.)')) return;
+    await fetch(`/ito/api/${CODE}/reset`, { method: 'POST' });
+    location.href = `/ito/host/${CODE}`;
+  });
+
+  document.getElementById('reset-stats-btn').addEventListener('click', async () => {
+    if (!confirm('Reset all ito stats? This cannot be undone.')) return;
+    await fetch('/ito/api/stats/reset', { method: 'POST' });
+    alert('Stats reset.');
+  });
+</script>
+{% endblock %}

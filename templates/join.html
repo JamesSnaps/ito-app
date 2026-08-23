@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Join a game — {{ app_name }}{% endblock %}
+{% block body_class %}centred{% endblock %}
+{% block body %}
+<div class="wrap">
+  <div class="eyebrow">{{ app_name }}</div>
+  <h1>Join a game</h1>
+  <div class="sub">Ask the host for the four-letter code on their screen.</div>
+
+  {% if error %}<div class="error">{{ error }}</div>{% endif %}
+
+  <form action="{{ url_for('join') }}" method="get">
+    <input class="code-input" name="code" value="{{ code }}" maxlength="4"
+           autocapitalize="characters" autocomplete="off" autofocus placeholder="＿＿＿＿">
+    <button class="btn-primary" type="submit" style="width:100%;">Join</button>
+  </form>
+</div>
+{% endblock %}

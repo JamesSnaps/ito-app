@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% from "ito/_appbar.html" import appbar %}
+{% from "ito/_icons.html" import icon_defs %}
+{% block title %}ito — stats{% endblock %}
+{% block head %}
+<style>
+  .wrap h1 { font-size: 1.5rem; }
+  .wrap .sub { margin-bottom: 28px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 24px; }
+  .grid .card { padding: 16px; margin-bottom: 0; }
+  .card .value { font-size: 1.8rem; font-weight: 700; }
+  .card .label {
+    font-size: 0.8rem; color: var(--muted); text-transform: uppercase;
+    letter-spacing: 0.05em; margin-top: 2px;
+  }
+  .wrap h2 { margin-top: 28px; }
+  .cat-row {
+    display: flex; justify-content: space-between; padding: 8px 0;
+    border-bottom: 1px solid #23262e; font-size: 0.95rem;
+  }
+  .reset-btn {
+    margin-top: 28px; background: transparent; color: var(--muted);
+    border: 1px solid var(--surface-2); border-radius: 8px; padding: 10px 16px;
+    font: inherit; cursor: pointer; width: 100%;
+  }
+  .back { display: inline-block; margin-top: 20px; color: var(--accent); text-decoration: none; }
+</style>
+{% endblock %}
+{% block body %}
+{{ icon_defs() }}
+<div class="wrap">
+  {{ appbar(code=code, active='stats') }}
+<h1>ito &mdash; stats</h1>
+  <div class="sub">Ito is win/lose per round, not points — so this tracks your group's track record instead.</div>
+
+  <div class="grid">
+    <div class="card"><div class="value" id="rounds">0</div><div class="label">Rounds played</div></div>
+    <div class="card"><div class="value" id="winrate">0%</div><div class="label">Win rate</div></div>
+    <div class="card"><div class="value" id="streak">0</div><div class="label">Current streak</div></div>
+    <div class="card"><div class="value" id="best">0</div><div class="label">Best streak</div></div>
+  </div>
+
+  <h2>By category</h2>
+  <div id="categories"></div>
+
+  <button class="reset-btn" id="reset-btn">Reset all stats</button>
+  <br>
+
+
+  <script>
+    async function load() {
+      const res = await fetch('/ito/api/stats');
+      const s = await res.json();
+      document.getElementById('rounds').textContent = s.rounds_played;
+      const rate = s.rounds_played > 0 ? Math.round((s.wins / s.rounds_played) * 100) : 0;
+      document.getElementById('winrate').textContent = rate + '%';
+      document.getElementById('streak').textContent = s.current_streak;
+      document.getElementById('best').textContent = s.best_streak;
+
+      const catDiv = document.getElementById('categories');
+      catDiv.innerHTML = '';
+      const entries = Object.entries(s.category_counts || {}).sort((a, b) => b[1] - a[1]);
+      if (entries.length === 0) {
+        catDiv.innerHTML = '<div style="color:var(--muted);">No rounds recorded yet.</div>';
+      }
+      for (const [cat, count] of entries) {
+        const row = document.createElement('div');
+        row.className = 'cat-row';
+        row.innerHTML = `<span>${cat}</span><span>${count}</span>`;
+        catDiv.appendChild(row);
+      }
+    }
+
+    document.getElementById('reset-btn').addEventListener('click', async () => {
+      if (!confirm('Reset all stats? This cannot be undone.')) return;
+      await fetch('/ito/api/stats/reset', { method: 'POST' });
+      load();
+    });
+
+    load();
+  </script>
+</div>
+{% endblock %}

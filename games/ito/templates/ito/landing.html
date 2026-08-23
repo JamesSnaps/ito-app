@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}ito — {{ app_name }}{% endblock %}
+{% block body_class %}centred{% endblock %}
+{% block body %}
+<div class="wrap">
+  <div class="eyebrow">{{ app_name }}</div>
+  <h1>ito</h1>
+  <div class="sub">{{ game.tagline }}</div>
+
+  {# Filled in by JS only if the remembered room still exists on the server. #}
+  <a class="resume" id="resume" href="#" hidden>
+    <div class="resume-label">Resume your game</div>
+    <div class="resume-code" id="resume-code"></div>
+  </a>
+
+  <form action="{{ url_for('ito.create_room') }}" method="post">
+    <button class="draw-btn" type="submit">Start a new game</button>
+  </form>
+  <a class="btn btn-secondary" href="{{ url_for('join') }}" style="width:100%;">Join with a code</a>
+
+  <div class="version">{{ app_name }} v{{ app_version }}</div>
+
+  <div class="nav-links" style="margin-top:24px;">
+    <a href="{{ url_for('ito.rules_view') }}">How to play</a>
+    <a href="{{ url_for('ito.stats_view') }}">Stats</a>
+  </div>
+</div>
+
+<script>
+  // Rooms outlive the tab, so coming back should be one tap — not a hunt for
+  // the code. Verified against the server first: a dead room's code would be
+  // worse than no offer at all.
+  (async () => {
+    let code;
+    try { code = localStorage.getItem('ito:last-room'); } catch (e) { return; }
+    if (!code) return;
+    try {
+      const res = await fetch(`/ito/api/${code}/state`);
+      if (!res.ok) { localStorage.removeItem('ito:last-room'); return; }
+      const link = document.getElementById('resume');
+      document.getElementById('resume-code').textContent = code;
+      link.href = `/ito/host/${code}`;
+      link.hidden = false;
+    } catch (e) {
+      // Offline or server down — just don't offer it.
+    }
+  })();
+</script>
+{% endblock %}

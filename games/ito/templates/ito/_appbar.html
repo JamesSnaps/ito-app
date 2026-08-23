@@ -1,0 +1,54 @@
+{# The bar every in-game page carries: back on the left, the room code in the
+   middle, page controls on the right. Icon-only to stay one row on a phone;
+   each has an aria-label and a tooltip.
+
+   The left button is contextual. On a side page it returns you to your room —
+   leaving the game is not what you want from the stats page. On the host page
+   itself there's nowhere further in to go, so it leads out to the hub (and
+   asks first). #}
+{% macro appbar(code=None, show_invite=False, active=None, on_host=False) %}
+<header class="appbar">
+  {% if code and not on_host %}
+  <a class="appbar-btn" href="{{ url_for('ito.host_view', code=code) }}"
+     aria-label="Back to room {{ code }}" title="Back to room {{ code }}">
+    <svg aria-hidden="true"><use href="#ic-back"/></svg>
+  </a>
+  {% else %}
+  <a class="appbar-btn" id="hub-link" href="{{ url_for('hub') }}"
+     aria-label="Back to {{ app_name }}" title="Back to {{ app_name }}">
+    <svg aria-hidden="true"><use href="#ic-hub"/></svg>
+  </a>
+  {% endif %}
+
+  <div class="appbar-title">
+    {% if code %}<span class="appbar-code">{{ code }}</span>
+    {% else %}<span class="appbar-name">ito</span>{% endif %}
+  </div>
+
+  <nav class="appbar-actions">
+    <a class="appbar-btn {{ 'is-active' if active == 'rules' }}"
+       href="{{ url_for('ito.rules_view', code=code) }}"
+       aria-label="How to play" title="How to play">
+      <svg aria-hidden="true"><use href="#ic-help"/></svg>
+    </a>
+    <a class="appbar-btn {{ 'is-active' if active == 'stats' }}"
+       href="{{ url_for('ito.stats_view', code=code) }}"
+       aria-label="Stats" title="Stats">
+      <svg aria-hidden="true"><use href="#ic-stats"/></svg>
+    </a>
+    {% if show_invite %}
+    <button class="appbar-btn" id="invite-link" aria-label="Invite players"
+            title="Invite players">
+      <svg aria-hidden="true"><use href="#ic-invite"/></svg>
+    </button>
+    {% endif %}
+    {% if code %}
+    <a class="appbar-btn {{ 'is-active' if active == 'settings' }}"
+       href="{{ url_for('ito.settings_view', code=code) }}"
+       aria-label="Settings" title="Settings">
+      <svg aria-hidden="true"><use href="#ic-settings"/></svg>
+    </a>
+    {% endif %}
+  </nav>
+</header>
+{% endmacro %}

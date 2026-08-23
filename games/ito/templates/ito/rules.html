@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% from "ito/_appbar.html" import appbar %}
+{% from "ito/_icons.html" import icon_defs %}
+{% block title %}ito — how to play{% endblock %}
+{% block head %}
+<style>
+  .wrap h1 { font-size: 1.5rem; }
+  .wrap .sub { margin-bottom: 28px; }
+  .wrap h2 { font-size: 1.1rem; margin-top: 32px; }
+  ol, ul { padding-left: 22px; line-height: 1.6; }
+  li { margin-bottom: 8px; }
+  .step-num {
+    position: absolute;
+    left: 0;
+    top: 0.15em;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--accent); color: #fff; width: 22px; height: 22px;
+    border-radius: 50%; font-size: 0.8rem;
+  }
+  .steps { list-style: none; padding-left: 0; }
+  .steps li { position: relative; padding-left: 32px; }
+  .note {
+    background: var(--surface); border-radius: 10px; padding: 14px 16px;
+    font-size: 0.9rem; color: var(--muted-2); margin-top: 16px;
+  }
+  .back { display: inline-block; margin-top: 32px; color: var(--accent); text-decoration: none; }
+</style>
+{% endblock %}
+{% block body %}
+{{ icon_defs() }}
+<div class="wrap">
+  {{ appbar(code=code, active='rules') }}
+<h1>How to play ito</h1>
+  <div class="sub">
+    2–10 players &middot; best with 3+ &middot; about 10 minutes a round
+  </div>
+
+  <h2>What you need</h2>
+  <ul>
+    <li>The number cards, 1&ndash;100 &mdash; each player gets one, kept secret</li>
+    <li>The zero card, which anchors the row</li>
+    <li>Three player cards per person, in their own colour, for marking which
+      card in the row is theirs</li>
+    <li>This app, open on everyone's phone, in place of the topic cards</li>
+  </ul>
+
+  <h2>Setup</h2>
+  <ol class="steps">
+    <li><span class="step-num">1</span>Everyone picks a colour and takes the three player cards matching it. The rest go back in the box.</li>
+    <li><span class="step-num">2</span>Put the zero card in the middle of the table, with space to the right of it to lay cards out.</li>
+    <li><span class="step-num">3</span>Shuffle the number cards and deal one to each player. Look at your own; don't show it to anyone.</li>
+    <li><span class="step-num">4</span>The host taps the deck to draw a topic. Every phone shows the same card, with both ends of its scale &mdash; 1 at one end, 100 at the other.</li>
+  </ol>
+
+  <h2>Playing a round</h2>
+  <ol class="steps">
+    <li><span class="step-num">1</span>Think of something that fits the topic and suggests how big your secret number is. On <em>Size of animals</em>, a 3 might be a newborn puppy and a 97 the largest whale in the pod.</li>
+    <li><span class="step-num">2</span>Say your clue whenever you like &mdash; there's no turn order, and you can talk it over freely as a group.</li>
+    <li><span class="step-num">3</span>When you're ready, add your card to the row face down: beside the zero if you're first, to the right of the last card played, or in between two cards already down. The row has to stay unbroken. Put one of your player cards face up underneath so everyone knows whose it is.</li>
+    <li><span class="step-num">4</span>Keep discussing. You can move cards around, and change your own clue, right up until you decide to reveal.</li>
+    <li><span class="step-num">5</span>When everyone agrees on the order, turn the cards face up one at a time, starting nearest the zero.</li>
+  </ol>
+
+  <h2>What you can and can't say</h2>
+  <ul>
+    <li><strong>No numbers, values or quantities</strong> in your clue, and never show your card or say what's on it. That's the only hard restriction.</li>
+    <li><strong>Qualifiers are fine</strong> &mdash; "quite", "very", "a fairly ordinary one" are all allowed, and are often what makes a clue land.</li>
+    <li><strong>Comparing with other people is fine too.</strong> Working out loud that yours feels bigger than someone else's is the game, not a foul.</li>
+    <li><strong>Change your clue as often as you like</strong>, and give another one if the first didn't land.</li>
+    <li><strong>Stuck?</strong> Ask the table for advice. It's co-operative &mdash; there's no reason not to.</li>
+    <li>Clues are personal and subjective, and people picture things differently. That's the whole point of the argument.</li>
+  </ul>
+
+  <h2>Winning and losing</h2>
+  <p>
+    If every card comes up lowest to highest as you reveal, the group wins the
+    round. If one is out of sequence you've lost it &mdash; turn the rest over
+    anyway to see how close you got.
+  </p>
+  <div class="note">
+    There's no points score in ito: it's win or lose per round. This app keeps
+    that record instead &mdash; your win rate and current streak are on the
+    <a href="{{ url_for('ito.stats_view', code=code) }}" style="color:var(--accent);">stats page</a>.
+  </div>
+
+  <h2>Category types</h2>
+  <ul>
+    <li><strong>Family</strong> &mdash; straightforward, works for all ages</li>
+    <li><strong>Everyone</strong> &mdash; broader, aimed at most groups</li>
+    <li><strong>Action</strong> &mdash; clues use movement, sound or acting rather than description</li>
+  </ul>
+  <p class="hint" style="margin-top:10px;">
+    The other categories in the app &mdash; summer, football, animals, geeks,
+    halloween, work &mdash; come from the publisher's free bonus topic packs.
+  </p>
+
+  <h2>When it gets too easy</h2>
+  <p>
+    Won comfortably? The rulebook has two ways to raise the difficulty.
+  </p>
+  <ul>
+    <li><strong>Challenge mode</strong> &mdash; hand the player cards back, reshuffle
+      every number card, and deal <strong>two</strong> to each player. Now you're
+      finding a clue for both of your numbers, and you keep going until everyone
+      has played both.</li>
+    <li><strong>Extreme mode</strong> &mdash; once two cards each feels easy, add
+      another card each game. From here you also do without the player cards, so
+      nothing on the table records which card was yours. You simply have to
+      remember what you played and where.</li>
+  </ul>
+
+  <div class="note">
+    <strong>Where the app fits.</strong> It replaces the topic cards and nothing
+    else. The physical number cards, the zero card, the player cards and the row
+    on the table all work exactly as the rulebook describes.
+  </div>
+</div>
+{% endblock %}

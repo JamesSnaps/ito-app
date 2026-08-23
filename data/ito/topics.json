@@ -1,0 +1,615 @@
+{
+  "family": [
+    {
+      "text": "Cute animals",
+      "low": "Not cute",
+      "high": "Adorable"
+    },
+    {
+      "text": "Foods kids love",
+      "low": "Spat out",
+      "high": "Devoured"
+    },
+    {
+      "text": "Things you'd find at a birthday party",
+      "low": "Never there",
+      "high": "Always there"
+    },
+    {
+      "text": "Comfortable places to sit",
+      "low": "Numb legs",
+      "high": "Blissful"
+    },
+    {
+      "text": "Good smells",
+      "low": "Just okay",
+      "high": "Incredible"
+    },
+    {
+      "text": "Things that are cold",
+      "low": "Slightly cool",
+      "high": "Freezing"
+    },
+    {
+      "text": "Ways to relax",
+      "low": "Barely helps",
+      "high": "Total bliss"
+    },
+    {
+      "text": "Things you'd pack for a holiday",
+      "low": "Leave behind",
+      "high": "Never forget"
+    },
+    {
+      "text": "Satisfying sounds",
+      "low": "Mildly nice",
+      "high": "So satisfying"
+    },
+    {
+      "text": "Things that are soft",
+      "low": "Scratchy",
+      "high": "Cloud-like"
+    },
+    {
+      "text": "Good breakfast foods",
+      "low": "Sad start",
+      "high": "Perfect start"
+    },
+    {
+      "text": "Things at a playground",
+      "low": "Boring bit",
+      "high": "Best bit"
+    },
+    {
+      "text": "Nice things about rainy days",
+      "low": "Meh",
+      "high": "Wonderful"
+    },
+    {
+      "text": "Things you'd find in a kitchen",
+      "low": "Rare",
+      "high": "Every kitchen"
+    },
+    {
+      "text": "Fun things to do outside",
+      "low": "Dull",
+      "high": "Brilliant"
+    },
+    {
+      "text": "Things that sparkle",
+      "low": "Faint glimmer",
+      "high": "Blinding"
+    },
+    {
+      "text": "Cosy things",
+      "low": "Not cosy",
+      "high": "Ultimate cosy"
+    },
+    {
+      "text": "Things you'd see at a zoo",
+      "low": "Never",
+      "high": "Every zoo"
+    },
+    {
+      "text": "Tasty snacks",
+      "low": "Bland",
+      "high": "Delicious"
+    },
+    {
+      "text": "Things that make you laugh",
+      "low": "Slight smile",
+      "high": "Can't breathe"
+    }
+  ],
+  "everyone": [
+    {
+      "text": "Underrated foods",
+      "low": "Fairly rated",
+      "high": "Criminally underrated"
+    },
+    {
+      "text": "Things that get better with age",
+      "low": "Gets worse",
+      "high": "Much better"
+    },
+    {
+      "text": "Overrated tourist attractions",
+      "low": "Worth it",
+      "high": "Wildly overrated"
+    },
+    {
+      "text": "Guilty pleasures",
+      "low": "No guilt",
+      "high": "Deeply guilty"
+    },
+    {
+      "text": "Things you'd bring to a desert island",
+      "low": "Leave it",
+      "high": "Essential"
+    },
+    {
+      "text": "Jobs that look easy but aren't",
+      "low": "Actually easy",
+      "high": "Brutally hard"
+    },
+    {
+      "text": "Things that are surprisingly expensive",
+      "low": "Cheap",
+      "high": "Shockingly pricey"
+    },
+    {
+      "text": "Skills everyone should have",
+      "low": "Optional",
+      "high": "Essential"
+    },
+    {
+      "text": "Things that age badly",
+      "low": "Ages well",
+      "high": "Ages terribly"
+    },
+    {
+      "text": "Signs someone is a good cook",
+      "low": "Weak sign",
+      "high": "Dead giveaway"
+    },
+    {
+      "text": "Things you'd hate to lose in a house fire",
+      "low": "Replaceable",
+      "high": "Irreplaceable"
+    },
+    {
+      "text": "Most stressful everyday situations",
+      "low": "Mildly annoying",
+      "high": "Unbearable"
+    },
+    {
+      "text": "Things that are better in theory than practice",
+      "low": "Works fine",
+      "high": "Total fantasy"
+    },
+    {
+      "text": "Things you'd want on a long flight",
+      "low": "Pointless",
+      "high": "Lifesaver"
+    },
+    {
+      "text": "Underrated superpowers",
+      "low": "Useless",
+      "high": "Secretly amazing"
+    },
+    {
+      "text": "Things that are hard to say no to",
+      "low": "Easy to refuse",
+      "high": "Impossible"
+    },
+    {
+      "text": "Most annoying sounds",
+      "low": "Barely noticed",
+      "high": "Maddening"
+    },
+    {
+      "text": "Things people lie about",
+      "low": "Always honest",
+      "high": "Everyone lies"
+    },
+    {
+      "text": "Best things about being an adult",
+      "low": "Small perk",
+      "high": "Best part"
+    },
+    {
+      "text": "Worst things about being an adult",
+      "low": "Minor gripe",
+      "high": "The worst"
+    },
+    {
+      "text": "Things that instantly improve a room",
+      "low": "No change",
+      "high": "Transforms it"
+    },
+    {
+      "text": "Most useful household items",
+      "low": "Never used",
+      "high": "Daily essential"
+    },
+    {
+      "text": "Things you'd take to a job interview",
+      "low": "Leave at home",
+      "high": "Must bring"
+    },
+    {
+      "text": "Hardest things to keep secret",
+      "low": "Easy to keep",
+      "high": "Impossible"
+    },
+    {
+      "text": "Things that are impressive but useless",
+      "low": "Actually useful",
+      "high": "Pure show"
+    }
+  ],
+  "action": [
+    {
+      "text": "How dramatic is this movie plot (mime it)",
+      "low": "Dull",
+      "high": "Epic"
+    },
+    {
+      "text": "How spicy is this food (make a face)",
+      "low": "Mild",
+      "high": "Volcanic"
+    },
+    {
+      "text": "How scary is this animal (react physically)",
+      "low": "Harmless",
+      "high": "Terrifying"
+    },
+    {
+      "text": "How embarrassing is this moment (gesture)",
+      "low": "Barely",
+      "high": "Mortifying"
+    },
+    {
+      "text": "How exhausting is this workout (act it out)",
+      "low": "Easy",
+      "high": "Collapsing"
+    },
+    {
+      "text": "How loud is this noise (mime covering ears)",
+      "low": "Silent",
+      "high": "Deafening"
+    },
+    {
+      "text": "How awkward is this social situation (physical reaction)",
+      "low": "Fine",
+      "high": "Excruciating"
+    },
+    {
+      "text": "How satisfying is this sound (mime the reaction)",
+      "low": "Meh",
+      "high": "Perfect"
+    },
+    {
+      "text": "How cold is this place (act it out with your body)",
+      "low": "Chilly",
+      "high": "Arctic"
+    },
+    {
+      "text": "How chaotic is this event (act it out)",
+      "low": "Calm",
+      "high": "Total chaos"
+    },
+    {
+      "text": "How impressive is this stunt (react physically)",
+      "low": "Weak",
+      "high": "Jaw-dropping"
+    },
+    {
+      "text": "How gross is this food (make a face)",
+      "low": "Edible",
+      "high": "Revolting"
+    },
+    {
+      "text": "How relaxing is this activity (act it out)",
+      "low": "Stressful",
+      "high": "Blissful"
+    },
+    {
+      "text": "How dangerous is this job (physical reaction)",
+      "low": "Safe",
+      "high": "Deadly"
+    },
+    {
+      "text": "How boring is this meeting (act it out)",
+      "low": "Engaging",
+      "high": "Soul-crushing"
+    }
+  ],
+  "summer": [
+    {
+      "text": "The best thing about summer",
+      "low": "Nice",
+      "high": "The best"
+    },
+    {
+      "text": "Where you'd love to spend a summer holiday",
+      "low": "Would pass",
+      "high": "Dream trip"
+    },
+    {
+      "text": "What you'd do with six weeks of holiday in a row",
+      "low": "Waste of time",
+      "high": "Perfect use"
+    },
+    {
+      "text": "Something that makes long car journeys less boring",
+      "low": "Barely helps",
+      "high": "Saves the trip"
+    },
+    {
+      "text": "Something refreshing",
+      "low": "Lukewarm",
+      "high": "Ice-cold bliss"
+    },
+    {
+      "text": "Something you can't go camping without",
+      "low": "Optional",
+      "high": "Non-negotiable"
+    },
+    {
+      "text": "Something that belongs on the BBQ",
+      "low": "Never",
+      "high": "Always"
+    },
+    {
+      "text": "Something that doesn't work in high temperatures",
+      "low": "Copes fine",
+      "high": "Falls apart"
+    },
+    {
+      "text": "A popular summer song",
+      "low": "Forgotten",
+      "high": "Everywhere"
+    }
+  ],
+  "football": [
+    {
+      "text": "How you spot a true football fan",
+      "low": "Weak sign",
+      "high": "Dead giveaway"
+    },
+    {
+      "text": "A fan item you can't do without",
+      "low": "Optional",
+      "high": "Essential"
+    },
+    {
+      "text": "Something essential for watching a match",
+      "low": "Nice to have",
+      "high": "Non-negotiable"
+    },
+    {
+      "text": "A team you'd love to play for",
+      "low": "No thanks",
+      "high": "Dream club"
+    },
+    {
+      "text": "Someone you'd love to bring to the stadium",
+      "low": "Terrible company",
+      "high": "Perfect company"
+    },
+    {
+      "text": "The greatest football song",
+      "low": "Forgettable",
+      "high": "Spine-tingling"
+    },
+    {
+      "text": "A match you'd love to have been at",
+      "low": "Skip it",
+      "high": "Once in a lifetime"
+    },
+    {
+      "text": "What you'd cancel to watch the final",
+      "low": "Wouldn't cancel",
+      "high": "Cancel instantly"
+    },
+    {
+      "text": "The best snacks for watching football",
+      "low": "Poor choice",
+      "high": "Perfect"
+    },
+    {
+      "text": "What you like best about football",
+      "low": "Minor perk",
+      "high": "The whole point"
+    }
+  ],
+  "animals": [
+    {
+      "text": "An animal you'd love to pet",
+      "low": "Hard pass",
+      "high": "Must cuddle"
+    },
+    {
+      "text": "An animal you're afraid of",
+      "low": "Harmless",
+      "high": "Terrifying"
+    },
+    {
+      "text": "An animal that should exist in a giant size",
+      "low": "Terrible idea",
+      "high": "Amazing idea"
+    },
+    {
+      "text": "If you could be an animal, this is what you'd be",
+      "low": "No thanks",
+      "high": "Sign me up"
+    },
+    {
+      "text": "A sea creature you think is cool",
+      "low": "Boring",
+      "high": "Incredible"
+    },
+    {
+      "text": "A fast animal",
+      "low": "Slow",
+      "high": "Blistering"
+    },
+    {
+      "text": "An animal with a special skill",
+      "low": "Ordinary",
+      "high": "Superpowered"
+    },
+    {
+      "text": "An animal you'd bring on your ark",
+      "low": "Leave behind",
+      "high": "First aboard"
+    },
+    {
+      "text": "Something exciting enough to get a lazy dog moving",
+      "low": "Doesn't stir",
+      "high": "Instant zoomies"
+    },
+    {
+      "text": "Where the party's really happening (animal edition)",
+      "low": "Dead quiet",
+      "high": "Wildest party"
+    }
+  ],
+  "geeks": [
+    {
+      "text": "A popular video game series",
+      "low": "Cult following",
+      "high": "Household name"
+    },
+    {
+      "text": "Someone strong with the Force",
+      "low": "Barely",
+      "high": "Immensely"
+    },
+    {
+      "text": "The coolest fictional vehicle",
+      "low": "Uncool",
+      "high": "Ultimate ride"
+    },
+    {
+      "text": "A book that was better than its movie",
+      "low": "Movie won",
+      "high": "Book far better"
+    },
+    {
+      "text": "A fictional planet you'd love to visit",
+      "low": "Deadly",
+      "high": "Dream destination"
+    },
+    {
+      "text": "A famous adventure you wish you'd been part of",
+      "low": "No thanks",
+      "high": "Sign me up"
+    },
+    {
+      "text": "A fantasy race you'd love to belong to",
+      "low": "Miserable",
+      "high": "Perfect fit"
+    },
+    {
+      "text": "Where you'd build your secret hideout",
+      "low": "Terrible spot",
+      "high": "Perfect lair"
+    },
+    {
+      "text": "A fantastical creature that would make a great pet",
+      "low": "Disaster",
+      "high": "Ideal pet"
+    },
+    {
+      "text": "A great gadget for hunting villains",
+      "low": "Useless",
+      "high": "Unstoppable"
+    }
+  ],
+  "halloween": [
+    {
+      "text": "A scary monster",
+      "low": "Cuddly",
+      "high": "Nightmare fuel"
+    },
+    {
+      "text": "An object that best symbolizes Halloween",
+      "low": "Barely",
+      "high": "Pure Halloween"
+    },
+    {
+      "text": "The best location for a Halloween party",
+      "low": "Terrible",
+      "high": "Perfect"
+    },
+    {
+      "text": "Candy you'd hand out on Halloween",
+      "low": "Egged house",
+      "high": "Street legend"
+    },
+    {
+      "text": "Something every good Halloween party needs",
+      "low": "Optional",
+      "high": "Essential"
+    },
+    {
+      "text": "What you'd use to carve a pumpkin",
+      "low": "Hopeless",
+      "high": "Ideal tool"
+    },
+    {
+      "text": "A costume that would win a Halloween contest",
+      "low": "Last place",
+      "high": "Winner"
+    },
+    {
+      "text": "The creepiest Halloween prop",
+      "low": "Not creepy",
+      "high": "Deeply unsettling"
+    },
+    {
+      "text": "Act like a ghost who only gets to haunt once a year",
+      "low": "Half-hearted",
+      "high": "Fully committed"
+    },
+    {
+      "text": "The perfect place to get spooked",
+      "low": "Cosy",
+      "high": "Genuinely terrifying"
+    }
+  ],
+  "work": [
+    {
+      "text": "A snack you love at work",
+      "low": "Never touch",
+      "high": "Always stocked"
+    },
+    {
+      "text": "An item essential to your everyday work",
+      "low": "Never used",
+      "high": "Can't work without"
+    },
+    {
+      "text": "A good trait your coworkers should have",
+      "low": "Nice to have",
+      "high": "Absolutely vital"
+    },
+    {
+      "text": "Something every office should have",
+      "low": "Optional",
+      "high": "Essential"
+    },
+    {
+      "text": "Hum or sing your own made-up hold music",
+      "low": "Instantly hang up",
+      "high": "Hold forever"
+    },
+    {
+      "text": "The quietest spot at work",
+      "low": "Chaos",
+      "high": "Total silence"
+    },
+    {
+      "text": "The first thing you do after work",
+      "low": "Rarely",
+      "high": "Every single day"
+    },
+    {
+      "text": "Your idea of the perfect office party",
+      "low": "Nightmare",
+      "high": "Perfect night"
+    },
+    {
+      "text": "A good spot for a secret workplace rendezvous",
+      "low": "Instantly caught",
+      "high": "Never found"
+    },
+    {
+      "text": "What a relaxing lunch break looks like",
+      "low": "Still stressed",
+      "high": "Fully recharged"
+    }
+  ]
+}

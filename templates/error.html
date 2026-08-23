@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Not found — {{ app_name }}{% endblock %}
+{% block body_class %}centred{% endblock %}
+{% block body %}
+<div class="wrap">
+  <h1>Nothing here</h1>
+  <div class="sub">{{ message }}</div>
+  <div class="row">
+    <a class="btn btn-secondary" href="{{ url_for('join') }}">Enter a code</a>
+    <a class="btn btn-primary" href="{{ url_for('hub') }}">Back to {{ app_name }}</a>
+  </div>
+</div>
+{% endblock %}
