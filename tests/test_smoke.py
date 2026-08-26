@@ -381,3 +381,90 @@ def test_join_page_throttles_wrong_codes_too():
     for _ in range(DEFAULT_LIMIT):
         assert c.get("/join?code=ZZZZ").status_code == 404
     assert c.get("/join?code=ZZZZ").status_code == 429
+
+
+def finished_game(winner_score=210):
+    """A minimal completed game: one player over the line, one not."""
+    return {"players": [
+        {"name": "Ana", "rounds": [
+            {"score": winner_score - 36, "bust": False, "flip7": False},
+            {"score": 36, "bust": False, "flip7": True},
+        ]},
+        {"name": "Bo", "rounds": [
+            {"score": 40, "bust": False, "flip7": False},
+            {"score": 0, "bust": True, "flip7": False},
+        ]},
+    ]}
+
+
+def test_flip7_records_a_finished_game():
+    c = client()
+    assert c.get("/flip7/api/stats").get_json()["games_played"] == 0
+
+    record = c.post("/flip7/api/stats/games", json=finished_game()).get_json()
+    assert record["games_played"] == 1
+
+    ana, bo = record["players"]["ana"], record["players"]["bo"]
+    assert ana["wins"] == 1 and bo["wins"] == 0
+    assert ana["points"] == 210 and ana["flip7s"] == 1
+    assert bo["busts"] == 1 and bo["best_game"] == 40
+    assert record["best_round"] == {"score": 174, "player": "Ana"}
+    assert record["recent"][0]["winner"] == "Ana"
+
+    # A second game accumulates rather than replacing.
+    again = c.post("/flip7/api/stats/games", json=finished_game()).get_json()
+    assert again["games_played"] == 2 and again["players"]["ana"]["games"] == 2
+    assert c.get("/flip7/stats").status_code == 200
+
+
+def test_flip7_only_records_finished_games():
+    """An abandoned game has no winner, and counting it would quietly punish
+    whoever happened to be ahead when it stopped."""
+    c = client()
+    unfinished = {"players": [{"name": "Ana", "rounds": [{"score": 30}]}]}
+    assert c.post("/flip7/api/stats/games", json=unfinished).status_code == 400
+    assert c.get("/flip7/api/stats").get_json()["games_played"] == 0
+
+
+def test_flip7_rejects_junk_rather_than_storing_it():
+    """The endpoint is unauthenticated, like ito's topic editing. The bar is
+    'a bug or a bored guest can't wreck the leaderboard', not real auth."""
+    c = client()
+    for payload in (
+        {},                                                       # no players
+        {"players": []},
+        {"players": [{"name": "  ", "rounds": []}]},               # nameless
+        {"players": [{"name": "Ana", "rounds": [{"score": "lots"}]}]},
+        {"players": [{"name": "Ana", "rounds": [{"score": -5}]}]},
+        {"players": [{"name": "Ana", "rounds": [{"score": 99999}]}]},
+        {"players": [{"name": "A", "rounds": [{"score": 200}]},     # duplicate
+                     {"name": "a", "rounds": [{"score": 10}]}]},
+        {"players": [{"name": f"P{i}", "rounds": [{"score": 200}]} for i in range(13)]},
+    ):
+        assert c.post("/flip7/api/stats/games", json=payload).status_code == 400, payload
+    assert c.get("/flip7/api/stats").get_json()["games_played"] == 0
+
+
+def test_flip7_stats_can_be_cleared_and_do_not_touch_itos():
+    """One stats.json, one bucket per game — a Flip 7 reset must not take
+    ito's streaks with it."""
+    c = client()
+    code = new_room(c)
+    c.post(f"/ito/api/{code}/draw", json={})
+    c.post(f"/ito/api/{code}/result", json={"outcome": "win"})
+    c.post("/flip7/api/stats/games", json=finished_game())
+
+    cleared = c.post("/flip7/api/stats/reset").get_json()
+    assert cleared["games_played"] == 0 and cleared["players"] == {}
+    assert c.get("/ito/api/stats").get_json()["wins"] == 1
+
+
+def test_flip7_page_posts_the_game_once():
+    """The winner banner survives a reload, so the post has to be guarded by
+    something that survives with it."""
+    body = client().get("/flip7/").get_data(as_text=True)
+    assert "if (winnerIndex >= 0 && !state.recorded) recordGame();" in body
+    assert "state.recorded = !!saved.recorded;" in body
+    # Only a successful post counts, or a server that was down at the final
+    # round would lose the game silently.
+    assert "if (res.ok) { state.recorded = true; save(); }" in body

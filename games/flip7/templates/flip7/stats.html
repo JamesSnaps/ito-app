@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}Flip 7 records — {{ app_name }}{% endblock %}
+{% block body_class %}flip7{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ asset('flip7.css') }}">{% endblock %}
+{% block body %}
+<div class="wrap">
+  <header class="f7-bar">
+    <a class="f7-btn-icon" href="{{ url_for('flip7.landing') }}"
+       aria-label="Back to the scorekeeper" title="Back to the scorekeeper">←</a>
+    <h1 class="f7-title">Flip <span>7</span></h1>
+  </header>
+  <div class="f7-subtitle">
+    Records · {{ record.games_played }} game{{ '' if record.games_played == 1 else 's' }} played
+  </div>
+
+  {% if not rows %}
+  <div class="f7-panel">
+    <div class="f7-panel-title"><span>Nothing yet</span></div>
+    <p class="f7-note">A game is recorded when somebody crosses
+      {{ target }}. Finish one and this fills in.</p>
+  </div>
+  {% else %}
+
+  <div class="f7-panel">
+    <div class="f7-panel-title"><span>Leaderboard</span></div>
+    <div class="f7-history">
+      <table>
+        <tr>
+          <th>Player</th><th>Won</th><th>Played</th>
+          <th>Avg / round</th><th>Best game</th><th>Flip 7s</th><th>Busts</th>
+        </tr>
+        {% for p in rows %}
+        <tr>
+          <td class="f7-lb-name">{{ p.name }}</td>
+          <td class="f7-lb-wins">{{ p.wins }}</td>
+          <td>{{ p.games }}</td>
+          <td>{{ p.average }}</td>
+          <td>{{ p.best_game }}</td>
+          <td>{{ p.flip7s }}</td>
+          <td>{{ p.busts }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+    </div>
+  </div>
+
+  {% if record.best_round.player %}
+  <div class="f7-panel">
+    <div class="f7-panel-title"><span>Biggest single round</span></div>
+    <div class="f7-bigstat">
+      <span class="f7-bigstat-score">{{ record.best_round.score }}</span>
+      <span class="f7-bigstat-who">{{ record.best_round.player }}</span>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if record.recent %}
+  <div class="f7-panel">
+    <div class="f7-panel-title"><span>Recent games</span></div>
+    <table>
+      {% for game in record.recent %}
+      <tr class="f7-row">
+        <td>
+          <div class="f7-name">{{ game.winner }}</div>
+          <span class="f7-rounds">{{ game.players }} player{{ '' if game.players == 1 else 's' }}
+            · <time datetime="{{ game.at }}">{{ game.at[:10] }}</time></span>
+        </td>
+        <td class="f7-total">{{ game.score }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+  {% endif %}
+
+  <div class="f7-panel">
+    <div class="f7-panel-title"><span>Housekeeping</span></div>
+    <p class="f7-note">Records are shared by everyone using this app, not
+      just this device or this game.</p>
+    <div id="reset-area" style="margin-top:10px;">
+      <button class="f7-btn f7-btn-ghost" id="reset-btn" style="width:100%;">
+        Clear all records
+      </button>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="version">{{ app_name }} v{{ app_version }}</div>
+</div>
+
+<script>
+  // Two taps, because this wipes history for every group using the app —
+  // unlike "Reset scores" on the scorekeeper, which is just this game.
+  const area = document.getElementById('reset-area');
+  const btn = document.getElementById('reset-btn');
+  if (btn) btn.addEventListener('click', () => {
+    area.textContent = '';
+    const box = document.createElement('div');
+    box.className = 'f7-confirm';
+    const p = document.createElement('p');
+    p.textContent = 'Delete every recorded game for everyone? This cannot be undone.';
+    const row = document.createElement('div');
+    row.className = 'f7-confirm-row';
+
+    const cancel = document.createElement('button');
+    cancel.className = 'f7-btn-ghost';
+    cancel.textContent = 'Keep them';
+    cancel.addEventListener('click', () => window.location.reload());
+
+    const confirm = document.createElement('button');
+    confirm.className = 'f7-btn-crimson';
+    confirm.textContent = 'Delete records';
+    confirm.addEventListener('click', async () => {
+      confirm.disabled = true;
+      try {
+        await fetch('{{ url_for("flip7.api_stats_reset") }}', {method: 'POST'});
+        window.location.reload();
+      } catch (e) {
+        confirm.disabled = false;
+        confirm.textContent = 'Failed — try again';
+      }
+    });
+
+    row.append(cancel, confirm);
+    box.append(p, row);
+    area.appendChild(box);
+  });
+</script>
+{% endblock %}

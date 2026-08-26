@@ -30,6 +30,10 @@ on the table; the app adds up the round.
 No room and no code: it's one device on the table, and the game is kept in
 that browser's `localStorage` so a refresh doesn't wipe it.
 
+Finished games are posted to shared records at `/flip7/stats` — wins,
+average per round, best game, Flip 7s and busts per player, plus the last
+ten games. Only games somebody actually won are recorded.
+
 ## Running it
 
 ```bash
@@ -59,7 +63,7 @@ core/stats.py          win/loss history on disk, keyed by game
 games/registry.py      the list of games
 games/ito/game.py      ito's blueprint and topic logic
 games/ito/default_topics.json  shipped topics, tracked in git
-games/flip7/game.py    Flip 7's blueprint (two pages, no rooms)
+games/flip7/game.py    Flip 7's blueprint (no rooms) and its records
 data/ito/topics.json   live topics, seeded on first run, gitignored
 data/stats.json        win/loss history — runtime state, gitignored
 templates/             hub-level pages

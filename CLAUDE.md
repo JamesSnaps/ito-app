@@ -187,6 +187,34 @@ problem.
 - **Bust and Freeze are exclusive** — they're how a turn ended. Bust also
   locks the number/modifier chips so a stray tap can't score a bust.
 
+### Flip 7 records (added v1.3.0)
+
+- **A finished game is the one thing that reaches the server.** Who won in
+  March is what a group still wants in June, and one phone's localStorage
+  is no place for it. Everything else about a game stays client-side.
+- **Only finished games count** — somebody has to have crossed 200. An
+  abandoned game has no winner, and recording it would quietly punish
+  whoever happened to be ahead when it stopped. The API 400s otherwise.
+- **Posted once, guarded by a flag that persists with the game**
+  (`recorded` in `flip7:game`). The winner banner survives a reload, so a
+  guard that didn't survive with it would re-post on every refresh. It's
+  only set on a successful POST — a server that was down at the final
+  round gets another go on the next tap instead of losing the game.
+  "Reset scores" clears it: a cleared board is a new game.
+- **Players are keyed case-insensitively, and the newest spelling wins**
+  the display name. Names are typed fresh at the table every time; "ana"
+  and "Ana" being two people on the leaderboard is never what was meant.
+- **The leaderboard sorts on wins, then average points per round** — not
+  total points, or whoever has played since January owns the top of the
+  table permanently.
+- **`core/stats.py` grew a generic `read`/`update` pair.** `load`/`record`
+  are ito's win-loss shape and Flip 7 is nothing like it, so it keeps its
+  own shape in its own bucket of the same file. `update` does the whole
+  read-modify-write under the file lock — two games finishing at once
+  would otherwise each write a record built from before the other's.
+- **A draw at the top gives everyone tied a win.** Vanishingly rare, but
+  nobody at the table would call it half a win each.
+
 ## Hub artwork
 
 - Each game's menu tile has an SVG in `templates/art/<id>.html` and an
@@ -222,8 +250,14 @@ problem.
 - Tests are smoke-level only (routing, room isolation, stats). Flip 7's
   scoring is only pinned by string-matching its JS — there's no JS test
   runner in this project and adding one for one page isn't worth it yet.
-- Flip 7's scores are per-browser. Clearing site data or switching device
-  mid-game loses the night; nothing is on the server to recover it.
+- Flip 7's in-progress scores are per-browser. Clearing site data or
+  switching device mid-game loses the night — only the finished game is
+  posted, so there's nothing on the server to recover mid-game from.
+- `/flip7/api/stats/games` is unauthenticated, like ito's topic editing,
+  and its validation (player/round/score bounds) is there to stop a bug or
+  a bored guest filling the leaderboard with junk — not real auth. The
+  same goes for `/flip7/api/stats/reset`, which wipes records for everyone
+  and so asks twice in the UI.
 - Card faces are swapped with a `.show-back` class at the deal
   animation's midpoint, not `backface-visibility` — Chrome stops
   culling backfaces once a face is clipped by `overflow` +

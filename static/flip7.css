@@ -337,3 +337,17 @@
   .f7-num { transition: none; }
   .f7-num.is-on { transform: none; }
 }
+
+/* --- records page ----------------------------------------------------- */
+
+.f7-lb-name { text-align: left !important; font-weight: 700; color: var(--cream); }
+.f7-lb-wins { color: var(--gold-bright); font-weight: 700; }
+
+.f7-bigstat { display: flex; align-items: baseline; gap: 12px; }
+.f7-bigstat-score {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 2.4rem;
+  color: var(--green);
+}
+.f7-bigstat-who { font-weight: 700; font-size: 0.95rem; }

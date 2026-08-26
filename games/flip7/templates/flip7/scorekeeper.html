@@ -8,6 +8,8 @@
     <a class="f7-btn-icon" href="{{ url_for('hub') }}"
        aria-label="Back to {{ app_name }}" title="Back to {{ app_name }}">←</a>
     <h1 class="f7-title">Flip <span>7</span></h1>
+    <a class="f7-btn-icon" href="{{ url_for('flip7.stats_view') }}"
+       aria-label="Records" title="Records">★</a>
     <a class="f7-btn-icon" href="{{ url_for('flip7.rules_view') }}"
        aria-label="Scoring reference" title="Scoring reference">?</a>
   </header>
@@ -24,6 +26,7 @@
   const FLAT_MODS = [2,4,6,8,10];
   const TARGET_SCORE = {{ target }};
   const STORE_KEY = 'flip7:game';
+  const RECORD_URL = '{{ url_for("flip7.api_record_game") }}';
 
   // Only the players and their banked rounds are worth keeping. Whether a
   // round is half-entered, or the history is expanded, is not — restoring
@@ -33,12 +36,16 @@
     drafting: false,      // is the "new round" panel open?
     draft: [],            // per-player entry while that panel is open
     showHistory: false,
-    confirmingReset: false
+    confirmingReset: false,
+    recorded: false      // has this finished game been posted to the records?
   };
 
   function save(){
     try {
-      localStorage.setItem(STORE_KEY, JSON.stringify({players: state.players}));
+      localStorage.setItem(STORE_KEY, JSON.stringify({
+        players: state.players,
+        recorded: state.recorded
+      }));
     } catch (e) {
       // Private browsing, or storage full. The game still works for as long
       // as the tab stays open, which is the common case anyway.
@@ -52,6 +59,9 @@
     try {
       const saved = JSON.parse(raw);
       if (!saved || !Array.isArray(saved.players)) return;
+      // Without this a finished game would be posted again on every reload
+      // of the winner screen.
+      state.recorded = !!saved.recorded;
       state.players = saved.players
         .filter(p => p && typeof p.name === 'string')
         .map(p => ({
@@ -84,6 +94,34 @@
   }
 
   function playerTotal(p){ return p.rounds.reduce((sum,r)=>sum+r.score,0); }
+
+  // Posted once, the moment somebody crosses the line. Everything else about
+  // this game stays in the browser; a finished game is the one thing worth
+  // keeping past the evening, and one phone's storage is no place for it.
+  let posting = false;
+  async function recordGame(){
+    if (posting) return;
+    posting = true;
+    try {
+      const res = await fetch(RECORD_URL, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          players: state.players.map(p => ({
+            name: p.name,
+            rounds: p.rounds.map(r => ({score: r.score, bust: !!r.bust, flip7: !!r.flip7}))
+          }))
+        })
+      });
+      // Only on success, so a server that was down when the game ended gets
+      // another go on the next tap rather than losing the game silently.
+      if (res.ok) { state.recorded = true; save(); }
+    } catch (e) {
+      // Offline. The scoreboard on screen is unaffected either way.
+    } finally {
+      posting = false;
+    }
+  }
 
   function newDraftEntry(){ return {numbers:[], mods:[], x2:false, bust:false, frozen:false}; }
 
@@ -194,6 +232,8 @@
     const winnerIndex = totals.findIndex(t => t >= TARGET_SCORE);
     app.textContent = '';
 
+    if (winnerIndex >= 0 && !state.recorded) recordGame();
+
     if (winnerIndex >= 0) {
       app.appendChild(el('div', {
         class: 'f7-winner',
@@ -270,6 +310,7 @@
               onclick: () => {
                 state.players.forEach(p => p.rounds = []);
                 state.confirmingReset = false;
+                state.recorded = false;   // a cleared board is a new game
                 render();
               }
             })

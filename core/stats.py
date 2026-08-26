@@ -1,11 +1,14 @@
-"""Win/loss history, keyed by game.
+"""Persisted history, keyed by game.
 
-Ito has no numeric scoring in the base rules — a round is won if the cards
-come out in ascending order — so this tracks outcomes and streaks rather
-than points. Each game gets its own bucket so a second game can't collide
-with ito's numbers.
+One file, one bucket per game, so no two games can collide. Games don't
+share a shape: ito has no numeric scoring in the base rules — a round is
+won if the cards come out in ascending order — so `load`/`record`/`reset`
+below deal in outcomes and streaks. Flip 7 keeps per-player scores, which
+is nothing like that, so it uses the generic `read`/`update` pair and
+owns its own shape.
 """
 
+import copy
 import json
 import threading
 
@@ -45,7 +48,32 @@ def _write_all(data):
         json.dump(data, f, indent=2, ensure_ascii=False)
 
 
+def read(game_id, default=None):
+    """This game's raw bucket, whatever shape it keeps. For games that don't
+    fit the win/loss shape below."""
+    with _lock:
+        stored = _read_all().get(game_id)
+    return copy.deepcopy(stored) if stored is not None else copy.deepcopy(default)
+
+
+def update(game_id, mutate):
+    """Read-modify-write this game's bucket under the file lock.
+
+    `mutate` is handed the stored record (or None on the first write) and
+    returns the one to save. Doing it in one locked pass matters: two people
+    finishing a game at the same moment would otherwise each write a record
+    built from the state before the other's.
+    """
+    with _lock:
+        data = _read_all()
+        updated = mutate(copy.deepcopy(data.get(game_id)))
+        data[game_id] = updated
+        _write_all(data)
+        return copy.deepcopy(updated)
+
+
 def load(game_id):
+    """ito's win/loss shape, with any keys added since backfilled."""
     with _lock:
         stats = _read_all().get(game_id, {})
     merged = {k: (dict(v) if isinstance(v, dict) else v) for k, v in DEFAULT_GAME_STATS.items()}
