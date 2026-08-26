@@ -85,3 +85,26 @@ class RoomManager:
 
 
 rooms = RoomManager()
+
+
+def require_room(code, game_id):
+    """Look up a room for a game, throttling clients that keep guessing.
+
+    Both games need the same three lines around `rooms.get` — find it, forgive
+    the client that got it right, and rate-limit the one that keeps not.
+    """
+    from flask import abort, request
+
+    from core.ratelimit import code_guesses
+
+    client = request.remote_addr or "unknown"
+    room = rooms.get(code, game_id)
+
+    if room is not None:
+        code_guesses.clear(client)
+        return room
+
+    if code_guesses.record_failure(client):
+        abort(429, description="Too many incorrect room codes from this device. "
+                               "Wait a few minutes, then try again.")
+    abort(404, description="That room code isn't active. It may have expired.")

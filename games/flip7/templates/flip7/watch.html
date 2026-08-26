@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}Flip 7 — watching {{ code }}{% endblock %}
+{% block body_class %}flip7{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ asset('flip7.css') }}">{% endblock %}
+{% block body %}
+<div class="wrap">
+  <header class="f7-bar">
+    <a class="f7-btn-icon" href="{{ url_for('hub') }}"
+       aria-label="Back to {{ app_name }}" title="Back to {{ app_name }}">←</a>
+    <h1 class="f7-title">Flip <span>7</span></h1>
+    <a class="f7-btn-icon" href="{{ url_for('flip7.rules_view') }}"
+       aria-label="Scoring reference" title="Scoring reference">?</a>
+  </header>
+  <div class="f7-subtitle">Watching room {{ code }} · first to {{ target }} wins</div>
+
+  <div id="app"></div>
+
+  <div class="version">{{ app_name }} v{{ app_version }}</div>
+</div>
+
+<script>
+  // Read-only by design: the scorekeeper is one device on the table, and this
+  // is a copy of its board. There is nothing to tap here — scores are entered
+  // where the cards are.
+  const CODE = {{ code|tojson }};
+  const TARGET_SCORE = {{ target }};
+  let board = null;
+
+  // Same helper as the scorekeeper's, and for the same reason: player names
+  // are typed at the table and go straight back on screen.
+  function el(tag, attrs, children){
+    const node = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs || {})) {
+      if (k === 'class') node.className = v;
+      else if (k === 'text') node.textContent = v;
+      else if (v === true) node.setAttribute(k, '');
+      else if (v !== false && v != null) node.setAttribute(k, v);
+    }
+    (children || []).forEach(c => c && node.appendChild(c));
+    return node;
+  }
+
+  function render(){
+    const app = document.getElementById('app');
+    app.textContent = '';
+
+    const players = (board && board.players) || [];
+    if (!players.length) {
+      app.appendChild(el('div', {class: 'f7-panel'}, [
+        el('div', {class: 'f7-note', text: board
+          ? 'No players yet. The scoreboard appears here as rounds are banked.'
+          : 'Waiting for the scorekeeper…'})
+      ]));
+      return;
+    }
+
+    const totals = players.map(p => p.total);
+    const maxTotal = Math.max(...totals);
+    const winner = players.find(p => p.total >= TARGET_SCORE);
+    if (winner) {
+      app.appendChild(el('div', {
+        class: 'f7-winner',
+        text: `\u{1F3C6} ${winner.name} wins with ${winner.total}!`
+      }));
+    }
+
+    const head = el('div', {class: 'f7-panel-title'}, [el('span', {text: 'Scoreboard'})]);
+    const panel = el('div', {class: 'f7-panel'}, [head]);
+    const table = el('table', {});
+    players
+      .map((p, i) => i)
+      .sort((a, b) => totals[b] - totals[a])
+      .forEach((i, rank) => {
+        const p = players[i];
+        const lead = p.total === maxTotal && p.total > 0;
+        const scores = p.scores.length ? ' · ' + p.scores.join(', ') : '';
+        table.appendChild(el('tr', {class: 'f7-row'}, [
+          el('td', {class: 'f7-rank', text: String(rank + 1)}),
+          el('td', {}, [
+            el('div', {class: 'f7-name' + (lead ? ' is-lead' : ''), text: p.name}),
+            el('span', {
+              class: 'f7-rounds',
+              text: `${p.scores.length} round${p.scores.length === 1 ? '' : 's'}${scores}`
+            })
+          ]),
+          el('td', {
+            class: 'f7-total' + (p.total >= TARGET_SCORE ? ' is-winner' : ''),
+            text: String(p.total)
+          })
+        ]));
+      });
+    panel.appendChild(table);
+    app.appendChild(panel);
+
+    app.appendChild(el('div', {class: 'f7-note f7-watch-note',
+      text: 'Watching only — scores are entered on the scorekeeper’s device.'}));
+  }
+
+  // Same 2s poll as ito's player view. A scoreboard changes once a round, so
+  // this is generous already.
+  async function poll(){
+    try {
+      const res = await fetch(`/flip7/api/${CODE}/state`);
+      if (res.status === 404) { location.href = '/join'; return; }
+      if (!res.ok) return;
+      const data = await res.json();
+      board = data.board;
+      render();
+    } catch (e) {
+      // Silently retry on the next tick.
+    }
+  }
+  render();
+  poll();
+  setInterval(poll, 2000);
+</script>
+{% endblock %}
