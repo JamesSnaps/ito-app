@@ -1,0 +1,378 @@
+{% extends "base.html" %}
+{% block title %}Flip 7 — {{ app_name }}{% endblock %}
+{% block body_class %}flip7{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ asset('flip7.css') }}">{% endblock %}
+{% block body %}
+<div class="wrap">
+  <header class="f7-bar">
+    <a class="f7-btn-icon" href="{{ url_for('hub') }}"
+       aria-label="Back to {{ app_name }}" title="Back to {{ app_name }}">←</a>
+    <h1 class="f7-title">Flip <span>7</span></h1>
+    <a class="f7-btn-icon" href="{{ url_for('flip7.rules_view') }}"
+       aria-label="Scoring reference" title="Scoring reference">?</a>
+  </header>
+  <div class="f7-subtitle">Scorekeeper · first to {{ target }} wins</div>
+
+  <div id="app"></div>
+
+  <div class="version">{{ app_name }} v{{ app_version }}</div>
+</div>
+
+<script>
+  // The deck: number cards 0–12, the flat "+" modifiers, and the doubler.
+  const NUMBERS = [0,1,2,3,4,5,6,7,8,9,10,11,12];
+  const FLAT_MODS = [2,4,6,8,10];
+  const TARGET_SCORE = {{ target }};
+  const STORE_KEY = 'flip7:game';
+
+  // Only the players and their banked rounds are worth keeping. Whether a
+  // round is half-entered, or the history is expanded, is not — restoring
+  // a half-filled round would be more confusing than starting it again.
+  let state = {
+    players: [],          // {name, rounds:[{numbers,mods,x2,bust,flip7,score}]}
+    drafting: false,      // is the "new round" panel open?
+    draft: [],            // per-player entry while that panel is open
+    showHistory: false,
+    confirmingReset: false
+  };
+
+  function save(){
+    try {
+      localStorage.setItem(STORE_KEY, JSON.stringify({players: state.players}));
+    } catch (e) {
+      // Private browsing, or storage full. The game still works for as long
+      // as the tab stays open, which is the common case anyway.
+    }
+  }
+
+  function restore(){
+    let raw;
+    try { raw = localStorage.getItem(STORE_KEY); } catch (e) { return; }
+    if (!raw) return;
+    try {
+      const saved = JSON.parse(raw);
+      if (!saved || !Array.isArray(saved.players)) return;
+      state.players = saved.players
+        .filter(p => p && typeof p.name === 'string')
+        .map(p => ({
+          name: p.name,
+          rounds: (Array.isArray(p.rounds) ? p.rounds : []).map(r => ({
+            numbers: Array.isArray(r.numbers) ? r.numbers : [],
+            mods: Array.isArray(r.mods) ? r.mods : [],
+            x2: !!r.x2,
+            bust: !!r.bust,
+            flip7: !!r.flip7,
+            score: Number(r.score) || 0
+          }))
+        }));
+    } catch (e) {
+      // Corrupt or from an older shape — start clean rather than half-load.
+    }
+  }
+
+  // A bust scores nothing at all, including its modifiers. Everything else:
+  // the number cards are summed and doubled if x2 was played, then the flat
+  // modifiers are added on top (they are not doubled), plus the 15-point
+  // bonus for getting seven distinct numbers out.
+  function calcRoundScore(entry){
+    if (entry.bust) return 0;
+    const base = entry.numbers.reduce((a,b)=>a+b,0);
+    const doubled = entry.x2 ? base*2 : base;
+    const flat = entry.mods.reduce((a,b)=>a+b,0);
+    const flip7 = entry.numbers.length >= 7 ? 15 : 0;
+    return doubled + flat + flip7;
+  }
+
+  function playerTotal(p){ return p.rounds.reduce((sum,r)=>sum+r.score,0); }
+
+  function newDraftEntry(){ return {numbers:[], mods:[], x2:false, bust:false, frozen:false}; }
+
+  function startRound(){
+    state.drafting = true;
+    state.draft = state.players.map(newDraftEntry);
+    render();
+  }
+
+  function cancelRound(){ state.drafting = false; render(); }
+
+  function toggleNumber(pi, n){
+    const d = state.draft[pi];
+    if (d.bust || d.frozen) return;
+    const idx = d.numbers.indexOf(n);
+    if (idx >= 0) d.numbers.splice(idx,1); else d.numbers.push(n);
+    render();
+  }
+
+  function toggleMod(pi, m){
+    const d = state.draft[pi];
+    if (d.bust || d.frozen) return;
+    const idx = d.mods.indexOf(m);
+    if (idx >= 0) d.mods.splice(idx,1); else d.mods.push(m);
+    render();
+  }
+
+  function toggleX2(pi){
+    const d = state.draft[pi];
+    if (d.bust || d.frozen) return;
+    d.x2 = !d.x2;
+    render();
+  }
+
+  // Bust and freeze are how a player's turn ended, so they're exclusive.
+  function toggleBust(pi){
+    const d = state.draft[pi];
+    d.bust = !d.bust;
+    if (d.bust) d.frozen = false;
+    render();
+  }
+
+  function toggleFreeze(pi){
+    const d = state.draft[pi];
+    d.frozen = !d.frozen;
+    if (d.frozen) d.bust = false;
+    render();
+  }
+
+  function submitRound(){
+    state.players.forEach((p, i) => {
+      const d = state.draft[i];
+      const entry = {
+        numbers: [...d.numbers],
+        mods: [...d.mods],
+        x2: d.x2,
+        bust: d.bust,
+        flip7: d.numbers.length >= 7
+      };
+      entry.score = calcRoundScore(entry);
+      p.rounds.push(entry);
+    });
+    state.drafting = false;
+    render();
+  }
+
+  function addPlayer(name){
+    name = (name || '').trim();
+    if (!name) return;
+    state.players.push({name, rounds: []});
+    // Players joining mid-game sit out the rounds already banked, which the
+    // scoreboard shows honestly as a shorter round list.
+    if (state.drafting) state.draft.push(newDraftEntry());
+    render();
+  }
+
+  function removePlayer(i){
+    state.players.splice(i,1);
+    if (state.drafting) state.draft.splice(i,1);
+    render();
+  }
+
+  function el(tag, attrs, children){
+    const node = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs || {})) {
+      if (k === 'class') node.className = v;
+      else if (k === 'text') node.textContent = v;
+      else if (k.startsWith('on')) node.addEventListener(k.slice(2), v);
+      else if (v === true) node.setAttribute(k, '');
+      else if (v !== false && v != null) node.setAttribute(k, v);
+    }
+    (children || []).forEach(c => c && node.appendChild(c));
+    return node;
+  }
+
+  function panel(titleText, extra){
+    const head = el('div', {class: 'f7-panel-title'}, [el('span', {text: titleText})]);
+    if (extra) head.appendChild(extra);
+    return el('div', {class: 'f7-panel'}, [head]);
+  }
+
+  // Built as DOM nodes rather than an HTML string: player names are typed by
+  // the table and go straight back on screen, and nodes can't be escaped wrong.
+  function render(){
+    const app = document.getElementById('app');
+    const totals = state.players.map(playerTotal);
+    const maxTotal = totals.length ? Math.max(...totals) : 0;
+    const winnerIndex = totals.findIndex(t => t >= TARGET_SCORE);
+    app.textContent = '';
+
+    if (winnerIndex >= 0) {
+      app.appendChild(el('div', {
+        class: 'f7-winner',
+        text: `🏆 ${state.players[winnerIndex].name} wins with ${totals[winnerIndex]}!`
+      }));
+    }
+
+    // --- players ---
+    const players = panel('Players');
+    const chips = el('div', {});
+    if (state.players.length) {
+      state.players.forEach((p, i) => {
+        chips.appendChild(el('span', {class: 'f7-chip'}, [
+          el('span', {text: p.name}),
+          el('button', {'aria-label': `Remove ${p.name}`, text: '✕', onclick: () => removePlayer(i)})
+        ]));
+      });
+    } else {
+      chips.appendChild(el('span', {class: 'f7-note', text: 'Add players to start the game.'}));
+    }
+    players.appendChild(chips);
+
+    const input = el('input', {type: 'text', placeholder: 'Player name', maxlength: '20'});
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { addPlayer(input.value); }
+    });
+    players.appendChild(el('div', {class: 'f7-add-row'}, [
+      input,
+      el('button', {class: 'f7-btn f7-btn-gold', text: 'Add', onclick: () => addPlayer(input.value)})
+    ]));
+    app.appendChild(players);
+
+    if (state.players.length) {
+      // --- scoreboard ---
+      const resetBtn = state.drafting ? null : el('button', {
+        class: 'f7-btn f7-btn-ghost f7-btn-small',
+        text: 'Reset scores',
+        onclick: () => { state.confirmingReset = true; render(); }
+      });
+      const board = panel('Scoreboard', resetBtn);
+      const table = el('table', {});
+      state.players
+        .map((p, i) => i)
+        .sort((a, b) => totals[b] - totals[a])
+        .forEach((i, rank) => {
+          const p = state.players[i];
+          const t = totals[i];
+          const lead = t === maxTotal && t > 0;
+          const scores = p.rounds.length ? ' · ' + p.rounds.map(r => r.score).join(', ') : '';
+          table.appendChild(el('tr', {class: 'f7-row'}, [
+            el('td', {class: 'f7-rank', text: String(rank + 1)}),
+            el('td', {}, [
+              el('div', {class: 'f7-name' + (lead ? ' is-lead' : ''), text: p.name}),
+              el('span', {
+                class: 'f7-rounds',
+                text: `${p.rounds.length} round${p.rounds.length === 1 ? '' : 's'}${scores}`
+              })
+            ]),
+            el('td', {class: 'f7-total' + (t >= TARGET_SCORE ? ' is-winner' : ''), text: String(t)})
+          ]));
+        });
+      board.appendChild(table);
+
+      if (state.confirmingReset) {
+        board.appendChild(el('div', {class: 'f7-confirm'}, [
+          el('p', {text: 'Clear all rounds and scores? Players stay in the game.'}),
+          el('div', {class: 'f7-confirm-row'}, [
+            el('button', {
+              class: 'f7-btn-ghost', text: 'Cancel',
+              onclick: () => { state.confirmingReset = false; render(); }
+            }),
+            el('button', {
+              class: 'f7-btn-crimson', text: 'Clear scores',
+              onclick: () => {
+                state.players.forEach(p => p.rounds = []);
+                state.confirmingReset = false;
+                render();
+              }
+            })
+          ])
+        ]));
+      }
+      app.appendChild(board);
+
+      // --- round-by-round history ---
+      if (state.players.some(p => p.rounds.length)) {
+        app.appendChild(el('button', {
+          class: 'f7-history-toggle',
+          text: `${state.showHistory ? 'Hide' : 'Show'} round-by-round history ▾`,
+          onclick: () => { state.showHistory = !state.showHistory; render(); }
+        }));
+        if (state.showHistory) {
+          const maxRounds = Math.max(...state.players.map(p => p.rounds.length));
+          const hist = el('table', {}, [
+            el('tr', {}, [el('th', {text: 'Rnd'})].concat(
+              state.players.map(p => el('th', {text: p.name}))
+            ))
+          ]);
+          for (let r = 0; r < maxRounds; r++) {
+            hist.appendChild(el('tr', {}, [el('td', {text: String(r + 1)})].concat(
+              state.players.map(p => el('td', {
+                text: p.rounds[r] !== undefined ? String(p.rounds[r].score) : '—'
+              }))
+            )));
+          }
+          app.appendChild(el('div', {class: 'f7-panel f7-history'}, [hist]));
+        }
+      }
+    }
+
+    // --- round entry ---
+    if (state.drafting) {
+      const round = panel('New round');
+      state.players.forEach((p, i) => {
+        const d = state.draft[i];
+        const score = calcRoundScore(d);
+        const isFlip7 = d.numbers.length >= 7 && !d.bust;
+        const locked = d.bust || d.frozen;
+
+        const box = el('div', {
+          class: 'f7-player' + (d.bust ? ' is-busted' : '') + (d.frozen ? ' is-frozen' : '')
+        }, [
+          el('div', {class: 'f7-player-head'}, [
+            el('div', {class: 'f7-player-name', text: p.name}),
+            el('div', {class: 'f7-player-score', text: d.bust ? 'BUST' : '+' + score})
+          ])
+        ]);
+        if (isFlip7) box.appendChild(el('div', {class: 'f7-badge', text: 'FLIP 7! +15 bonus'}));
+
+        box.appendChild(el('div', {class: 'f7-numbers'}, NUMBERS.map(n => el('button', {
+          class: 'f7-num' + (d.numbers.includes(n) ? ' is-on' : ''),
+          disabled: locked,
+          'aria-pressed': d.numbers.includes(n) ? 'true' : 'false',
+          text: String(n),
+          onclick: () => toggleNumber(i, n)
+        }))));
+
+        box.appendChild(el('div', {class: 'f7-mods'}, FLAT_MODS.map(m => el('button', {
+          class: 'f7-mod' + (d.mods.includes(m) ? ' is-on' : ''),
+          disabled: locked,
+          'aria-pressed': d.mods.includes(m) ? 'true' : 'false',
+          text: '+' + m,
+          onclick: () => toggleMod(i, m)
+        })).concat([el('button', {
+          class: 'f7-mod' + (d.x2 ? ' is-on' : ''),
+          disabled: locked,
+          'aria-pressed': d.x2 ? 'true' : 'false',
+          text: 'x2',
+          onclick: () => toggleX2(i)
+        })])));
+
+        box.appendChild(el('div', {class: 'f7-player-actions'}, [
+          el('button', {
+            class: d.bust ? 'is-bust' : '', text: d.bust ? 'Busted' : 'Bust',
+            'aria-pressed': d.bust ? 'true' : 'false', onclick: () => toggleBust(i)
+          }),
+          el('button', {
+            class: d.frozen ? 'is-freeze' : '', text: d.frozen ? 'Frozen' : 'Freeze / Bank',
+            'aria-pressed': d.frozen ? 'true' : 'false', onclick: () => toggleFreeze(i)
+          })
+        ]));
+
+        round.appendChild(box);
+      });
+      round.appendChild(el('div', {class: 'f7-submit'}, [
+        el('button', {class: 'f7-btn f7-btn-ghost', text: 'Cancel', onclick: cancelRound}),
+        el('button', {class: 'f7-btn f7-btn-gold', text: 'Save round', onclick: submitRound})
+      ]));
+      app.appendChild(round);
+    } else if (state.players.length) {
+      app.appendChild(el('div', {class: 'f7-submit'}, [
+        el('button', {class: 'f7-btn f7-btn-gold', text: '+ Add round', onclick: startRound})
+      ]));
+    }
+
+    save();
+  }
+
+  restore();
+  render();
+</script>
+{% endblock %}

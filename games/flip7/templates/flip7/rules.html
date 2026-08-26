@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Flip 7 scoring — {{ app_name }}{% endblock %}
+{% block body_class %}flip7{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ asset('flip7.css') }}">{% endblock %}
+{% block body %}
+<div class="wrap">
+  <header class="f7-bar">
+    <a class="f7-btn-icon" href="{{ url_for('flip7.landing') }}"
+       aria-label="Back to the scorekeeper" title="Back to the scorekeeper">←</a>
+    <h1 class="f7-title">Flip <span>7</span></h1>
+  </header>
+  <div class="f7-subtitle">What this app adds up</div>
+
+  <div class="f7-panel f7-rules">
+    <h2>Entering a round</h2>
+    <p>Tap the number cards a player got out in front of them, then any
+      modifier cards they played. The running total updates as you go, so
+      you can check it against the table before saving.</p>
+  </div>
+
+  <div class="f7-panel f7-rules">
+    <h2>How the total is worked out</h2>
+    <ul>
+      <li><strong>Number cards</strong> are added together.</li>
+      <li><strong>x2</strong> doubles that number total — and only that. It
+        does not double the flat modifiers.</li>
+      <li><strong>+2 … +10</strong> are added afterwards, at face value.</li>
+      <li><strong>Seven different numbers</strong> is a Flip 7: the round
+        ends and a <strong>15-point bonus</strong> is added automatically
+        once the seventh number is tapped.</li>
+      <li><strong>Bust</strong> scores <strong>zero</strong> for the round —
+        modifiers included. Marking a player as busted locks their entry so
+        a stray tap can't give them points.</li>
+      <li><strong>Freeze / Bank</strong> just locks in what they have. It's
+        recorded the same as any other banked round; the marker is there so
+        you can see at a glance who stopped early.</li>
+    </ul>
+  </div>
+
+  <div class="f7-panel f7-rules">
+    <h2>Ending the game</h2>
+    <p>The first player to reach <strong>{{ target }}</strong> wins, and the
+      scoreboard calls it. Everyone finishes the round they're in, so enter
+      the whole round before reading the banner.</p>
+    <p class="f7-note">This is a scoring reference for the app, not the full
+      rulebook — dealing, hitting and the action cards all stay on the table.</p>
+  </div>
+
+  <div class="version">{{ app_name }} v{{ app_version }}</div>
+</div>
+{% endblock %}

@@ -334,6 +334,7 @@ GAME = GameSpec(
     name="ito",
     tagline="Rank your secret numbers without saying them out loud.",
     blueprint=bp,
+    accent="#4f8cff",
     new_room_state=new_room_state,
     host_endpoint="ito.host_view",
     player_endpoint="ito.player_view",

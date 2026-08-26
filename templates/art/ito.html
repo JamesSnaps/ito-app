@@ -1,0 +1,21 @@
+{# ito's motif is the card's scale line: one unbroken stroke that dips, humps
+   and loops back through itself. Same drawing as the playing card, simplified
+   to read at menu size. #}
+<svg class="game-art" viewBox="0 0 240 140" aria-hidden="true">
+  <defs>
+    <linearGradient id="ito-art-line" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#4f8cff"/>
+      <stop offset="55%" stop-color="#8f7bff"/>
+      <stop offset="100%" stop-color="#ff7bc2"/>
+    </linearGradient>
+  </defs>
+  <rect class="art-plate" x="46" y="14" width="148" height="112" rx="14"/>
+  <path class="art-stroke" stroke="url(#ito-art-line)"
+        d="M62 82 C 78 82, 82 104, 96 104 C 110 104, 112 44, 128 44
+           C 144 44, 148 88, 134 92 C 122 96, 116 70, 132 66
+           C 148 62, 160 82, 178 82"/>
+  <circle class="art-dot" cx="62" cy="82" r="5"/>
+  <circle class="art-dot" cx="178" cy="82" r="5"/>
+  <text class="art-pole" x="62" y="36" text-anchor="middle">1</text>
+  <text class="art-pole" x="178" y="36" text-anchor="middle">100</text>
+</svg>

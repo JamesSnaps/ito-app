@@ -2,7 +2,7 @@
 
 Each game is a self-contained blueprint under games/, and the hub provides
 what they all need: room codes, joining, persisted stats and QR links.
-Right now ito is the only game, so / redirects straight to it.
+/ is the menu: ito (a topic randomiser) and Flip 7 (a scorekeeper).
 """
 
 import os
@@ -21,7 +21,7 @@ APP_NAME = "Game Night"
 # Bump this in the same commit as any user-visible change, before pushing.
 # Watchtower deploys `latest`, so this is the only way to tell from a phone
 # which build the server is actually running. See CLAUDE.md.
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.2.0"
 
 
 def create_app():
@@ -67,12 +67,9 @@ def create_app():
 
     @app.route("/")
     def hub():
-        games = playable_games()
-        # With a single game there's nothing to choose between, so skip the
-        # menu. Remove this shortcut when a second game lands.
-        if len(games) == 1:
-            return redirect(url_for(f"{games[0].id}.landing"))
-        return render_template("hub.html", games=games)
+        """The menu. There are two games now, so / is a real choice again —
+        it used to short-circuit straight to ito."""
+        return render_template("hub.html", games=playable_games())
 
     @app.route("/games")
     def hub_menu():

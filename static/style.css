@@ -175,17 +175,84 @@ input, select {
   font-size: 0.9rem;
 }
 
-.game-list { display: grid; gap: 12px; }
+/* The hub menu. Each game gets a tile with its own artwork and accent —
+   with two games on the shelf the menu has to look like a choice, not a
+   list of links. --game-accent is set per card from the GameSpec. */
+.hub { padding-top: 8px; }
+.game-list { display: grid; gap: 16px; margin-bottom: 32px; }
+
 .game-card {
   display: block;
+  position: relative;
+  overflow: hidden;
   background: var(--surface);
-  border-radius: var(--radius);
-  padding: 20px;
+  border: 1px solid var(--surface-2);
+  border-radius: 18px;
   text-decoration: none;
   color: var(--text);
+  transition: transform 0.14s ease, border-color 0.14s ease;
 }
-.game-card .name { font-size: 1.2rem; font-weight: 600; }
+.game-card:hover, .game-card:focus-visible {
+  transform: translateY(-2px);
+  border-color: var(--game-accent, var(--accent));
+}
+.game-card:active { transform: translateY(0); }
+
+.game-art-frame {
+  display: block;
+  padding: 20px 20px 4px;
+  background:
+    radial-gradient(120% 90% at 50% 0%,
+      color-mix(in srgb, var(--game-accent, var(--accent)) 26%, transparent) 0%,
+      transparent 72%);
+}
+.game-art { display: block; width: 100%; height: auto; max-height: 150px; }
+
+/* Shared vocabulary for the tile artwork, so a third game's drawing
+   inherits the same card stock rather than inventing its own. */
+.art-plate {
+  fill: var(--surface-2);
+  stroke: color-mix(in srgb, var(--game-accent, var(--accent)) 45%, transparent);
+  stroke-width: 2;
+}
+.art-plate-quiet { opacity: 0.6; }
+.art-plate-hero { fill: #f6f2e8; stroke: var(--game-accent, var(--accent)); }
+.art-stroke { fill: none; stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; }
+.art-dot { fill: var(--muted-2); }
+.art-pole { fill: var(--muted); font-family: var(--font-display); font-size: 15px; font-weight: 700; }
+.art-pip {
+  fill: var(--muted-2);
+  font-family: var(--font-display);
+  font-size: 34px;
+  font-weight: 800;
+}
+.art-pip-hero { fill: #14161b; font-size: 46px; }
+
+.game-copy { padding: 8px 20px 20px; }
+.game-card .name {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
 .game-card .tagline { color: var(--muted); font-size: 0.9rem; margin-top: 4px; }
+.game-go {
+  margin-top: 14px;
+  display: inline-block;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--game-accent, var(--accent));
+}
+.game-go span { margin-left: 4px; }
+
+@media (min-width: 720px) {
+  .game-list { grid-template-columns: 1fr 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .game-card { transition: none; }
+  .game-card:hover, .game-card:focus-visible { transform: none; }
+}
 
 /* --- Topic display -------------------------------------------------------
    The topic is the whole point of the app, so it gets the room. Sizes are

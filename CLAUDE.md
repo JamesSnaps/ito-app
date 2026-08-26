@@ -3,9 +3,9 @@
 ## What this is
 
 **Game Night** — a hub for companion web apps to physical board games.
-Today it holds one game, *ito* (cooperative, secret-number ordering
-game), and `/` redirects straight to it; the hub menu at `/games` only
-earns its keep once there's a second.
+It holds two: *ito* (cooperative, secret-number ordering game) and
+*Flip 7* (push-your-luck card game). `/` is the menu — it used to redirect
+straight to ito when ito was the only game.
 
 The ito app itself: The owner has the German edition, whose
 topic prompts come as a printed booklet rather than cards, which isn't
@@ -29,14 +29,18 @@ problem.
   one state dict per room, swept after 6h idle. Lost on restart, which
   is fine — a room is one sitting.
 - Each game is a blueprint under `games/<id>/`, listed in
-  `games/registry.py`. Adding a game shouldn't touch `app.py` except to
-  drop the single-game redirect.
+  `games/registry.py`. Adding a game shouldn't touch `app.py` at all.
+- Not every game needs rooms. `GameSpec.new_room_state`/`host_endpoint`/
+  `player_endpoint` are optional; `has_rooms` is what the hub and `/join`
+  key off. Flip 7 has none of them.
 - Frontend is plain HTML/CSS/JS (Jinja templates extending
   `templates/base.html`, shared `static/style.css`, fetch polling), no
   build step, no framework. Player page polls
   `/ito/api/<code>/state` every 2s.
 - Single container via `Dockerfile` + `docker-compose.yml`.
 - Smoke tests in `tests/test_smoke.py` (`pytest tests -q`).
+- Flip 7 is one page of client-side JS plus its own `static/flip7.css`;
+  its state never reaches the server.
 
 ## Key design decisions (so you don't re-litigate them)
 
@@ -152,6 +156,47 @@ problem.
   name/pun ("Hier steppt der Bär", a German idiom) was renamed to
   "Animal Kingdom" with content adapted accordingly.
 
+## Flip 7 (added v1.2.0)
+
+- **Scorekeeper only**, same narrow scope as ito: the app adds up a round
+  of number cards, modifiers and a x2. It does not deal, track hits, or
+  detect a bust — you tell it who busted.
+- **No room, and that's the point.** A scorekeeper is one device on the
+  table that everyone leans over. Five phones editing one scoreboard is a
+  worse pad of paper, not a better one. So no host/player split, no
+  polling, no code.
+- **State is in `localStorage` (`flip7:game`), players and banked rounds
+  only.** A half-entered round is deliberately not restored — coming back
+  to a partly filled round is more confusing than re-entering it. Reads
+  and writes are try/caught: private browsing shouldn't break the game.
+- **Scoring lives in `calcRoundScore` and is mirrored by
+  `/flip7/rules`.** x2 doubles the number cards *only*; flat modifiers are
+  added after; seven distinct numbers is +15; a bust scores zero
+  including its modifiers. A test pins those four lines so the page and
+  the rules can't drift.
+- **Rendered as DOM nodes, not an HTML string.** The original standalone
+  page built markup with an `escapeHtml` helper; player names are typed at
+  the table and go straight back on screen, and `textContent` can't be
+  got wrong.
+- **Its felt-and-gold theme is `static/flip7.css`, scoped under `.flip7`
+  on `<body>`**, layered over the shared shell rather than replacing it.
+- **Fonts are the app's own.** The standalone page pulled Fraunces and
+  IBM Plex Mono from Google's CDN; that's out for the same reason ito
+  self-hosts Baloo 2 — LAN with no internet, and no third-party calls
+  mid-game. A test asserts the page and its CSS contain no absolute URLs.
+- **Bust and Freeze are exclusive** — they're how a turn ended. Bust also
+  locks the number/modifier chips so a stray tap can't score a bust.
+
+## Hub artwork
+
+- Each game's menu tile has an SVG in `templates/art/<id>.html` and an
+  `accent` colour on its `GameSpec`. Both are required — a test fails a
+  game that has neither, since it would render as a blank untinted card.
+- The drawings share a vocabulary (`.art-plate`, `.art-pip`,
+  `.art-stroke`) so a third game inherits the same card stock instead of
+  inventing its own. ito's tile is the card's scale line; Flip 7's is a
+  three-card fan with the 7 face up.
+
 ## Known rough edges / good next steps
 
 - Flask dev server (`app.run(...)`) is fine for a living-room game but
@@ -174,7 +219,11 @@ problem.
   host page to controls you'd actually touch mid-round.
 - Rooms are in-memory, so a restart mid-game drops the current room.
   Stats and topics survive.
-- Tests are smoke-level only (routing, room isolation, stats).
+- Tests are smoke-level only (routing, room isolation, stats). Flip 7's
+  scoring is only pinned by string-matching its JS — there's no JS test
+  runner in this project and adding one for one page isn't worth it yet.
+- Flip 7's scores are per-browser. Clearing site data or switching device
+  mid-game loses the night; nothing is on the server to recover it.
 - Card faces are swapped with a `.show-back` class at the deal
   animation's midpoint, not `backface-visibility` — Chrome stops
   culling backfaces once a face is clipped by `overflow` +

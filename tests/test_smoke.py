@@ -20,9 +20,57 @@ def new_room(c):
     return res.headers["Location"].rsplit("/", 1)[-1]
 
 
-def test_hub_redirects_to_only_game():
-    res = client().get("/")
-    assert res.status_code == 302 and "/ito" in res.headers["Location"]
+def test_hub_lists_every_game():
+    """/ used to short-circuit to ito when it was the only game. With two on
+    the shelf it's a menu again, and both have to be on it."""
+    from games.registry import playable_games
+
+    body = client().get("/").get_data(as_text=True)
+    for game in playable_games():
+        assert game.name in body, game.id
+        assert f"/{game.id}" in body, game.id
+
+
+def test_every_game_has_artwork_and_an_accent():
+    """The menu tiles are drawn per game; a game without either would render
+    as an untinted blank card."""
+    from games.registry import playable_games
+
+    for game in playable_games():
+        assert game.accent.startswith("#"), game.id
+        art = Path(__file__).resolve().parent.parent / "templates" / "art" / f"{game.id}.html"
+        assert art.exists(), f"no hub artwork for {game.id}"
+
+
+def test_flip7_pages_render_without_a_room():
+    """The scorekeeper is one device on the table, so it has no room code —
+    the hub must not try to route it like ito."""
+    from games.flip7.game import GAME as FLIP7
+
+    c = client()
+    assert not FLIP7.has_rooms
+    assert c.get("/flip7/").status_code == 200
+    assert c.get("/flip7/rules").status_code == 200
+
+
+def test_flip7_does_not_call_out_to_the_internet():
+    """The app has to work on a LAN with no internet, and no player's browser
+    should be fetching fonts from a third party mid-game."""
+    body = client().get("/flip7/").get_data(as_text=True)
+    css = (Path(__file__).resolve().parent.parent / "static" / "flip7.css").read_text()
+    for text in (body, css):
+        assert "http://" not in text and "https://" not in text
+
+
+def test_flip7_scoring_matches_the_rules_page():
+    """The scoring is in the page's JS, so this pins the rules the app claims:
+    x2 doubles the numbers only, flat modifiers are added after, seven
+    distinct numbers is +15, and a bust is worth nothing at all."""
+    body = client().get("/flip7/").get_data(as_text=True)
+    assert "if (entry.bust) return 0;" in body
+    assert "entry.x2 ? base*2 : base" in body
+    assert "entry.numbers.length >= 7 ? 15 : 0" in body
+    assert "doubled + flat + flip7" in body
 
 
 def test_host_and_player_pages_render():
