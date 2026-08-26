@@ -38,5 +38,6 @@ def isolated_data(tmp_path, monkeypatch):
     fresh = GuessThrottle()
     monkeypatch.setattr(ratelimit, "code_guesses", fresh)
     monkeypatch.setattr("app.code_guesses", fresh)
-    monkeypatch.setattr("games.ito.game.code_guesses", fresh)
+    # The games look the throttle up through core.ratelimit at call time
+    # (core.rooms.require_room), so patching the module above covers them.
     yield

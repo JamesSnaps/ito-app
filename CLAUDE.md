@@ -30,9 +30,11 @@ problem.
   is fine — a room is one sitting.
 - Each game is a blueprint under `games/<id>/`, listed in
   `games/registry.py`. Adding a game shouldn't touch `app.py` at all.
-- Not every game needs rooms. `GameSpec.new_room_state`/`host_endpoint`/
-  `player_endpoint` are optional; `has_rooms` is what the hub and `/join`
-  key off. Flip 7 has none of them.
+- Not every game needs rooms, and the two halves are independent.
+  `GameSpec.host_endpoint` is "the hub tile starts a room" (`starts_rooms`,
+  ito only); `player_endpoint` is "a code resolves here at `/join`"
+  (`has_rooms`). Flip 7 sets the second and not the first: its room is a
+  read-only spectator view opened from inside the scorekeeper.
 - Frontend is plain HTML/CSS/JS (Jinja templates extending
   `templates/base.html`, shared `static/style.css`, fetch polling), no
   build step, no framework. Player page polls
@@ -161,10 +163,11 @@ problem.
 - **Scorekeeper only**, same narrow scope as ito: the app adds up a round
   of number cards, modifiers and a x2. It does not deal, track hits, or
   detect a bust — you tell it who busted.
-- **No room, and that's the point.** A scorekeeper is one device on the
-  table that everyone leans over. Five phones editing one scoreboard is a
-  worse pad of paper, not a better one. So no host/player split, no
-  polling, no code.
+- **One device enters scores, and that's the point.** A scorekeeper is one
+  device on the table that everyone leans over. Five phones editing one
+  scoreboard is a worse pad of paper, not a better one. The optional
+  spectator room (below) doesn't change that — it copies the board out, it
+  never takes input in.
 - **State is in `localStorage` (`flip7:game`), players and banked rounds
   only.** A half-entered round is deliberately not restored — coming back
   to a partly filled round is more confusing than re-entering it. Reads
@@ -186,6 +189,36 @@ problem.
   mid-game. A test asserts the page and its CSS contain no absolute URLs.
 - **Bust and Freeze are exclusive** — they're how a turn ended. Bust also
   locks the number/modifier chips so a stray tap can't score a bust.
+
+### Flip 7 spectator rooms (added v1.4.0)
+
+- **The room is a copy of the board, not the board.** The game still lives
+  in the scorekeeper's `localStorage`; sharing pushes a snapshot
+  (`{players:[{name, scores, total}], target}`) to a room, and watchers poll
+  `/flip7/api/<code>/state` every 2s. So a restart that sweeps rooms costs a
+  spectator view and never the game — which is why the board wasn't moved
+  server-side wholesale.
+- **Read-only, deliberately.** `/flip7/watch/<code>` renders a scoreboard and
+  has no controls at all; a test asserts the page contains no entry markup.
+  Wanting to enter your own round is the thing that was ruled out, not an
+  oversight.
+- **Only banked rounds go out.** A half-entered round isn't in the snapshot,
+  the same call as not restoring one from storage. `pushBoard()` skips a
+  push whose body matches the last one, because `render()` runs on every
+  chip tap.
+- **No host endpoint on the spec.** You don't start a Flip 7 room from the
+  hub — you open the scorekeeper and share it if you want to. That's why the
+  hub label moved from `has_rooms` to `starts_rooms`.
+- **The push needs a token, the read doesn't.** Codes get read out across a
+  table, so the code alone can't be what protects the board: `create_room`
+  hands back a `host_token` (kept in `flip7:share` alongside the code) and
+  `POST /api/<code>/board` requires it. `/state` never returns it.
+- **A 404 on push clears the share.** The room expired or a restart swept it;
+  leaving a dead code on screen is worse than saying it's gone. Stopping a
+  share just drops it locally — the room ages out on its own.
+- **`core.rooms.require_room` is the shared lookup**, moved out of ito so
+  both games throttle wrong codes identically (only failures count; a right
+  code always works and clears the client).
 
 ### Flip 7 records (added v1.3.0)
 
@@ -250,6 +283,10 @@ problem.
 - Tests are smoke-level only (routing, room isolation, stats). Flip 7's
   scoring is only pinned by string-matching its JS — there's no JS test
   runner in this project and adding one for one page isn't worth it yet.
+- A Flip 7 spectator room shows the board as of the last successful push,
+  and pushes are fire-and-forget: a watcher on a flaky phone can sit a round
+  behind until the next one lands. Fine for standings, not for anything
+  timed.
 - Flip 7's in-progress scores are per-browser. Clearing site data or
   switching device mid-game loses the night — only the finished game is
   posted, so there's nothing on the server to recover mid-game from.

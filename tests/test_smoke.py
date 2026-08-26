@@ -43,14 +43,15 @@ def test_every_game_has_artwork_and_an_accent():
 
 
 def test_flip7_pages_render_without_a_room():
-    """The scorekeeper is one device on the table, so it has no room code —
-    the hub must not try to route it like ito."""
+    """A Flip 7 room is optional — the scorekeeper is a whole game on its own,
+    and the hub opens it directly rather than starting a room for it."""
     from games.flip7.game import GAME as FLIP7
 
     c = client()
-    assert not FLIP7.has_rooms
+    assert not FLIP7.starts_rooms
     assert c.get("/flip7/").status_code == 200
     assert c.get("/flip7/rules").status_code == 200
+    assert "Open scorekeeper" in c.get("/").get_data(as_text=True)
 
 
 def test_flip7_does_not_call_out_to_the_internet():
@@ -468,3 +469,88 @@ def test_flip7_page_posts_the_game_once():
     # Only a successful post counts, or a server that was down at the final
     # round would lose the game silently.
     assert "if (res.ok) { state.recorded = true; save(); }" in body
+
+
+# --- Flip 7 spectator rooms ---------------------------------------------
+
+def new_flip7_room(c):
+    res = c.post("/flip7/rooms")
+    assert res.status_code == 200
+    return res.get_json()
+
+
+def test_flip7_room_is_watchable_and_joinable_by_code():
+    """The one thing a Flip 7 room does: put the scorekeeper's board on
+    everyone else's phone, reachable by the same /join as ito."""
+    c = client()
+    room = new_flip7_room(c)
+
+    # Nothing to see until the scorekeeper pushes.
+    assert c.get(f"/flip7/api/{room['code']}/state").get_json()["board"] is None
+
+    push = c.post(
+        f"/flip7/api/{room['code']}/board",
+        json={"players": [{"name": "Ana", "scores": [30, 25]}, {"name": "Bo", "scores": [12]}]},
+        headers={"X-Flip7-Token": room["host_token"]},
+    )
+    assert push.status_code == 200
+    board = push.get_json()["board"]
+    assert [p["total"] for p in board["players"]] == [55, 12]
+
+    watch = c.get(f"/flip7/watch/{room['code']}")
+    assert watch.status_code == 200
+    assert room["code"] in watch.get_data(as_text=True)
+
+    joined = c.get(f"/join?code={room['code']}")
+    assert joined.status_code == 302
+    assert joined.headers["Location"].endswith(f"/flip7/watch/{room['code']}")
+
+
+def test_flip7_board_needs_the_host_token():
+    """A code gets read out across a table; the token doesn't. Without this a
+    spectator could overwrite the board everyone else is reading."""
+    c = client()
+    room = new_flip7_room(c)
+    good = {"players": [{"name": "Ana", "scores": [10]}]}
+
+    assert c.post(f"/flip7/api/{room['code']}/board", json=good).status_code == 403
+    assert c.post(f"/flip7/api/{room['code']}/board", json=good,
+                  headers={"X-Flip7-Token": "nope"}).status_code == 403
+    # And the token never leaves by the front door.
+    assert "host_token" not in c.get(f"/flip7/api/{room['code']}/state").get_json()
+
+
+def test_flip7_board_rejects_junk():
+    c = client()
+    room = new_flip7_room(c)
+    head = {"X-Flip7-Token": room["host_token"]}
+
+    for payload in (
+        {"players": [{"name": "", "scores": []}]},
+        {"players": [{"name": "Ana", "scores": ["lots"]}]},
+        {"players": [{"name": "Ana", "scores": [99999]}]},
+        {"players": [{"name": f"P{i}", "scores": []} for i in range(20)]},
+    ):
+        res = c.post(f"/flip7/api/{room['code']}/board", json=payload, headers=head)
+        assert res.status_code == 400, payload
+
+
+def test_flip7_rooms_do_not_collide_with_itos():
+    """Both games share one code space, and a code only opens its own game."""
+    c = client()
+    ito_code = new_room(c)
+    f7 = new_flip7_room(c)
+
+    assert c.get(f"/flip7/api/{ito_code}/state").status_code == 404
+    assert c.get(f"/ito/api/{f7['code']}/state").status_code == 404
+
+
+def test_flip7_watch_page_has_no_way_to_enter_a_score():
+    """Read-only is the whole point: five people editing one scoreboard is a
+    worse pad of paper, not a better one."""
+    c = client()
+    room = new_flip7_room(c)
+    body = c.get(f"/flip7/watch/{room['code']}").get_data(as_text=True)
+
+    for entry in ("f7-num", "f7-mod", "Save round", "Add round", "addPlayer"):
+        assert entry not in body, entry

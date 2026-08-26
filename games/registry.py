@@ -19,9 +19,11 @@ class GameSpec:
     # Colour the hub tints this game's card with, so the menu reads as two
     # different games rather than two rows of the same one.
     accent: str
-    # Rooms are optional. A game that is one shared device on the table (the
-    # Flip 7 scorekeeper) has no host and no players to route, so these are
-    # None and nothing in the hub tries to build a room for it.
+    # Rooms are optional, and the two halves are independent. A game whose
+    # room is started from the hub sets host_endpoint (ito); a game whose room
+    # is only ever opened from inside the game leaves it None (Flip 7 shares
+    # a spectator room from the scorekeeper). player_endpoint is what a code
+    # typed at /join resolves to, so it's the one that makes a game joinable.
     new_room_state: Optional[Callable[[], dict]] = None
     # Where "start a game" lands, given a room code.
     host_endpoint: Optional[str] = None
@@ -30,7 +32,13 @@ class GameSpec:
 
     @property
     def has_rooms(self):
+        """Can a code for this game be typed in at /join?"""
         return self.player_endpoint is not None
+
+    @property
+    def starts_rooms(self):
+        """Does the hub tile start a room, or just open the game?"""
+        return self.host_endpoint is not None
 
 
 def all_games():

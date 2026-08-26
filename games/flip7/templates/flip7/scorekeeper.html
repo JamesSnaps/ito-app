@@ -27,6 +27,8 @@
   const TARGET_SCORE = {{ target }};
   const STORE_KEY = 'flip7:game';
   const RECORD_URL = '{{ url_for("flip7.api_record_game") }}';
+  const ROOMS_URL = '{{ url_for("flip7.create_room") }}';
+  const SHARE_KEY = 'flip7:share';
 
   // Only the players and their banked rounds are worth keeping. Whether a
   // round is half-entered, or the history is expanded, is not — restoring
@@ -121,6 +123,92 @@
     } finally {
       posting = false;
     }
+  }
+
+  // --- sharing ----------------------------------------------------------
+  // A room here is a copy of the board for people to watch, not a second
+  // place to enter scores: the scorekeeper pushes a snapshot, spectators
+  // poll it. So the game itself is unaffected by the room going away, and
+  // nothing below ever waits on the network.
+  let share = null;   // {code, token, url, qr}
+
+  function saveShare(){
+    try {
+      if (share) localStorage.setItem(SHARE_KEY, JSON.stringify(share));
+      else localStorage.removeItem(SHARE_KEY);
+    } catch (e) { /* private browsing; sharing just won't survive a reload */ }
+  }
+
+  function restoreShare(){
+    let raw;
+    try { raw = localStorage.getItem(SHARE_KEY); } catch (e) { return; }
+    if (!raw) return;
+    try {
+      const saved = JSON.parse(raw);
+      if (saved && saved.code && saved.token) share = saved;
+    } catch (e) { /* corrupt — start unshared */ }
+  }
+
+  function boardSnapshot(){
+    return {
+      players: state.players.map(p => ({
+        name: p.name,
+        scores: p.rounds.map(r => r.score)
+      }))
+    };
+  }
+
+  // Fire-and-forget. A push that fails is a stale spectator view for a few
+  // seconds, not a lost round — the next one carries the whole board anyway.
+  let pushing = false;
+  let lastPushed = null;
+  async function pushBoard(){
+    if (!share || pushing) return;
+    // render() runs on every chip tap; only banked rounds are in a snapshot,
+    // so most of those taps have nothing new to send.
+    const body = JSON.stringify(boardSnapshot());
+    if (body === lastPushed) return;
+    pushing = true;
+    const current = share;
+    try {
+      const res = await fetch(`/flip7/api/${current.code}/board`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-Flip7-Token': current.token},
+        body: body
+      });
+      if (res.ok) lastPushed = body;
+      // The room expired (6h idle) or was swept by a restart. Say so rather
+      // than leaving a code on screen that sends people nowhere.
+      if (res.status === 404 && share === current) { share = null; saveShare(); render(); }
+    } catch (e) {
+      // Offline. The scoreboard on this device is unaffected.
+    } finally {
+      pushing = false;
+    }
+  }
+
+  async function startSharing(){
+    if (share) return;
+    try {
+      const res = await fetch(ROOMS_URL, {method: 'POST'});
+      if (!res.ok) return;
+      const data = await res.json();
+      share = {code: data.code, token: data.host_token, url: data.watch_url, qr: data.qr_svg};
+      lastPushed = null;   // a new room starts empty, whatever we sent the last one
+      saveShare();
+      render();
+      pushBoard();
+    } catch (e) {
+      // No room, no share panel change. Nothing else breaks.
+    }
+  }
+
+  function stopSharing(){
+    // The room is left to expire on its own; there's nothing in it worth a
+    // delete endpoint, and spectators simply stop seeing new rounds.
+    share = null;
+    saveShare();
+    render();
   }
 
   function newDraftEntry(){ return {numbers:[], mods:[], x2:false, bust:false, frozen:false}; }
@@ -265,6 +353,37 @@
       el('button', {class: 'f7-btn f7-btn-gold', text: 'Add', onclick: () => addPlayer(input.value)})
     ]));
     app.appendChild(players);
+
+    // --- share ---
+    const shareExtra = share ? el('button', {
+      class: 'f7-btn f7-btn-ghost f7-btn-small',
+      text: 'Stop sharing',
+      onclick: stopSharing
+    }) : null;
+    const sharePanel = panel('Watch on your phone', shareExtra);
+    if (share) {
+      sharePanel.appendChild(el('div', {class: 'f7-share'}, [
+        el('div', {class: 'f7-share-qr'}),
+        el('div', {class: 'f7-share-copy'}, [
+          el('div', {class: 'f7-share-code', text: share.code}),
+          el('div', {
+            class: 'f7-note',
+            text: 'Scan, or go to /join and type the code. Watchers see the ' +
+                  'scoreboard only — scores are entered here.'
+          })
+        ])
+      ]));
+      // The QR is server-rendered SVG for a URL this page just asked for.
+      const slot = sharePanel.querySelector('.f7-share-qr');
+      if (slot && share.qr) slot.innerHTML = share.qr;
+    } else {
+      sharePanel.appendChild(el('div', {class: 'f7-note',
+        text: 'Put the standings on everyone else\u2019s phone, read-only.'}));
+      sharePanel.appendChild(el('div', {class: 'f7-add-row'}, [
+        el('button', {class: 'f7-btn f7-btn-gold', text: 'Share to phones', onclick: startSharing})
+      ]));
+    }
+    app.appendChild(sharePanel);
 
     if (state.players.length) {
       // --- scoreboard ---
@@ -411,9 +530,11 @@
     }
 
     save();
+    pushBoard();
   }
 
   restore();
+  restoreShare();
   render();
 </script>
 {% endblock %}

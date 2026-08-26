@@ -15,7 +15,7 @@
         <div class="name">{{ game.name }}</div>
         <div class="tagline">{{ game.tagline }}</div>
         <div class="game-go">
-          {% if game.has_rooms %}Start a room{% else %}Open scorekeeper{% endif %}
+          {% if game.starts_rooms %}Start a room{% else %}Open scorekeeper{% endif %}
           <span aria-hidden="true">→</span>
         </div>
       </div>

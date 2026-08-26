@@ -351,3 +351,27 @@
   color: var(--green);
 }
 .f7-bigstat-who { font-weight: 700; font-size: 0.95rem; }
+
+/* --- sharing ----------------------------------------------------------- */
+/* The scorekeeper's share panel: a QR to the read-only view, and the code
+   spelled out for anyone who'd rather type it than point a camera. */
+.f7-share { display: flex; align-items: center; gap: 14px; }
+.f7-share-qr {
+  flex: 0 0 auto;
+  width: 108px;
+  height: 108px;
+  background: var(--cream);
+  border-radius: 10px;
+  padding: 6px;
+}
+.f7-share-qr svg { width: 100%; height: 100%; display: block; }
+.f7-share-copy { min-width: 0; }
+.f7-share-code {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 1.6rem;
+  letter-spacing: 0.22em;
+  color: var(--gold-bright);
+  margin-bottom: 6px;
+}
+.f7-watch-note { display: block; text-align: center; margin-top: 4px; }
