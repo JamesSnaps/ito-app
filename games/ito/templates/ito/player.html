@@ -21,7 +21,7 @@
     const deal = makeDealer('card');
     const roundEl = document.getElementById('round');
     const waitingEl = document.getElementById('waiting');
-    let lastRound = null;
+    let lastDraw = null;
 
     async function poll() {
       try {
@@ -33,12 +33,13 @@
           ? `Round ${data.round_number}` : 'Waiting for the host';
         waitingEl.style.visibility = data.current_topic ? 'hidden' : 'visible';
 
-        // Only deal when the round actually changed — every 2s poll would
-        // otherwise re-flip the card in everyone's face.
-        if (data.round_number !== lastRound) {
+        // Only deal when the card actually changed — every 2s poll would
+        // otherwise re-flip it in everyone's face. Keyed on draw_id rather
+        // than the round, so a swapped card reaches the phones too.
+        if (data.draw_id !== lastDraw) {
           deal.setBackCategory(data.current_category || '');
-          deal(data, lastRound !== null);
-          lastRound = data.round_number;
+          deal(data, lastDraw !== null);
+          lastDraw = data.draw_id;
         }
       } catch (e) {
         // Silently retry on the next tick

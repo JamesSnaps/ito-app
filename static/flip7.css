@@ -147,6 +147,28 @@
 }
 
 .f7-note { color: rgba(251, 246, 236, 0.55); font-size: 0.85rem; }
+.f7-reorder-hint { margin-top: 8px; font-size: 0.75rem; }
+
+/* The chips are the seating order, so they're draggable. touch-action has
+   to be none or the phone scrolls the page instead of moving the name. */
+.f7-chips { display: flex; flex-wrap: wrap; }
+.f7-chip[data-index] { cursor: grab; touch-action: none; user-select: none; }
+.f7-chip[data-index]:active { cursor: grabbing; }
+.f7-chip .f7-icon {
+  width: 14px;
+  height: 14px;
+  margin-right: -2px;
+  opacity: 0.45;
+  stroke-width: 2.4;
+}
+.f7-chip.is-dragging {
+  cursor: grabbing;
+  border-color: var(--gold);
+  background: rgba(217, 169, 78, 0.22);
+  transform: scale(1.06) rotate(-2deg);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
+}
+.f7-chip.is-dragging .f7-icon { opacity: 1; }
 
 /* --- scoreboard ------------------------------------------------------- */
 
@@ -265,8 +287,57 @@
   padding: 12px 16px calc(20px + env(safe-area-inset-bottom));
   background: linear-gradient(180deg, rgba(15, 46, 36, 0) 0%, var(--felt-dark) 28%);
 }
-.f7-submit .f7-btn { flex: 1; font-size: 1rem; padding: 14px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35); }
-.f7-submit .f7-btn-ghost { background: rgba(15, 46, 36, 0.92); }
+.f7-submit .f7-btn {
+  flex: 1;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 0.95rem;
+  letter-spacing: 0.03em;
+  padding: 15px 12px;
+  border-radius: 12px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  transition: transform 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+}
+.f7-submit .f7-btn:active { transform: translateY(1px); }
+
+/* The secondary buttons sat dark green on green felt and disappeared into
+   it. They're lifted off the table instead — a pale translucent stock with
+   a cream edge, the same card-on-felt logic as everything else here. */
+.f7-submit .f7-btn-ghost {
+  background: rgba(251, 246, 236, 0.1);
+  border: 1px solid rgba(251, 246, 236, 0.3);
+  color: var(--cream);
+}
+.f7-submit .f7-btn-ghost:hover {
+  background: rgba(251, 246, 236, 0.17);
+  border-color: var(--gold-bright);
+}
+
+/* The one that ends the round is the only gold thing down here. */
+.f7-submit .f7-btn-gold {
+  border: 1px solid var(--gold-bright);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+
+/* One stroked icon family, sized to the label beside it. */
+.f7-icon {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.1;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.f7-submit .f7-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+}
+.f7-submit .f7-btn-ghost .f7-icon { opacity: 0.7; }
+.f7-submit .f7-btn-ghost:hover .f7-icon { opacity: 1; }
 
 .f7-confirm {
   background: rgba(179, 67, 43, 0.14);
@@ -375,3 +446,247 @@
   margin-bottom: 6px;
 }
 .f7-watch-note { display: block; text-align: center; margin-top: 4px; }
+/* --- two-column layout ------------------------------------------------ */
+
+/* One column by default. On a phone, entering a round takes the whole
+   screen: the scoreboard would be pushed off the bottom anyway, and each
+   player's box carries its own running tally instead. */
+@media (max-width: 899px) {
+  .f7-layout.is-drafting .f7-col-board { display: none; }
+}
+
+/* Wide enough for both: the board on the left, the round being entered on
+   the right, so you can watch the totals move as you tap. */
+@media (min-width: 900px) {
+  .flip7 .wrap:has(.f7-layout.is-drafting) { max-width: 1040px; }
+  .f7-layout.is-drafting {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+    gap: 20px;
+    align-items: start;
+  }
+  .f7-layout.is-drafting .f7-col-board { position: sticky; top: 16px; }
+}
+
+/* --- running tallies -------------------------------------------------- */
+
+.f7-player-run {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--ink-soft);
+  margin-top: 2px;
+}
+.f7-togo {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  margin-top: 1px;
+}
+
+/* --- the win ---------------------------------------------------------- */
+
+.f7-dialog {
+  border: 1px solid var(--gold);
+  border-radius: 18px;
+  background: var(--felt);
+  color: var(--cream);
+  padding: 0;
+  max-width: 340px;
+  width: calc(100% - 32px);
+}
+.f7-dialog::backdrop { background: rgba(0, 0, 0, 0.6); }
+.f7-dialog-body { padding: 24px 20px; text-align: center; }
+.f7-dialog-trophy { font-size: 2.6rem; line-height: 1; }
+.f7-dialog h2 {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.5rem;
+  color: var(--gold-bright);
+  margin: 10px 0 6px;
+}
+.f7-dialog p { margin: 0 0 18px; font-size: 0.9rem; color: rgba(251, 246, 236, 0.8); }
+.f7-dialog .f7-btn { width: 100%; padding: 13px; font-size: 1rem; }
+
+/* --- how a turn ended ------------------------------------------------- */
+
+/* Bust and Freeze are the two dramatic moments of a Flip 7 turn, so they
+   look like the cards that cause them rather than like form controls: a
+   stamped, slightly-tilted face when one is chosen, matching the number
+   cards' is-on treatment. */
+.f7-player-actions .f7-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 0.82rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 11px 8px;
+  border-radius: 11px;
+  transition: transform 0.12s ease, background 0.12s ease, box-shadow 0.12s ease;
+}
+/* Held back while the turn is still live, full strength once it's over. */
+.f7-player-actions .f7-action .f7-icon { opacity: 0.55; }
+
+.f7-action-bust { border-color: rgba(179, 67, 43, 0.5); color: rgba(251, 246, 236, 0.75); }
+.f7-action-bust:hover:not(:disabled) { border-color: var(--crimson); color: var(--cream); }
+.f7-player-actions .f7-action-bust.is-bust {
+  background: linear-gradient(180deg, #d1502f, var(--crimson));
+  border-color: #e2673f;
+  color: var(--cream);
+  transform: scale(1.04) rotate(-1.5deg);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.f7-action-freeze { border-color: rgba(127, 224, 168, 0.4); color: rgba(251, 246, 236, 0.75); }
+.f7-action-freeze:hover:not(:disabled) { border-color: var(--green); color: var(--cream); }
+.f7-player-actions .f7-action-freeze.is-freeze {
+  background: linear-gradient(180deg, #4fbe83, #2f6f52);
+  border-color: var(--green);
+  color: var(--ink);
+  transform: scale(1.04) rotate(1.5deg);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+/* Frozen by rule, not by choice — it reads as a result, not a button. */
+.f7-player-actions .f7-action-freeze.is-flip7 {
+  background: linear-gradient(180deg, var(--gold-bright), var(--gold));
+  border-color: var(--gold-bright);
+  color: var(--ink);
+  opacity: 1;
+  transform: none;
+}
+.f7-action.is-bust .f7-icon,
+.f7-action.is-freeze .f7-icon { opacity: 1; }
+
+@media (prefers-reduced-motion: reduce) {
+  .f7-player-actions .f7-action { transition: none; }
+  .f7-player-actions .f7-action.is-bust,
+  .f7-player-actions .f7-action.is-freeze { transform: none; }
+}
+
+/* --- the pull-up scoreboard ------------------------------------------- */
+
+/* On a phone the round entry owns the screen, so the standings come up as a
+   sheet from the bottom — a glance at who's close, then straight back to
+   tapping cards. Pointless on a wide screen, where the board is already
+   sitting beside the round. */
+.f7-sheet-open { display: none; }
+@media (max-width: 899px) {
+  .f7-sheet-open { display: flex; flex: 0 0 auto !important; padding-inline: 14px; }
+  /* Three in the bar now, and the one that ends the round gets the room. */
+  .f7-submit .f7-btn-gold { flex: 1.5; }
+  .f7-submit .f7-btn { white-space: nowrap; }
+}
+
+/* At phone width all three labels don't fit on one line, and the bar must
+   not scroll — it's the one thing that has to be reachable by thumb. The
+   icons carry the two secondary buttons instead; aria-labels keep them
+   named for anyone not going by the picture. */
+@media (max-width: 480px) {
+  .f7-label-long { display: none; }
+  .f7-submit .f7-btn { font-size: 0.85rem; padding: 14px 10px; gap: 7px; }
+  .f7-sheet-open { padding-inline: 12px; }
+}
+
+.f7-sheet {
+  border: none;
+  border-top: 1px solid var(--gold);
+  border-radius: 18px 18px 0 0;
+  background: var(--felt);
+  color: var(--cream);
+  padding: 8px 16px calc(20px + env(safe-area-inset-bottom));
+  width: 100%;
+  max-width: 640px;
+  max-height: 72vh;
+  margin: auto auto 0;          /* sits on the bottom edge */
+  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.45);
+}
+.f7-sheet::backdrop { background: rgba(0, 0, 0, 0.55); }
+.f7-sheet-grip {
+  width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line);
+  margin: 2px auto 12px;
+}
+.f7-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--gold-bright);
+  margin-bottom: 8px;
+}
+
+/* Three words of display type at 375px wrapped "Freeze / Bank" onto two
+   lines and left the pair of buttons uneven. */
+@media (max-width: 420px) {
+  .f7-player-actions .f7-action { font-size: 0.72rem; letter-spacing: 0.03em; gap: 6px; }
+  .f7-player-actions .f7-icon { width: 15px; height: 15px; }
+}
+
+/* --- the Flip 7 flash -------------------------------------------------- */
+
+/* Seven cards out is the moment of the round, so it gets a second of noise.
+   Never interactive: the next player is being scrolled to underneath it. */
+.f7-flash {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  animation: f7-flash-out 1.5s ease-in forwards;
+}
+.f7-flash-card {
+  background: linear-gradient(160deg, var(--gold-bright), var(--gold) 55%, #b6832f);
+  color: var(--ink);
+  border-radius: 20px;
+  padding: 22px 34px;
+  text-align: center;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55), inset 0 2px 0 rgba(255, 255, 255, 0.5);
+  animation: f7-flash-in 0.42s cubic-bezier(0.2, 1.5, 0.4, 1) both;
+}
+.f7-flash-title {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: clamp(2rem, 11vw, 3rem);
+  line-height: 1;
+  letter-spacing: -0.01em;
+}
+.f7-flash-bonus {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 1.5rem;
+  margin-top: 4px;
+}
+.f7-flash-who {
+  font-weight: 700;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  margin-top: 8px;
+  opacity: 0.72;
+}
+
+@keyframes f7-flash-in {
+  from { transform: scale(0.55) rotate(-8deg); opacity: 0; }
+  to   { transform: scale(1) rotate(-2deg); opacity: 1; }
+}
+@keyframes f7-flash-out {
+  0%, 66% { opacity: 1; }
+  100%    { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .f7-flash-card { animation: none; }
+  .f7-flash { animation: f7-flash-out 1.5s linear forwards; }
+}

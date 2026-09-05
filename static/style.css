@@ -973,3 +973,15 @@ dialog.modal { position: fixed; }
   letter-spacing: 0.08em;
   color: #4b5057;
 }
+
+/* The reroll: quieter than the deck, and centred under it. Swapping a topic
+   you don't like isn't a round played, so it doesn't look like the draw. */
+/* The class's display would otherwise beat the UA's [hidden] rule. */
+.reroll-btn[hidden] { display: none; }
+.reroll-btn {
+  display: block;
+  width: auto;
+  max-width: 420px;
+  margin: -6px auto 0;
+  font-size: 0.9rem;
+}

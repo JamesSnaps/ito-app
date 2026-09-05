@@ -59,7 +59,9 @@ def test_flip7_does_not_call_out_to_the_internet():
     should be fetching fonts from a third party mid-game."""
     body = client().get("/flip7/").get_data(as_text=True)
     css = (Path(__file__).resolve().parent.parent / "static" / "flip7.css").read_text()
-    for text in (body, css):
+    # The SVG namespace is an XML identifier, not an address — createElementNS
+    # never fetches it. Everything else that looks like a URL is a real one.
+    for text in (body.replace("http://www.w3.org/2000/svg", ""), css):
         assert "http://" not in text and "https://" not in text
 
 
@@ -72,6 +74,15 @@ def test_flip7_scoring_matches_the_rules_page():
     assert "entry.x2 ? base*2 : base" in body
     assert "entry.numbers.length >= 7 ? 15 : 0" in body
     assert "doubled + flat + flip7" in body
+
+
+def test_flip7_seventh_number_ends_the_turn():
+    """Seven numbers is the end of a turn by rule, not a choice, so the entry
+    page has to lock it and the rules page has to say so."""
+    body = client().get("/flip7/").get_data(as_text=True)
+    rules = client().get("/flip7/rules").get_data(as_text=True)
+    assert "d.bust || d.frozen || d.numbers.length >= 7" in body
+    assert "turn is over" in rules
 
 
 def test_host_and_player_pages_render():
@@ -120,6 +131,39 @@ def test_draw_respects_category_and_reset_clears_history():
 
     after = c.post(f"/ito/api/{code}/reset", json={}).get_json()
     assert after["round_number"] == 0 and after["used"] == []
+
+
+def test_reroll_swaps_the_card_without_starting_a_round():
+    """Swapping a topic you don't like isn't a round played: the round number
+    and the result still owed on it both have to survive it. draw_id is what
+    the display views watch, so that must move or no phone re-flips."""
+    c = client()
+    code = new_room(c)
+    first = c.post(f"/ito/api/{code}/draw", json={}).get_json()
+    after = c.post(f"/ito/api/{code}/draw", json={"reroll": True}).get_json()
+    assert after["round_number"] == first["round_number"] == 1
+    assert after["draw_id"] == first["draw_id"] + 1
+    assert after["scored"] is False
+
+    # A reroll before the first card is just a draw — there's no round to keep.
+    fresh = new_room(c)
+    started = c.post(f"/ito/api/{fresh}/draw", json={"reroll": True}).get_json()
+    assert started["round_number"] == 1
+
+    # And it doesn't clear a result already recorded for the round.
+    c.post(f"/ito/api/{code}/result", json={"outcome": "win"})
+    assert c.post(f"/ito/api/{code}/draw", json={"reroll": True}).get_json()["scored"]
+
+
+def test_settings_is_reachable_without_a_room():
+    """Topics are global, so editing them shouldn't need a game in progress."""
+    c = client()
+    page = c.get("/ito/settings")
+    assert page.status_code == 200
+    body = page.get_data(as_text=True)
+    # No room, so nothing room-scoped on the page.
+    assert "Clear this room's topic history" not in body
+    assert "Reset all ito stats" in body
 
 
 def test_result_records_stats_and_rejects_junk():

@@ -17,6 +17,30 @@
 
   <div id="app"></div>
 
+  {# On a phone the round entry takes the screen, so the standings are one
+     tap away rather than a scroll away — you check them mid-round to see
+     who's close, then get back to tapping cards. #}
+  <dialog class="f7-sheet" id="board-sheet">
+    <div class="f7-sheet-grip"></div>
+    <div class="f7-sheet-head">
+      <span>Scoreboard</span>
+      <button class="f7-btn f7-btn-ghost f7-btn-small" id="sheet-close">Close</button>
+    </div>
+    <div id="sheet-body"></div>
+  </dialog>
+
+  {# The win is the moment of the night, and on a phone the banner can be a
+     scroll away from the round you just saved. So it's said out loud, once,
+     at the moment somebody crosses the line. #}
+  <dialog class="f7-dialog" id="win-dialog">
+    <div class="f7-dialog-body">
+      <div class="f7-dialog-trophy">🏆</div>
+      <h2 id="win-name">—</h2>
+      <p id="win-line">—</p>
+      <button class="f7-btn f7-btn-gold" id="win-close">Nice one</button>
+    </div>
+  </dialog>
+
   <div class="version">{{ app_name }} v{{ app_version }}</div>
 </div>
 
@@ -221,17 +245,60 @@
 
   function cancelRound(){ state.drafting = false; render(); }
 
+  // A player's turn is over once they bust, freeze, or hit seven numbers.
+  function isDone(d){ return d.bust || d.frozen || d.numbers.length >= 7; }
+
+  // Whoever's turn it is now, they're the one being tapped into — so once a
+  // player is done, scroll the next one who isn't up to the top. With five
+  // players the entry panel is taller than a phone, and hunting for the next
+  // name is the fiddly part of keeping score.
+  function focusNext(from){
+    const next = state.draft.findIndex((d, i) => i > from && !isDone(d));
+    const target = document.getElementById(
+      next >= 0 ? `f7-player-${next}` : 'f7-round-submit');
+    if (target) target.scrollIntoView({behavior: 'smooth', block: 'center'});
+  }
+
   function toggleNumber(pi, n){
     const d = state.draft[pi];
-    if (d.bust || d.frozen) return;
+    if (d.bust) return;
     const idx = d.numbers.indexOf(n);
-    if (idx >= 0) d.numbers.splice(idx,1); else d.numbers.push(n);
+    // Untapping is allowed even from a finished turn — the alternative is a
+    // mis-tapped seventh card with no way back.
+    if (idx >= 0) d.numbers.splice(idx,1);
+    else if (!isDone(d)) d.numbers.push(n);
+    else return;
     render();
+    // Seven numbers is the end of the turn by rule, not a choice: the bonus
+    // is banked and no further cards can be taken. So it freezes itself.
+    if (d.numbers.length >= 7 && idx < 0) {
+      flashFlip7(state.players[pi].name);
+      focusNext(pi);
+    }
+  }
+
+  // The one moment in a round worth a bit of noise. It's over in about a
+  // second and can't be tapped through — the next player is already being
+  // scrolled to underneath it.
+  let flashTimer;
+  function flashFlip7(name){
+    const old = document.getElementById('f7-flash');
+    if (old) old.remove();
+    clearTimeout(flashTimer);
+    const flash = el('div', {id: 'f7-flash', class: 'f7-flash', role: 'status'}, [
+      el('div', {class: 'f7-flash-card'}, [
+        el('div', {class: 'f7-flash-title', text: 'FLIP 7!'}),
+        el('div', {class: 'f7-flash-bonus', text: '+15'}),
+        el('div', {class: 'f7-flash-who', text: name})
+      ])
+    ]);
+    document.body.appendChild(flash);
+    flashTimer = setTimeout(() => flash.remove(), 1500);
   }
 
   function toggleMod(pi, m){
     const d = state.draft[pi];
-    if (d.bust || d.frozen) return;
+    if (d.bust || d.frozen) return;   // a flip 7 can still collect modifiers
     const idx = d.mods.indexOf(m);
     if (idx >= 0) d.mods.splice(idx,1); else d.mods.push(m);
     render();
@@ -250,6 +317,7 @@
     d.bust = !d.bust;
     if (d.bust) d.frozen = false;
     render();
+    if (d.bust) focusNext(pi);
   }
 
   function toggleFreeze(pi){
@@ -257,6 +325,7 @@
     d.frozen = !d.frozen;
     if (d.frozen) d.bust = false;
     render();
+    if (d.frozen) focusNext(pi);
   }
 
   function submitRound(){
@@ -272,8 +341,18 @@
       entry.score = calcRoundScore(entry);
       p.rounds.push(entry);
     });
-    state.drafting = false;
+    // Play doesn't stop between rounds, so neither does the scorekeeper: the
+    // next round opens straight away rather than making you bank and then ask
+    // for it. The exception is a game that just ended — nobody deals again
+    // over the winner. Cancel on an empty round is how you stop for the night.
+    const finished = state.players.some(p => playerTotal(p) >= TARGET_SCORE);
+    state.drafting = !finished;
+    state.draft = finished ? [] : state.players.map(newDraftEntry);
     render();
+    if (!finished) {
+      const first = document.getElementById('f7-player-0');
+      if (first) first.scrollIntoView({behavior: 'smooth', block: 'center'});
+    }
   }
 
   function addPlayer(name){
@@ -284,6 +363,10 @@
     // scoreboard shows honestly as a shorter round list.
     if (state.drafting) state.draft.push(newDraftEntry());
     render();
+    // Names go in one after another, so the cursor stays where it was. The
+    // field is a fresh node after the re-render, hence the lookup.
+    const field = document.getElementById('f7-name-input');
+    if (field) field.focus();
   }
 
   function removePlayer(i){
@@ -305,10 +388,153 @@
     return node;
   }
 
+  // One stroked family for the whole page, drawn inline rather than pulled
+  // from a font — same reason the typefaces are self-hosted, and emoji came
+  // out as dull grey specks on some of the phones this runs on.
+  const ICONS = {
+    scores: ['M6 20V12', 'M12 20V5', 'M18 20v-5'],
+    done:   ['M5 12.5l4.5 4.5L19 7'],
+    next:   ['M4 12h13', 'M12 5l7 7-7 7'],
+    bust:   ['M5 5l14 14', 'M19 5L5 19'],
+    freeze: ['M12 3v18', 'M4 7.5l16 9', 'M20 7.5l-16 9'],
+    grip:   ['M9 5v14', 'M15 5v14'],
+    flip7:  ['M12 3.5l2.5 5.4 5.9.8-4.3 4.1 1.1 5.9-5.2-2.9-5.2 2.9 1.1-5.9L3.6 9.7l5.9-.8z']
+  };
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  function icon(name){
+    const svg = document.createElementNS(SVG_NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('class', 'f7-icon');
+    svg.setAttribute('aria-hidden', 'true');
+    (ICONS[name] || []).forEach(d => {
+      const path = document.createElementNS(SVG_NS, 'path');
+      path.setAttribute('d', d);
+      svg.appendChild(path);
+    });
+    return svg;
+  }
+
+  // Pointer events rather than HTML5 drag-and-drop: this is used on phones,
+  // where dragstart never fires. The chip is moved in the DOM as it's
+  // dragged and the arrays are only rebuilt on drop — re-rendering mid-drag
+  // would destroy the node under the finger.
+  function makeChipDraggable(chip, container){
+    chip.addEventListener('pointerdown', e => {
+      if (e.target.closest('button')) return;   // the remove ✕
+      const startX = e.clientX, startY = e.clientY;
+      let dragging = false;
+      // Deliberately not setPointerCapture: capture is dropped the moment the
+      // captured node is re-inserted, which is exactly what a reorder does —
+      // the drag would die on its first swap. The window sees every move.
+
+      // Drop the chip in beside whichever one the pointer is over.
+      const placeAt = (x, y) => {
+        // The dragged chip must not be what's found under the pointer.
+        chip.style.pointerEvents = 'none';
+        const under = document.elementFromPoint(x, y);
+        chip.style.pointerEvents = '';
+        const target = under && under.closest('.f7-chip');
+        if (target && target !== chip && target.parentNode === container) {
+          const box = target.getBoundingClientRect();
+          const after = x > box.left + box.width / 2;
+          container.insertBefore(chip, after ? target.nextSibling : target);
+          return;
+        }
+        // Dropped in the gap past the last chip — the natural "put them last"
+        // gesture, and elementFromPoint has nothing to report there.
+        const rest = [...container.querySelectorAll('.f7-chip')].filter(c => c !== chip);
+        if (!rest.length) return;
+        const last = rest[rest.length - 1].getBoundingClientRect();
+        const first = rest[0].getBoundingClientRect();
+        if (y > last.top && x > last.right) container.appendChild(chip);
+        else if (y < first.bottom && x < first.left) container.insertBefore(chip, rest[0]);
+      };
+
+      const move = ev => {
+        if (!dragging) {
+          // A short threshold, so a tap that drifts isn't read as a drag.
+          if (Math.hypot(ev.clientX - startX, ev.clientY - startY) < 6) return;
+          dragging = true;
+          chip.classList.add('is-dragging');
+        }
+        placeAt(ev.clientX, ev.clientY);
+      };
+
+      // Where the finger lifts is the answer, whatever the moves in between
+      // said — a quick flick can report only a couple of them.
+      const end = ev => {
+        if (dragging && ev && ev.clientX !== undefined) placeAt(ev.clientX, ev.clientY);
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', end);
+        window.removeEventListener('pointercancel', end);
+        chip.classList.remove('is-dragging');
+        chip.style.pointerEvents = '';
+        if (dragging) commitChipOrder(container);
+      };
+
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', end);
+      window.addEventListener('pointercancel', end);
+    });
+  }
+
+  // The DOM is the source of truth once a drag has moved things about; the
+  // round in progress is reordered with it so nobody's entry follows the
+  // wrong name.
+  function commitChipOrder(container){
+    const order = [...container.querySelectorAll('.f7-chip')]
+      .map(c => Number(c.dataset.index));
+    if (order.some(i => Number.isNaN(i))) { render(); return; }
+    state.players = order.map(i => state.players[i]);
+    if (state.drafting) state.draft = order.map(i => state.draft[i]);
+    render();
+  }
+
   function panel(titleText, extra){
     const head = el('div', {class: 'f7-panel-title'}, [el('span', {text: titleText})]);
     if (extra) head.appendChild(extra);
     return el('div', {class: 'f7-panel'}, [head]);
+  }
+
+  // The standings, built once and used in two places: the board panel, and
+  // the sheet a phone pulls up mid-round (where the panel itself is hidden).
+  function standingsTable(totals, pendingScores, maxTotal){
+    const table = el('table', {});
+    state.players
+      .map((p, i) => i)
+      .sort((a, b) => totals[b] - totals[a])
+      .forEach((i, rank) => {
+        const p = state.players[i];
+        const t = totals[i];
+        const lead = t === maxTotal && t > 0;
+        const scores = p.rounds.length ? ' · ' + p.rounds.map(r => r.score).join(', ') : '';
+        // While a round is being entered the total shown is the running one —
+        // banked plus what's on the table — with the banked figure underneath
+        // so nobody has to guess which they're reading.
+        const pending = state.drafting ? pendingScores[i] : 0;
+        const running = t + pending;
+        const toWin = TARGET_SCORE - running;
+        table.appendChild(el('tr', {class: 'f7-row'}, [
+          el('td', {class: 'f7-rank', text: String(rank + 1)}),
+          el('td', {}, [
+            el('div', {class: 'f7-name' + (lead ? ' is-lead' : ''), text: p.name}),
+            el('span', {
+              class: 'f7-rounds',
+              text: state.drafting
+                ? `${t} banked + ${pending} this round`
+                : `${p.rounds.length} round${p.rounds.length === 1 ? '' : 's'}${scores}`
+            })
+          ]),
+          el('td', {class: 'f7-total' + (running >= TARGET_SCORE ? ' is-winner' : '')}, [
+            el('div', {text: String(running)}),
+            el('span', {
+              class: 'f7-togo',
+              text: toWin > 0 ? `${toWin} to win` : 'target reached'
+            })
+          ])
+        ]));
+      });
+    return table;
   }
 
   // Built as DOM nodes rather than an HTML string: player names are typed by
@@ -316,35 +542,72 @@
   function render(){
     const app = document.getElementById('app');
     const totals = state.players.map(playerTotal);
+    // What each player would be on if the round in progress were banked now.
+    const pendingScores = state.players.map((p, i) =>
+      state.drafting && state.draft[i] ? calcRoundScore(state.draft[i]) : 0);
     const maxTotal = totals.length ? Math.max(...totals) : 0;
     const winnerIndex = totals.findIndex(t => t >= TARGET_SCORE);
     app.textContent = '';
 
+    // Two columns once there's room for them: the board stays readable while
+    // the round is entered beside it. On a phone there isn't room, so the
+    // round entry takes the screen and the board steps aside (the running
+    // tally in each player box is what you'd have looked at it for).
+    app.className = 'f7-layout' + (state.drafting ? ' is-drafting' : '');
+    // Left open across a tap, the sheet has to keep up with the totals.
+    if (boardSheet.open) {
+      if (state.drafting) fillSheet(totals, pendingScores, maxTotal);
+      else boardSheet.close();   // the round it was watching is over
+    }
+    const left = el('div', {class: 'f7-col-board'});
+    const right = el('div', {class: 'f7-col-round'});
+    app.appendChild(left);
+    app.appendChild(right);
+
     if (winnerIndex >= 0 && !state.recorded) recordGame();
 
     if (winnerIndex >= 0) {
-      app.appendChild(el('div', {
+      left.appendChild(el('div', {
         class: 'f7-winner',
         text: `🏆 ${state.players[winnerIndex].name} wins with ${totals[winnerIndex]}!`
       }));
+      // Once per crossing, not once per render.
+      if (!announcedWinner) {
+        announcedWinner = true;
+        announceWinner(state.players[winnerIndex].name, totals[winnerIndex]);
+      }
+    } else {
+      announcedWinner = false;
     }
 
     // --- players ---
     const players = panel('Players');
-    const chips = el('div', {});
+    const chips = el('div', {class: 'f7-chips'});
     if (state.players.length) {
       state.players.forEach((p, i) => {
-        chips.appendChild(el('span', {class: 'f7-chip'}, [
+        // The chip order is the order play goes round the table, so it has to
+        // be changeable — people don't sit down in the order they're typed in.
+        const chip = el('span', {class: 'f7-chip', 'data-index': String(i)}, [
+          state.players.length > 1 ? icon('grip') : null,
           el('span', {text: p.name}),
           el('button', {'aria-label': `Remove ${p.name}`, text: '✕', onclick: () => removePlayer(i)})
-        ]));
+        ]);
+        if (state.players.length > 1) makeChipDraggable(chip, chips);
+        chips.appendChild(chip);
       });
     } else {
       chips.appendChild(el('span', {class: 'f7-note', text: 'Add players to start the game.'}));
     }
     players.appendChild(chips);
+    if (state.players.length > 1) {
+      players.appendChild(el('div', {
+        class: 'f7-note f7-reorder-hint', text: 'Drag a name to change the playing order.'
+      }));
+    }
 
-    const input = el('input', {type: 'text', placeholder: 'Player name', maxlength: '20'});
+    const input = el('input', {
+      id: 'f7-name-input', type: 'text', placeholder: 'Player name', maxlength: '20'
+    });
     input.addEventListener('keydown', e => {
       if (e.key === 'Enter') { addPlayer(input.value); }
     });
@@ -352,7 +615,7 @@
       input,
       el('button', {class: 'f7-btn f7-btn-gold', text: 'Add', onclick: () => addPlayer(input.value)})
     ]));
-    app.appendChild(players);
+    left.appendChild(players);
 
     // --- share ---
     const shareExtra = share ? el('button', {
@@ -383,7 +646,9 @@
         el('button', {class: 'f7-btn f7-btn-gold', text: 'Share to phones', onclick: startSharing})
       ]));
     }
-    app.appendChild(sharePanel);
+    // Board column: on a phone the round entry replaces all of this, and the
+    // share panel is housekeeping you do before the cards come out anyway.
+    left.appendChild(sharePanel);
 
     if (state.players.length) {
       // --- scoreboard ---
@@ -393,28 +658,7 @@
         onclick: () => { state.confirmingReset = true; render(); }
       });
       const board = panel('Scoreboard', resetBtn);
-      const table = el('table', {});
-      state.players
-        .map((p, i) => i)
-        .sort((a, b) => totals[b] - totals[a])
-        .forEach((i, rank) => {
-          const p = state.players[i];
-          const t = totals[i];
-          const lead = t === maxTotal && t > 0;
-          const scores = p.rounds.length ? ' · ' + p.rounds.map(r => r.score).join(', ') : '';
-          table.appendChild(el('tr', {class: 'f7-row'}, [
-            el('td', {class: 'f7-rank', text: String(rank + 1)}),
-            el('td', {}, [
-              el('div', {class: 'f7-name' + (lead ? ' is-lead' : ''), text: p.name}),
-              el('span', {
-                class: 'f7-rounds',
-                text: `${p.rounds.length} round${p.rounds.length === 1 ? '' : 's'}${scores}`
-              })
-            ]),
-            el('td', {class: 'f7-total' + (t >= TARGET_SCORE ? ' is-winner' : ''), text: String(t)})
-          ]));
-        });
-      board.appendChild(table);
+      board.appendChild(standingsTable(totals, pendingScores, maxTotal));
 
       if (state.confirmingReset) {
         board.appendChild(el('div', {class: 'f7-confirm'}, [
@@ -436,11 +680,11 @@
           ])
         ]));
       }
-      app.appendChild(board);
+      left.appendChild(board);
 
       // --- round-by-round history ---
       if (state.players.some(p => p.rounds.length)) {
-        app.appendChild(el('button', {
+        left.appendChild(el('button', {
           class: 'f7-history-toggle',
           text: `${state.showHistory ? 'Hide' : 'Show'} round-by-round history ▾`,
           onclick: () => { state.showHistory = !state.showHistory; render(); }
@@ -459,7 +703,7 @@
               }))
             )));
           }
-          app.appendChild(el('div', {class: 'f7-panel f7-history'}, [hist]));
+          left.appendChild(el('div', {class: 'f7-panel f7-history'}, [hist]));
         }
       }
     }
@@ -471,21 +715,38 @@
         const d = state.draft[i];
         const score = calcRoundScore(d);
         const isFlip7 = d.numbers.length >= 7 && !d.bust;
-        const locked = d.bust || d.frozen;
+        // Seven numbers ends the turn on its own, so it locks like a freeze.
+        const locked = isDone(d);
 
         const box = el('div', {
-          class: 'f7-player' + (d.bust ? ' is-busted' : '') + (d.frozen ? ' is-frozen' : '')
+          id: `f7-player-${i}`,
+          class: 'f7-player' + (d.bust ? ' is-busted' : '')
+                 + (d.frozen || isFlip7 ? ' is-frozen' : '')
         }, [
           el('div', {class: 'f7-player-head'}, [
-            el('div', {class: 'f7-player-name', text: p.name}),
+            el('div', {}, [
+              el('div', {class: 'f7-player-name', text: p.name}),
+              // The running tally: where this player stands if the round were
+              // banked as it stands, and how much of the target is left. It's
+              // the question actually being asked round the table.
+              el('span', {
+                class: 'f7-player-run',
+                text: `${totals[i]} + ${d.bust ? 0 : score} = ${totals[i] + (d.bust ? 0 : score)}` +
+                      (totals[i] + (d.bust ? 0 : score) >= TARGET_SCORE
+                        ? ' · wins!'
+                        : ` · ${TARGET_SCORE - totals[i] - (d.bust ? 0 : score)} to win`)
+              })
+            ]),
             el('div', {class: 'f7-player-score', text: d.bust ? 'BUST' : '+' + score})
           ])
         ]);
         if (isFlip7) box.appendChild(el('div', {class: 'f7-badge', text: 'FLIP 7! +15 bonus'}));
 
+        // Only the cards not already taken lock: a stray tap still can't add
+        // to a finished turn, but a mis-tap can be taken back.
         box.appendChild(el('div', {class: 'f7-numbers'}, NUMBERS.map(n => el('button', {
           class: 'f7-num' + (d.numbers.includes(n) ? ' is-on' : ''),
-          disabled: locked,
+          disabled: locked && !d.numbers.includes(n),
           'aria-pressed': d.numbers.includes(n) ? 'true' : 'false',
           text: String(n),
           onclick: () => toggleNumber(i, n)
@@ -507,25 +768,48 @@
 
         box.appendChild(el('div', {class: 'f7-player-actions'}, [
           el('button', {
-            class: d.bust ? 'is-bust' : '', text: d.bust ? 'Busted' : 'Bust',
+            class: 'f7-action f7-action-bust' + (d.bust ? ' is-bust' : ''),
             'aria-pressed': d.bust ? 'true' : 'false', onclick: () => toggleBust(i)
-          }),
+          }, [
+            icon('bust'),
+            el('span', {text: d.bust ? 'Busted' : 'Bust'})
+          ]),
+          // A flip 7 is frozen by rule, so there's nothing to toggle.
           el('button', {
-            class: d.frozen ? 'is-freeze' : '', text: d.frozen ? 'Frozen' : 'Freeze / Bank',
-            'aria-pressed': d.frozen ? 'true' : 'false', onclick: () => toggleFreeze(i)
-          })
+            class: 'f7-action f7-action-freeze'
+                   + ((d.frozen || isFlip7) ? ' is-freeze' : '')
+                   + (isFlip7 ? ' is-flip7' : ''),
+            disabled: isFlip7,
+            'aria-pressed': (d.frozen || isFlip7) ? 'true' : 'false',
+            onclick: () => toggleFreeze(i)
+          }, [
+            icon(isFlip7 ? 'flip7' : 'freeze'),
+            el('span', {text: isFlip7 ? 'Turn over' : d.frozen ? 'Banked' : 'Freeze / Bank'})
+          ])
         ]));
 
         round.appendChild(box);
       });
-      round.appendChild(el('div', {class: 'f7-submit'}, [
-        el('button', {class: 'f7-btn f7-btn-ghost', text: 'Cancel', onclick: cancelRound}),
-        el('button', {class: 'f7-btn f7-btn-gold', text: 'Save round', onclick: submitRound})
+      round.appendChild(el('div', {id: 'f7-round-submit', class: 'f7-submit'}, [
+        // Narrow screens only: on a wide one the board is already beside you.
+        el('button', {
+          class: 'f7-btn f7-btn-ghost f7-sheet-open',
+          'aria-label': 'Scores',
+          onclick: () => { boardSheet.showModal(); fillSheet(totals, pendingScores, maxTotal); }
+        }, [icon('scores'), el('span', {class: 'f7-label-long', text: 'Scores'})]),
+        el('button', {class: 'f7-btn f7-btn-ghost', 'aria-label': 'Done for now',
+                      onclick: cancelRound},
+           [icon('done'), el('span', {}, [
+             el('span', {text: 'Done'}),
+             el('span', {class: 'f7-label-long', text: ' for now'})
+           ])]),
+        el('button', {class: 'f7-btn f7-btn-gold', onclick: submitRound},
+           [el('span', {text: 'Save & next round'}), icon('next')])
       ]));
-      app.appendChild(round);
+      right.appendChild(round);
     } else if (state.players.length) {
-      app.appendChild(el('div', {class: 'f7-submit'}, [
-        el('button', {class: 'f7-btn f7-btn-gold', text: '+ Add round', onclick: startRound})
+      left.appendChild(el('div', {class: 'f7-submit'}, [
+        el('button', {class: 'f7-btn f7-btn-gold', text: 'Start round', onclick: startRound})
       ]));
     }
 
@@ -533,8 +817,29 @@
     pushBoard();
   }
 
+  const boardSheet = document.getElementById('board-sheet');
+  document.getElementById('sheet-close').addEventListener('click', () => boardSheet.close());
+  function fillSheet(totals, pendingScores, maxTotal){
+    const body = document.getElementById('sheet-body');
+    body.textContent = '';
+    body.appendChild(standingsTable(totals, pendingScores, maxTotal));
+  }
+
+  // Shown once, when somebody actually crosses the line — not again on every
+  // reload of a finished game, which is why a restored winner counts as
+  // already announced.
+  const winDialog = document.getElementById('win-dialog');
+  document.getElementById('win-close').addEventListener('click', () => winDialog.close());
+  function announceWinner(name, score){
+    document.getElementById('win-name').textContent = `${name} wins!`;
+    document.getElementById('win-line').textContent =
+      `First past ${TARGET_SCORE}, on ${score}.`;
+    try { winDialog.showModal(); } catch (e) { /* already open */ }
+  }
+
   restore();
   restoreShare();
+  let announcedWinner = state.players.some(p => playerTotal(p) >= TARGET_SCORE);
   render();
 </script>
 {% endblock %}

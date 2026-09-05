@@ -45,6 +45,11 @@
     </button>
   </div>
   <div class="deck-hint" id="deck-hint">Tap the deck to draw your first card</div>
+  {# A topic nobody fancies isn't a round played, so swapping it doesn't
+     advance the round number or ask how the reveal went. #}
+  <button class="btn-quiet reroll-btn" id="reroll-btn" hidden>
+    Not this one &mdash; swap the card
+  </button>
 </div>
 
 <dialog class="modal" id="leave-dialog">
@@ -122,11 +127,13 @@
   const deal = makeDealer('card');
   let selectedCategory = "";
   let lastRound = null;
+  let lastDraw = null;
   let unscoredRound = false;
 
   const winBtn = document.getElementById('win-btn');
   const loseBtn = document.getElementById('lose-btn');
   const deckHint = document.getElementById('deck-hint');
+  const rerollBtn = document.getElementById('reroll-btn');
   const resultDialog = document.getElementById('result-dialog');
   const resultRound = document.getElementById('result-round');
 
@@ -191,11 +198,15 @@
       ? 'Tap the deck for the next card'
       : 'Tap the deck to draw your first card';
 
-    if (forceDeal || data.round_number !== lastRound) {
+    // Keyed on draw_id, not the round: a reroll deals a new card without
+    // starting a new round, and it still has to flip.
+    if (forceDeal || data.draw_id !== lastDraw) {
       // Animate on a real draw, but not when first loading an existing room.
-      deal(data, forceDeal || lastRound !== null);
-      lastRound = data.round_number;
+      deal(data, forceDeal || lastDraw !== null);
+      lastDraw = data.draw_id;
     }
+    lastRound = data.round_number;
+    rerollBtn.hidden = data.round_number === 0;
 
     // Whether the *current* round still needs a result decides if the next
     // deck tap stops to ask first.
@@ -207,11 +218,11 @@
     if (res.ok) renderState(await res.json(), false);
   }
 
-  async function drawCard() {
+  async function drawCard(reroll) {
     const res = await fetch(`/ito/api/${CODE}/draw`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ category: selectedCategory || null })
+      body: JSON.stringify({ category: selectedCategory || null, reroll: !!reroll })
     });
     const data = await res.json();
     renderState(data, true);   // every draw deals, even a repeat category
@@ -232,6 +243,9 @@
   }
   document.getElementById('draw-btn').addEventListener('click', requestDraw);
   document.getElementById('draw-pile').addEventListener('click', requestDraw);
+  // Never asks for a result: the round it would score is the one you're
+  // replacing, and it was never played.
+  rerollBtn.addEventListener('click', () => drawCard(true));
 
   // A mis-tap on the deck shouldn't cost you the card you're still playing.
   document.getElementById('cancel-result').addEventListener('click', () => {

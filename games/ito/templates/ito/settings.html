@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 {% from "ito/_appbar.html" import appbar %}
 {% from "ito/_icons.html" import icon_defs %}
-{% block title %}ito — settings ({{ code }}){% endblock %}
+{% block title %}ito — settings{% if code %} ({{ code }}){% endif %}{% endblock %}
 {% block body %}
 {{ icon_defs() }}
 <div class="wrap">
   {{ appbar(code=code, active='settings') }}
   <h1>Settings</h1>
-  <div class="sub">Topics are shared by every room.</div>
+  <div class="sub">Topics are shared by every room{% if not code %}, so you can edit them before anyone starts a game{% endif %}.</div>
 
   <div class="section" style="margin-top:0; border-top:none; padding-top:0;">
     <h2>Add a topic</h2>
@@ -51,24 +51,31 @@
 
   <div class="section">
     <h2>Reset</h2>
+    {% if code %}
     <button class="btn-quiet" id="reset-session-btn" style="margin-bottom:8px;">
       Clear this room's topic history
     </button>
     <div class="hint" style="margin-bottom:16px;">
       Lets already-seen topics come up again in room {{ code }}. Stats are untouched.
     </div>
+    {% endif %}
     <button class="btn-quiet" id="reset-stats-btn">Reset all ito stats</button>
     <div class="hint">Wipes the win/loss record for every room, permanently.</div>
   </div>
 
+  {% if code %}
   <a class="btn btn-secondary" href="{{ url_for('ito.host_view', code=code) }}"
      style="margin-top:28px; width:100%;">&larr; Back to room {{ code }}</a>
+  {% else %}
+  <a class="btn btn-secondary" href="{{ url_for('ito.landing') }}"
+     style="margin-top:28px; width:100%;">&larr; Back to ito</a>
+  {% endif %}
 
   <div class="version">{{ app_name }} v{{ app_version }}</div>
 </div>
 
 <script>
-  const CODE = {{ code|tojson }};
+  const CODE = {{ code|tojson }};   // null when opened without a room
   const status = document.getElementById('add-status');
 
   document.getElementById('add-btn').addEventListener('click', async () => {
@@ -105,7 +112,9 @@
     });
   });
 
-  document.getElementById('reset-session-btn').addEventListener('click', async () => {
+  // Only rendered when there's a room to clear.
+  const resetSession = document.getElementById('reset-session-btn');
+  if (resetSession) resetSession.addEventListener('click', async () => {
     if (!confirm('Clear topic history for this room? (Stats are kept.)')) return;
     await fetch(`/ito/api/${CODE}/reset`, { method: 'POST' });
     location.href = `/ito/host/${CODE}`;

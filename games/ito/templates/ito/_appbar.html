@@ -42,13 +42,11 @@
       <svg aria-hidden="true"><use href="#ic-invite"/></svg>
     </button>
     {% endif %}
-    {% if code %}
     <a class="appbar-btn {{ 'is-active' if active == 'settings' }}"
        href="{{ url_for('ito.settings_view', code=code) }}"
        aria-label="Settings" title="Settings">
       <svg aria-hidden="true"><use href="#ic-settings"/></svg>
     </a>
-    {% endif %}
   </nav>
 </header>
 {% endmacro %}

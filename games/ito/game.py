@@ -88,6 +88,10 @@ def new_room_state():
         "current_high": None,
         "current_type": None,
         "round_number": 0,
+        # Bumped by every deal, a reroll included. round_number counts rounds
+        # actually played; this counts cards on the table, which is what the
+        # display views watch so a swapped card still flips on every phone.
+        "draw_id": 0,
         "used": [],  # topics already drawn in this room, so we don't repeat
         "scored": False,  # has this round's outcome been logged yet?
     }
@@ -173,15 +177,20 @@ def stats_view():
     )
 
 
+@bp.route("/settings")
 @bp.route("/settings/<code>")
-def settings_view(code):
+def settings_view(code=None):
     """Topic list and session housekeeping — kept off the host screen so that
-    stays a one-thumb control surface during a round."""
-    room = _room_or_404(code)
+    stays a one-thumb control surface during a round.
+
+    Reachable without a room too: topics are global, and editing the list is
+    something you do before anyone sits down, not only mid-game. Without a
+    code the page simply drops the parts that are about a room."""
+    room = _room_or_404(code) if code else None
     return render_template(
         "ito/settings.html",
         game=GAME,
-        code=room.code,
+        code=room.code if room else None,
         topics=load_topics(),
     )
 
@@ -197,9 +206,15 @@ def api_state(code):
 
 @bp.route("/api/<code>/draw", methods=["POST"])
 def api_draw(code):
-    """Draw a new topic for this room, optionally restricted to one category."""
+    """Draw a new topic for this room, optionally restricted to one category.
+
+    A reroll replaces the card without starting a new round: you didn't play
+    the topic, you just didn't like it, so it shouldn't count towards the
+    round number or clear the result still owed on the round in progress."""
     room = _room_or_404(code)
-    category = request.json.get("category") if request.is_json else None
+    body = request.json if request.is_json else {}
+    category = body.get("category")
+    reroll = bool(body.get("reroll"))
     topics = load_topics()
 
     if category and category in topics:
@@ -225,9 +240,11 @@ def api_draw(code):
         state["current_low"] = chosen["low"]
         state["current_high"] = chosen["high"]
         state["current_type"] = category
-        state["round_number"] += 1
+        state["draw_id"] += 1
+        if not reroll or state["round_number"] == 0:
+            state["round_number"] += 1
+            state["scored"] = False
         state["used"].append(chosen["text"])
-        state["scored"] = False
         return jsonify(_public_state(room))
 
 

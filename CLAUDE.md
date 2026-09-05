@@ -137,6 +137,19 @@ problem.
   `.card-front[data-category]`, so the front and the back's tab share
   one set of rules. Anything else using that attribute would inherit
   `--chip` too.
+- **A reroll isn't a round.** "Not this one — swap the card" redraws
+  without advancing `round_number` or clearing `scored`: you didn't play
+  the topic, you just didn't fancy it, so it must not cost you the result
+  still owed on the round in progress, and it never opens the win/lose
+  dialog. `draw_id` is what changed to make this work — it counts cards
+  dealt, a reroll included, and the host and display views key their flip
+  off it rather than off the round number.
+- **Settings is reachable without a room** (`/ito/settings`, alongside
+  `/ito/settings/<code>`). Topics are global and editing them is a
+  before-anyone-sits-down job; without a code the page just drops the
+  room-scoped parts. **Traefik's `auth@file` router matches
+  `/ito/settings/*`** — check that rule covers the bare path too, or the
+  roomless page is public while the room one isn't.
 - **Win/lose only writes stats.** It doesn't advance the round or change
   what players see, and topic shuffling is unrelated to it. One result
   per round (`state["scored"]`), so a double tap can't log two. The
@@ -219,6 +232,80 @@ problem.
 - **`core.rooms.require_room` is the shared lookup**, moved out of ito so
   both games throttle wrong codes identically (only failures count; a right
   code always works and clears the client).
+
+### Flip 7 round entry (v1.5.0)
+
+- **Two columns on wide screens, a takeover on phones.** Entering a round
+  beside the scoreboard is the whole point on a laptop; on a phone the
+  board would be pushed off the bottom anyway, so `.f7-col-board` is
+  hidden while drafting and the round entry gets the screen.
+- **Every player box carries a running tally** — banked + this round =
+  where they'd stand, and how far off 200 they are. That's what the
+  board would have been consulted for, which is what makes hiding it on
+  mobile safe. The scoreboard shows the same running figure while a round
+  is open, with "N banked + M this round" underneath so nobody misreads it.
+- **Player chips are the seating order, and drag to reorder.** People don't
+  sit down in the order they're typed in. The drag is pointer-events, not
+  HTML5 drag-and-drop (which never fires on a phone), and deliberately does
+  *not* use `setPointerCapture` — capture is dropped the moment the captured
+  node is re-inserted, which is exactly what a reorder does, so the drag
+  would die on its first swap. Window-level listeners instead. The DOM is
+  moved during the drag and the arrays are rebuilt only on drop, from the
+  chips' `data-index`; a round in progress is reordered with it so nobody's
+  entry follows the wrong name. Dropping in the empty gap past the last chip
+  is handled separately — `elementFromPoint` has nothing to report there,
+  and "drag them to the end" is the obvious gesture.
+- **Enter keeps the cursor in the name field**, so a table of five is typed
+  in without reaching for the input again. The field is a new node after the
+  re-render, hence the lookup by id.
+- **A finished turn moves you on.** Bust, Freeze and the seventh number all
+  scroll the next player who is still in into view (or the Save bar, if
+  nobody is). With five players the entry panel is taller than a phone, and
+  hunting for the next name was the fiddly part of keeping score.
+- **Seven numbers gets a flash.** A gold card scales in over the page with
+  "FLIP 7! +15" and the player's name, and is gone in 1.5s. It's
+  `pointer-events: none` and lives outside `#app`, so it survives the
+  re-render and never eats the tap that comes next — the following player is
+  being scrolled to underneath it. Only fires on the tap that *adds* the
+  seventh card, so untapping and retapping re-fires it and removing one
+  doesn't.
+- **Seven numbers freezes itself.** It's the rule, not a choice: no more
+  cards can be taken, so the box locks and the Freeze button becomes a
+  disabled "Turn over" rather than something you can toggle back off.
+- **A locked turn still lets you untap what's already on.** Only the cards
+  *not* chosen are disabled. Locking those too meant a mis-tapped seventh
+  card had no way back. The documented invariant still holds — nothing can
+  be added to a finished turn.
+- **Saving a round opens the next one.** Play doesn't stop between rounds,
+  so neither does the scorekeeper; "Save & next round" banks and re-opens
+  in one tap. The exception is a game that just ended — nobody deals over
+  the winner. "Done for now" on an empty round is how you stop.
+- **One stroked SVG icon family, drawn inline** (`ICONS` + `icon()` in the
+  scorekeeper's JS). Emoji came out as dull grey specks on some phones, and
+  an icon font would be a third-party fetch — same objection as the
+  typefaces. `createElementNS` puts the SVG namespace URL in the page, so
+  the "no absolute URLs" test exempts that one string explicitly.
+- **The sticky bar's secondary buttons are pale, not dark.** They were
+  `rgba(15,46,36,.92)` on the felt — green on green, effectively invisible.
+  They're translucent cream with a cream edge now, so the only gold thing
+  down there is the button that ends the round.
+- **Below 480px the two secondary labels collapse to their icons**
+  (`.f7-label-long`, with `aria-label` carrying the name). Three labelled
+  buttons overflowed 375px, and the bar is the one thing that must stay
+  reachable by thumb — it must never scroll.
+- **The board comes back as a pull-up sheet on phones.** Hiding it during
+  entry is right, but "who's close to 200?" is a mid-round question, so the
+  sticky bar carries a Scores button (narrow screens only — on a wide one
+  the board is already beside you) that opens the standings as a bottom
+  sheet. `standingsTable()` builds it, shared with the board panel so the
+  two can't drift; left open, it refills on every render and closes itself
+  when the round it was watching ends.
+- **The scoreboard still sorts on banked totals mid-round**, so rows don't
+  jump around under the finger that's tapping them.
+- **Crossing the target pops a dialog**, once per crossing, not once per
+  render — a restored finished game counts as already announced, so a
+  reload doesn't re-celebrate. The gold banner stays as the persistent
+  version.
 
 ### Flip 7 records (added v1.3.0)
 
