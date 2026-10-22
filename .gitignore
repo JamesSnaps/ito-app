@@ -10,3 +10,7 @@ data/stats.json
 
 # Seeded from games/ito/default_topics.json on first run; edited in the app.
 data/ito/topics.json
+
+# Last-good copies and in-flight temp files from core/jsonfile.py.
+data/**/*.bak
+data/**/.*.tmp

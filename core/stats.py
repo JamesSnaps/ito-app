@@ -9,9 +9,9 @@ owns its own shape.
 """
 
 import copy
-import json
 import threading
 
+from core import jsonfile
 from core.paths import STATS_PATH
 
 _lock = threading.Lock()
@@ -26,33 +26,58 @@ DEFAULT_GAME_STATS = {
 }
 
 
-def _read_all():
-    if not STATS_PATH.exists():
-        return {}
-    with open(STATS_PATH, "r", encoding="utf-8") as f:
-        try:
-            data = json.load(f)
-        except json.JSONDecodeError:
-            return {}
-    if not isinstance(data, dict):
-        return {}
+class StatsUnavailable(jsonfile.DataUnavailable):
+    """stats.json is there but can't be parsed, so it must not be written.
+
+    This used to read as `{}`, and the next result saved "empty plus one" over
+    everybody's history. Now a write refuses instead, and the file (and its
+    .bak) are left for someone to look at.
+    """
+
+
+def _parse(raw):
+    if not isinstance(raw, dict):
+        raise jsonfile.Unreadable("stats.json is not an object")
     # Pre-hub stats.json was a single flat ito record with no game key.
-    if "rounds_played" in data:
-        return {"ito": data}
-    return data
+    if "rounds_played" in raw:
+        return {"ito": raw}
+    return raw
+
+
+def _read_all():
+    """Everything on disk, for a read-modify-write. Raises if it's corrupt."""
+    try:
+        return _parse(jsonfile.read(STATS_PATH))
+    except FileNotFoundError:
+        return {}
+    except jsonfile.Unreadable as exc:
+        raise StatsUnavailable(
+            "The stats file is damaged, so nothing new can be saved to it. "
+            "Restore data/stats.json from data/stats.json.bak."
+        ) from exc
+
+
+def _read_for_display():
+    """For pages that only show stats: a damaged file falls back to the last
+    good copy, then to nothing, rather than taking the page down with it."""
+    try:
+        return _read_all()
+    except StatsUnavailable:
+        try:
+            return _parse(jsonfile.read(jsonfile.backup_path(STATS_PATH)))
+        except (FileNotFoundError, jsonfile.Unreadable):
+            return {}
 
 
 def _write_all(data):
-    STATS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with open(STATS_PATH, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+    jsonfile.write(STATS_PATH, data)
 
 
 def read(game_id, default=None):
     """This game's raw bucket, whatever shape it keeps. For games that don't
     fit the win/loss shape below."""
     with _lock:
-        stored = _read_all().get(game_id)
+        stored = _read_for_display().get(game_id)
     return copy.deepcopy(stored) if stored is not None else copy.deepcopy(default)
 
 
@@ -75,7 +100,7 @@ def update(game_id, mutate):
 def load(game_id):
     """ito's win/loss shape, with any keys added since backfilled."""
     with _lock:
-        stats = _read_all().get(game_id, {})
+        stats = _read_for_display().get(game_id, {})
     merged = {k: (dict(v) if isinstance(v, dict) else v) for k, v in DEFAULT_GAME_STATS.items()}
     merged.update(stats)
     # Backfill keys added in later versions

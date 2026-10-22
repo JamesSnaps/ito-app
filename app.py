@@ -8,9 +8,10 @@ what they all need: room codes, joining, persisted stats and QR links.
 import os
 from pathlib import Path
 
-from flask import Flask, Response, redirect, render_template, request, url_for
+from flask import Flask, Response, jsonify, redirect, render_template, request, url_for
 from werkzeug.middleware.proxy_fix import ProxyFix
 
+from core.jsonfile import DataUnavailable
 from core.qr import svg as qr_svg
 from core.ratelimit import code_guesses
 from core.rooms import rooms
@@ -21,7 +22,7 @@ APP_NAME = "Game Night"
 # Bump this in the same commit as any user-visible change, before pushing.
 # Watchtower deploys `latest`, so this is the only way to tell from a phone
 # which build the server is actually running. See CLAUDE.md.
-APP_VERSION = "1.5.0"
+APP_VERSION = "1.5.1"
 
 
 def create_app():
@@ -125,6 +126,15 @@ def create_app():
         return render_template(
             "error.html", message=getattr(err, "description", "Too many attempts.")
         ), 429
+
+    # A damaged data file is a 503 with a sentence saying which one, not a
+    # bare 500 — and, for stats, never a quiet overwrite (see core/jsonfile).
+    @app.errorhandler(DataUnavailable)
+    def data_unavailable(err):
+        app.logger.error("Data file unreadable: %s", err.__cause__ or err)
+        if "/api/" in request.path:
+            return jsonify({"error": str(err)}), 503
+        return render_template("error.html", message=str(err)), 503
 
     @app.errorhandler(500)
     def server_error(err):

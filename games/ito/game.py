@@ -6,9 +6,9 @@ physical. What's new is that a session lives in a room, so two groups can
 use the same instance without stepping on each other.
 """
 
-import json
 import random
 import shutil
+import threading
 
 from pathlib import Path
 
@@ -16,10 +16,10 @@ from flask import (
     Blueprint, jsonify, redirect, render_template, request, url_for,
 )
 
-from core import stats
+from core import jsonfile, stats
 from core.paths import game_data_dir
 from core.qr import svg as qr_svg
-from core.rooms import require_room, rooms
+from core.rooms import find_room, require_room, rooms
 from games.registry import GameSpec
 
 GAME_ID = "ito"
@@ -42,18 +42,30 @@ DEFAULT_LOW = "Low"
 DEFAULT_HIGH = "High"
 
 
+def _text(value):
+    return value.strip() if isinstance(value, str) else ""
+
+
 def normalise_topic(entry):
     """Accept either a plain string or a {text, low, high} object.
 
     Topics were bare strings before cards had scale labels, and hand-edited
-    topics.json files are expected, so both shapes stay readable."""
+    topics.json files are expected, so both shapes stay readable. Anything
+    else (a number, a list) comes back with empty text and is dropped by
+    `load_topics` rather than crashing every page that lists topics."""
     if isinstance(entry, str):
         return {"text": entry, "low": DEFAULT_LOW, "high": DEFAULT_HIGH}
+    if not isinstance(entry, dict):
+        return {"text": "", "low": DEFAULT_LOW, "high": DEFAULT_HIGH}
     return {
-        "text": entry.get("text", ""),
-        "low": (entry.get("low") or DEFAULT_LOW).strip(),
-        "high": (entry.get("high") or DEFAULT_HIGH).strip(),
+        "text": entry.get("text", "") if isinstance(entry.get("text"), str) else "",
+        "low": _text(entry.get("low")) or DEFAULT_LOW,
+        "high": _text(entry.get("high")) or DEFAULT_HIGH,
     }
+
+
+class TopicsUnavailable(jsonfile.DataUnavailable):
+    """topics.json and its backup are both unreadable."""
 
 
 def ensure_topics():
@@ -68,16 +80,60 @@ def ensure_topics():
     shutil.copyfile(DEFAULT_TOPICS_PATH, TOPICS_PATH)
 
 
+# Topic edits are read-modify-write on one file. Two people in Settings at
+# once would otherwise each save a list built from before the other's change.
+_topics_lock = threading.Lock()
+
+
+def _parse_topics(raw):
+    if not isinstance(raw, dict):
+        raise jsonfile.Unreadable("topics.json is not an object")
+    topics = {}
+    for cat, items in raw.items():
+        if not isinstance(items, list):
+            continue
+        topics[cat] = [t for t in map(normalise_topic, items) if t["text"].strip()]
+    return topics
+
+
 def load_topics():
+    """The live topic list. A damaged file falls back to the last good copy
+    (`topics.json.bak`); with neither readable it's a clear 503, not a 500."""
     ensure_topics()
-    with open(TOPICS_PATH, "r", encoding="utf-8") as f:
-        raw = json.load(f)
-    return {cat: [normalise_topic(t) for t in items] for cat, items in raw.items()}
+    try:
+        return _parse_topics(jsonfile.read(TOPICS_PATH))
+    except (FileNotFoundError, jsonfile.Unreadable):
+        try:
+            return _parse_topics(jsonfile.read(jsonfile.backup_path(TOPICS_PATH)))
+        except (FileNotFoundError, jsonfile.Unreadable) as exc:
+            raise TopicsUnavailable(
+                "The topic list is damaged. Restore data/ito/topics.json, or "
+                "delete it to start again from the shipped topics."
+            ) from exc
 
 
 def save_topics(topics):
-    with open(TOPICS_PATH, "w", encoding="utf-8") as f:
-        json.dump(topics, f, indent=2, ensure_ascii=False)
+    jsonfile.write(TOPICS_PATH, topics)
+
+
+def drawable_categories(topics):
+    """Categories with at least one topic in them. An emptied category stays
+    in the file (so Settings can top it up) but has nothing to draw from, so
+    it's kept off the host's wheel."""
+    return [cat for cat, items in topics.items() if items]
+
+
+def _json_body():
+    """The request's JSON object, or None if it isn't one. The API is poked by
+    hand often enough that a list or a string body must be a 400, not a 500."""
+    body = request.get_json(silent=True)
+    if body is None and not request.get_data():
+        return {}
+    return body if isinstance(body, dict) else None
+
+
+def _bad_body():
+    return jsonify({"error": "expected a JSON object"}), 400
 
 
 def new_room_state():
@@ -128,7 +184,7 @@ def host_view(code):
         "ito/host.html",
         game=GAME,
         code=room.code,
-        categories=list(load_topics().keys()),
+        categories=drawable_categories(load_topics()),
         qr_svg=qr_svg(player_url).decode("utf-8"),
         player_url=player_url,
     )
@@ -140,10 +196,18 @@ def player_view(code):
     return render_template("ito/player.html", game=GAME, code=room.code)
 
 
-def _back_link(code):
+def _side_page_room(code):
+    """The room a side page was opened from, if it's real.
+
+    These pages render with or without a room, but whether the back link
+    names one tells you if a code exists — so a wrong code here counts
+    against the same guess throttle as /join and the room API."""
+    return find_room(code, GAME_ID) if code else None
+
+
+def _back_link(room):
     """Where a side page's back link should point. Pages are reachable both
     mid-game and from the landing screen, so follow the room if there is one."""
-    room = rooms.get(code, GAME_ID) if code else None
     if room is None:
         return url_for("ito.landing"), "Back to ito"
     return url_for("ito.host_view", code=room.code), f"Back to room {room.code}"
@@ -151,9 +215,8 @@ def _back_link(code):
 
 @bp.route("/rules")
 def rules_view():
-    code = request.args.get("code")
-    href, label = _back_link(code)
-    room = rooms.get(code, GAME_ID) if code else None
+    room = _side_page_room(request.args.get("code"))
+    href, label = _back_link(room)
     return render_template(
         "ito/rules.html",
         game=GAME,
@@ -165,9 +228,8 @@ def rules_view():
 
 @bp.route("/stats")
 def stats_view():
-    code = request.args.get("code")
-    href, label = _back_link(code)
-    room = rooms.get(code, GAME_ID) if code else None
+    room = _side_page_room(request.args.get("code"))
+    href, label = _back_link(room)
     return render_template(
         "ito/stats.html",
         game=GAME,
@@ -212,8 +274,12 @@ def api_draw(code):
     the topic, you just didn't like it, so it shouldn't count towards the
     round number or clear the result still owed on the round in progress."""
     room = _room_or_404(code)
-    body = request.json if request.is_json else {}
+    body = _json_body()
+    if body is None:
+        return _bad_body()
     category = body.get("category")
+    if category is not None and not isinstance(category, str):
+        return jsonify({"error": "category must be a string"}), 400
     reroll = bool(body.get("reroll"))
     topics = load_topics()
 
@@ -224,6 +290,13 @@ def api_draw(code):
         # real category on the card rather than a blank chip.
         pool = [dict(t, category=cat) for cat, group in topics.items() for t in group]
         category = None
+
+    # Deleting a category's last topic in Settings leaves it empty, and an
+    # emptied file leaves "Any" with nothing either. random.choice([]) was a
+    # 500; this says what's wrong.
+    if not pool:
+        return jsonify({"error": f"There are no topics in {category} — add some in Settings."
+                        if category else "There are no topics to draw — add some in Settings."}), 409
 
     with room.lock:
         state = room.state
@@ -252,7 +325,10 @@ def api_draw(code):
 def api_result(code):
     """Record whether the round's card order came out correct."""
     room = _room_or_404(code)
-    outcome = request.json.get("outcome") if request.is_json else None
+    body = _json_body()
+    if body is None:
+        return _bad_body()
+    outcome = body.get("outcome")
     if outcome not in ("win", "lose"):
         return jsonify({"error": "outcome must be 'win' or 'lose'"}), 400
 
@@ -264,7 +340,13 @@ def api_result(code):
         room.state["scored"] = True
         category = room.state.get("current_type")
 
-    return jsonify(stats.record(GAME_ID, outcome, category))
+    try:
+        return jsonify(stats.record(GAME_ID, outcome, category))
+    except stats.StatsUnavailable:
+        # Not saved, so the round is still owed a result.
+        with room.lock:
+            room.state["scored"] = False
+        raise
 
 
 @bp.route("/api/<code>/reset", methods=["POST"])
@@ -296,21 +378,27 @@ def api_topics_get():
 @bp.route("/api/topics", methods=["POST"])
 def api_topics_add():
     """Add a topic to a category, e.g. to top up with your own."""
-    data = request.json or {}
+    data = _json_body()
+    if data is None:
+        return _bad_body()
     category = data.get("category")
-    text = (data.get("text") or "").strip()
-    topics = load_topics()
+    for field in ("category", "text", "low", "high"):
+        if data.get(field) is not None and not isinstance(data.get(field), str):
+            return jsonify({"error": f"{field} must be a string"}), 400
+    text = _text(data.get("text"))
 
-    if category not in topics or not text:
-        return jsonify({"error": "invalid category or empty text"}), 400
+    with _topics_lock:
+        topics = load_topics()
+        if category not in topics or not text:
+            return jsonify({"error": "invalid category or empty text"}), 400
 
-    if not any(t["text"] == text for t in topics[category]):
-        topics[category].append(normalise_topic({
-            "text": text,
-            "low": (data.get("low") or "").strip(),
-            "high": (data.get("high") or "").strip(),
-        }))
-        save_topics(topics)
+        if not any(t["text"] == text for t in topics[category]):
+            topics[category].append(normalise_topic({
+                "text": text,
+                "low": _text(data.get("low")),
+                "high": _text(data.get("high")),
+            }))
+            save_topics(topics)
 
     return jsonify(topics)
 
@@ -318,20 +406,25 @@ def api_topics_add():
 @bp.route("/api/topics/delete", methods=["POST"])
 def api_topics_delete():
     """Remove a topic — mostly for pruning ones that never land with a group."""
-    data = request.json or {}
+    data = _json_body()
+    if data is None:
+        return _bad_body()
     category = data.get("category")
     text = data.get("text")
-    topics = load_topics()
+    if not isinstance(category, str) or not isinstance(text, str):
+        return jsonify({"error": "category and text must be strings"}), 400
 
-    if category not in topics:
-        return jsonify({"error": "unknown topic"}), 400
+    with _topics_lock:
+        topics = load_topics()
+        if category not in topics:
+            return jsonify({"error": "unknown topic"}), 400
 
-    remaining = [t for t in topics[category] if t["text"] != text]
-    if len(remaining) == len(topics[category]):
-        return jsonify({"error": "unknown topic"}), 400
+        remaining = [t for t in topics[category] if t["text"] != text]
+        if len(remaining) == len(topics[category]):
+            return jsonify({"error": "unknown topic"}), 400
 
-    topics[category] = remaining
-    save_topics(topics)
+        topics[category] = remaining
+        save_topics(topics)
     return jsonify(topics)
 
 

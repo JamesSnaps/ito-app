@@ -25,14 +25,17 @@ on the table; the app adds up the round.
 - Tap the numbers each player got out, plus any modifiers and the x2.
 - Mark who busted (zero for the round) and who froze.
 - Seven distinct numbers scores the +15 Flip 7 bonus automatically.
-- First to 200 wins, and the scoreboard says so.
+- The game ends when someone reaches 200; the highest total wins (a tie at
+  the top is a shared win), and the scoreboard says so.
 
 No room and no code: it's one device on the table, and the game is kept in
 that browser's `localStorage` so a refresh doesn't wipe it.
 
 Finished games are posted to shared records at `/flip7/stats` — wins,
 average per round, best game, Flip 7s and busts per player, plus the last
-ten games. Only games somebody actually won are recorded.
+ten games. Only games somebody actually won are recorded. Names must be
+unique (ignoring case) and a game takes at most 12 players; if a game can't
+be recorded the scorekeeper says why and offers to try again.
 
 ## Running it
 
@@ -60,12 +63,14 @@ app.py                 hub: routing, /join, QR endpoint, APP_VERSION
 core/rooms.py          room codes, expiry (in-memory, all games)
 core/ratelimit.py      throttles wrong-code guessing
 core/stats.py          win/loss history on disk, keyed by game
+core/jsonfile.py       atomic JSON writes, keeps <file>.bak of the last good copy
 games/registry.py      the list of games
 games/ito/game.py      ito's blueprint and topic logic
 games/ito/default_topics.json  shipped topics, tracked in git
 games/flip7/game.py    Flip 7's blueprint (no rooms) and its records
 data/ito/topics.json   live topics, seeded on first run, gitignored
 data/stats.json        win/loss history — runtime state, gitignored
+data/**/*.bak          last good copy of each file, written on every save
 templates/             hub-level pages
 templates/art/         per-game menu artwork, one SVG per game id
 static/style.css       shared styling

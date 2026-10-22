@@ -75,6 +75,13 @@ def public_room_state(room):
     return {"code": room.code, "board": room.state["board"]}
 
 
+def clean_name(value):
+    """A player name as it's stored: trimmed, then cut to MAX_NAME. Anything
+    that isn't a string is no name at all (a 400, not a 500 on `.strip()`).
+    The scorekeeper applies the same rule when a name is typed in."""
+    return value.strip()[:MAX_NAME] if isinstance(value, str) else ""
+
+
 def parse_board(payload):
     """Validate a pushed snapshot. Returns (board, error).
 
@@ -95,7 +102,7 @@ def parse_board(payload):
     for entry in raw_players:
         if not isinstance(entry, dict):
             return None, "each player must be an object"
-        name = (entry.get("name") or "").strip()[:MAX_NAME]
+        name = clean_name(entry.get("name"))
         if not name:
             return None, "every player needs a name"
 
@@ -184,7 +191,7 @@ def parse_game(payload):
     for entry in raw_players:
         if not isinstance(entry, dict):
             return None, "each player must be an object"
-        name = (entry.get("name") or "").strip()[:MAX_NAME]
+        name = clean_name(entry.get("name"))
         if not name:
             return None, "every player needs a name"
 
@@ -277,7 +284,10 @@ def record_game(players):
 
 @bp.route("/")
 def landing():
-    return render_template("flip7/scorekeeper.html", game=GAME, target=TARGET_SCORE)
+    return render_template(
+        "flip7/scorekeeper.html", game=GAME, target=TARGET_SCORE,
+        max_players=MAX_PLAYERS, max_name=MAX_NAME,
+    )
 
 
 @bp.route("/rooms", methods=["POST"])
@@ -336,8 +346,10 @@ def api_push_board(code):
 
     # compare_digest so a wrong token can't be narrowed down by timing. It's
     # a low-stakes secret, but it costs one import.
-    token = request.headers.get("X-Flip7-Token") or ""
-    if not secrets.compare_digest(token, room.state["host_token"]):
+    # Compared as bytes: compare_digest raises on a non-ASCII str, and a header
+    # is whatever the client sent.
+    token = (request.headers.get("X-Flip7-Token") or "").encode("utf-8", "surrogateescape")
+    if not secrets.compare_digest(token, room.state["host_token"].encode()):
         return jsonify({"error": "not the scorekeeper for this room"}), 403
 
     board, error = parse_board(payload)
