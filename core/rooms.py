@@ -87,24 +87,50 @@ class RoomManager:
 rooms = RoomManager()
 
 
+def _throttled_lookup(code, game_id):
+    """Find a room, forgiving the client that got it right and counting a miss
+    against the one that didn't. Returns (room, blocked)."""
+    from flask import request
+
+    from core.ratelimit import code_guesses
+
+    client = request.remote_addr or "unknown"
+    room = rooms.get(code, game_id)
+    if room is not None:
+        code_guesses.clear(client)
+        return room, False
+    return None, code_guesses.record_failure(client)
+
+
+def _too_many():
+    from flask import abort
+
+    abort(429, description="Too many incorrect room codes from this device. "
+                           "Wait a few minutes, then try again.")
+
+
 def require_room(code, game_id):
     """Look up a room for a game, throttling clients that keep guessing.
 
     Both games need the same three lines around `rooms.get` — find it, forgive
     the client that got it right, and rate-limit the one that keeps not.
     """
-    from flask import abort, request
+    from flask import abort
 
-    from core.ratelimit import code_guesses
-
-    client = request.remote_addr or "unknown"
-    room = rooms.get(code, game_id)
-
+    room, blocked = _throttled_lookup(code, game_id)
     if room is not None:
-        code_guesses.clear(client)
         return room
-
-    if code_guesses.record_failure(client):
-        abort(429, description="Too many incorrect room codes from this device. "
-                               "Wait a few minutes, then try again.")
+    if blocked:
+        _too_many()
     abort(404, description="That room code isn't active. It may have expired.")
+
+
+def find_room(code, game_id):
+    """`require_room` for pages that work without a room (ito's rules and
+    stats). A wrong code just means no room — but it still counts as a guess,
+    because the page shows whether the code was live, and past the limit it's
+    the same 429 as everywhere else."""
+    room, blocked = _throttled_lookup(code, game_id)
+    if room is None and blocked:
+        _too_many()
+    return room
