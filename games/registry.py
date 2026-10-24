@@ -28,6 +28,8 @@ class GameSpec:
     # Where "start a game" lands, given a room code.
     host_endpoint: Optional[str] = None
     player_endpoint: Optional[str] = None
+    # The tile's call to action when it doesn't start a room.
+    hub_action: str = "Open"
     available: bool = True
 
     @property

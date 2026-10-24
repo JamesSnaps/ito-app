@@ -23,17 +23,28 @@ The one thing that does reach the server is a finished game. Who won on a
 Tuesday in March is exactly what a group wants to still have in June, and
 that can't live in one phone's browser storage — so a completed game is
 posted once, and the leaderboard is global, like ito's stats.
+
+Play mode is the other way round: the app is the deck (engine.py), so the
+game has to live on the server, in a room. That room is saved to disk after
+every move — it's the game itself now, not a copy of one, and a deploy
+mid-evening mustn't end it.
 """
 
+import copy
+import json
+import os
+import random
+import secrets
+import time
 from datetime import datetime, timezone
 
-import secrets
-
-from flask import Blueprint, jsonify, render_template, request, url_for
+from flask import Blueprint, abort, current_app, jsonify, redirect, render_template, request, url_for
 
 from core import stats
+from core.paths import game_data_dir
 from core.qr import svg as qr_svg
-from core.rooms import require_room, rooms
+from core.rooms import IDLE_TIMEOUT, require_room, rooms
+from games.flip7 import engine
 from games.registry import GameSpec
 
 GAME_ID = "flip7"
@@ -42,9 +53,9 @@ bp = Blueprint(
     GAME_ID, __name__, url_prefix="/flip7", template_folder="templates"
 )
 
-# Reaching this ends the game. Printed on the box; kept here so the page and
-# the rules summary can't disagree.
-TARGET_SCORE = 200
+# Reaching this ends the game. Printed on the box; kept in the engine so the
+# scorekeeper, the rules summary and a played game can't disagree.
+TARGET_SCORE = engine.TARGET_SCORE
 
 # Sanity bounds for a posted game. This endpoint is unauthenticated, like
 # ito's topic editing, so the point isn't to stop someone determined — it's
@@ -72,7 +83,139 @@ def new_room_state():
 
 def public_room_state(room):
     """What a spectator is allowed to see: the board, never the token."""
-    return {"code": room.code, "board": room.state["board"]}
+    return {"code": room.code, "board": room.state.get("board")}
+
+
+# --- play rooms ----------------------------------------------------------
+
+# Shuffles have to be unguessable: the deck order is the one secret in a
+# face-up game.
+_rng = random.SystemRandom()
+
+
+def play_dir():
+    """Looked up at call time, so tests can point DATA_DIR somewhere else."""
+    path = game_data_dir(GAME_ID) / "play"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def save_play_room(room):
+    """Write the room after every move, via a temp file so a crash mid-write
+    leaves the last good copy rather than half of a new one. Rooms nobody
+    has touched for as long as the in-memory sweep allows are pruned here
+    too, so the directory never grows."""
+    folder = play_dir()
+    target = folder / f"{room.code}.json"
+    temp = target.with_suffix(".tmp")
+    temp.write_text(json.dumps({"game_id": GAME_ID, "state": room.state}), encoding="utf-8")
+    os.replace(temp, target)
+
+    cutoff = time.time() - IDLE_TIMEOUT
+    for old in folder.glob("*.json"):
+        if old.stat().st_mtime < cutoff:
+            old.unlink(missing_ok=True)
+
+
+def load_play_room(code):
+    """The rooms.add_loader hook: a saved game back after a restart."""
+    path = play_dir() / f"{code}.json"
+    try:
+        if path.stat().st_mtime < time.time() - IDLE_TIMEOUT:
+            return None
+        saved = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(saved, dict) or saved.get("game_id") != GAME_ID:
+        return None
+    return GAME_ID, saved["state"]
+
+
+rooms.add_loader(load_play_room)
+
+
+def is_play_room(room):
+    return room.state.get("mode") == "play"
+
+
+def require_play_room(code):
+    room = require_room(code, GAME_ID)
+    if not is_play_room(room):
+        abort(404, description="That code is for a scoreboard, not a game.")
+    return room
+
+
+def parse_names(payload):
+    """Validate the seating list for a new game. Returns (names, error)."""
+    raw = payload.get("players") if isinstance(payload, dict) else None
+    if not isinstance(raw, list):
+        return None, "players must be a list"
+    if not engine.MIN_PLAYERS <= len(raw) <= engine.MAX_PLAYERS:
+        return None, f"{engine.MIN_PLAYERS}–{engine.MAX_PLAYERS} players"
+    names = []
+    for name in raw:
+        name = (name if isinstance(name, str) else "").strip()[:MAX_NAME]
+        if not name:
+            return None, "every player needs a name"
+        names.append(name)
+    # The records key players case-insensitively, so the table has to too.
+    if len({n.casefold() for n in names}) != len(names):
+        return None, "two players can't have the same name"
+    return names, None
+
+
+def record_if_finished(game):
+    """A game played here is recorded by the server the moment it ends —
+    there's no page to post it, and nothing to trust a page about anyway."""
+    if game["phase"] != "game_over" or game["recorded"]:
+        return
+    players, error = parse_game({
+        "players": [{"name": p["name"], "rounds": p["rounds"]} for p in game["players"]]
+    })
+    if error:
+        # Can't happen with an engine-run game short of a 60-round marathon;
+        # marked anyway so it isn't retried on every poll.
+        current_app.logger.warning("Flip 7 game not recorded: %s", error)
+    else:
+        record_game(players)
+    game["recorded"] = True
+
+
+def seats_of(room):
+    """One slot per player: None, or the token of the phone sitting there.
+    Games saved before seats existed get them on first use."""
+    return room.state.setdefault("seats", [None] * len(room.state["game"]["players"]))
+
+
+def identify(room, token):
+    """Who is asking: ("host", None) for the device that dealt, ("seat", i)
+    for a phone sitting at seat i, or (None, None) for anyone else."""
+    if not token:
+        return None, None
+    if secrets.compare_digest(token, room.state["host_token"]):
+        return "host", None
+    for i, seat_token in enumerate(seats_of(room)):
+        if seat_token and secrets.compare_digest(token, seat_token):
+            return "seat", i
+    return None, None
+
+
+def play_payload(room, token=None):
+    """The table, plus who's sitting where — whether a seat is taken, never
+    by which token — and, if the request carried a token, who it belongs to.
+    That's how a phone finds out its seat was freed from under it."""
+    role, seat = identify(room, token)
+    return {
+        "code": room.code,
+        "game": engine.public_view(room.state["game"]),
+        "seats": [{"taken": bool(t)} for t in seats_of(room)],
+        "you": {"role": role, "seat": seat},
+        "next": room.state.get("next"),
+    }
+
+
+def request_token():
+    return request.headers.get("X-Flip7-Token") or ""
 
 
 def parse_board(payload):
@@ -297,14 +440,43 @@ def create_room():
 def watch_view(code):
     """The read-only side of a game: standings on your own phone."""
     room = require_room(code, GAME_ID)
+    # /join sends every Flip 7 code here. A played game has its own table,
+    # which is read-only on any device that didn't deal it.
+    if is_play_room(room):
+        return redirect(url_for("flip7.play_view", code=room.code))
     return render_template(
         "flip7/watch.html", game=GAME, target=TARGET_SCORE, code=room.code
     )
 
 
+@bp.route("/play")
+def play_setup():
+    """Seat the players and deal. The game itself lives at play_view."""
+    return render_template("flip7/play.html", game=GAME, target=TARGET_SCORE, code=None)
+
+
+@bp.route("/play/<code>")
+def play_view(code):
+    """The table. Controls only show on the device holding the room's token."""
+    room = require_play_room(code)
+    return render_template("flip7/play.html", game=GAME, target=TARGET_SCORE, code=room.code)
+
+
+def back_link():
+    """Where a side page's back button goes: the page that linked to it, if
+    that was a Flip 7 page, or the scorekeeper. An installed app has no
+    browser back button, so leaving the table for the rules must not strand
+    you at the scorekeeper. Same-game paths only, so this can't be pointed
+    off-site."""
+    back = request.args.get("back", "")
+    if back.startswith("/flip7/") and "//" not in back and "\\" not in back:
+        return back
+    return url_for("flip7.landing")
+
+
 @bp.route("/rules")
 def rules_view():
-    return render_template("flip7/rules.html", game=GAME, target=TARGET_SCORE)
+    return render_template("flip7/rules.html", game=GAME, target=TARGET_SCORE, back=back_link())
 
 
 @bp.route("/stats")
@@ -314,6 +486,7 @@ def stats_view():
         "flip7/stats.html",
         game=GAME,
         target=TARGET_SCORE,
+        back=back_link(),
         record=record,
         rows=leaderboard(record),
     )
@@ -332,6 +505,8 @@ def api_room_state(code):
 def api_push_board(code):
     """Replace this room's copy of the board. Scorekeeper only."""
     room = require_room(code, GAME_ID)
+    if is_play_room(room):
+        return jsonify({"error": "this room is a game, not a scoreboard"}), 409
     payload = request.get_json(silent=True) or {}
 
     # compare_digest so a wrong token can't be narrowed down by timing. It's
@@ -347,6 +522,142 @@ def api_push_board(code):
     with room.lock:
         room.state["board"] = board
         return jsonify(public_room_state(room))
+
+
+# --- play API ------------------------------------------------------------
+#
+# Shaped for any client, not just play.html: the shared device, a phone per
+# player, a native app later. Reads are open, like the spectator board.
+#
+# Two kinds of token. The device that dealt holds the host token and can
+# move for anyone — that's what makes one shared iPad work, and it's also
+# the fallback when a phone goes to sleep on its owner's turn. A phone that
+# takes a seat gets a seat token, which only moves for that seat.
+
+@bp.route("/api/play", methods=["POST"])
+def api_play_create():
+    names, error = parse_names(request.get_json(silent=True))
+    if error:
+        return jsonify({"error": error}), 400
+
+    def state():
+        return {
+            "mode": "play",
+            "game": engine.new_game(names, _rng),
+            "host_token": secrets.token_urlsafe(12),
+        }
+
+    room = rooms.create(GAME_ID, state)
+    with room.lock:
+        save_play_room(room)
+        token = room.state["host_token"]
+        return jsonify({**play_payload(room, token), "host_token": token})
+
+
+@bp.route("/api/play/<code>")
+def api_play_state(code):
+    room = require_play_room(code)
+    with room.lock:
+        return jsonify(play_payload(room, request_token()))
+
+
+@bp.route("/api/play/<code>/seats/<int:seat>/claim", methods=["POST"])
+def api_play_claim(code, seat):
+    """Sit down at a seat from your own phone. First come, first served —
+    knowing the code is the gate, the same as everywhere else here — and
+    the dealer's device can free a seat taken by the wrong person."""
+    room = require_play_room(code)
+    with room.lock:
+        seats = seats_of(room)
+        if not 0 <= seat < len(seats):
+            return jsonify({"error": "No such seat."}), 404
+        if seats[seat]:
+            return jsonify({"error": "Someone's already sitting there.",
+                            **play_payload(room)}), 409
+        token = secrets.token_urlsafe(12)
+        seats[seat] = token
+        save_play_room(room)
+        return jsonify({**play_payload(room, token), "seat_token": token})
+
+
+@bp.route("/api/play/<code>/seats/<int:seat>/release", methods=["POST"])
+def api_play_release(code, seat):
+    """Free a seat: the dealer's call only. The old token stops working, so
+    the phone that had it drops back to watching."""
+    room = require_play_room(code)
+    with room.lock:
+        if identify(room, request_token())[0] != "host":
+            return jsonify({"error": "Only the dealer's device can free a seat."}), 403
+        seats = seats_of(room)
+        if not 0 <= seat < len(seats):
+            return jsonify({"error": "No such seat."}), 404
+        seats[seat] = None
+        save_play_room(room)
+        return jsonify(play_payload(room, request_token()))
+
+
+@bp.route("/api/play/<code>/rematch", methods=["POST"])
+def api_play_rematch(code):
+    """Same players, new game. Everyone keeps their seat — the seat tokens
+    and the dealer's token carry over — and the finished room points at the
+    new one, so phones follow without anyone typing a code. Asking twice
+    gets the same rematch, not a second one."""
+    room = require_play_room(code)
+    with room.lock:
+        if identify(room, request_token())[0] != "host":
+            return jsonify({"error": "Only the dealer's device can start a rematch."}), 403
+        if room.state["game"]["phase"] != "game_over":
+            return jsonify({"error": "This game isn't over yet."}), 400
+        if not room.state.get("next"):
+            names = [p["name"] for p in room.state["game"]["players"]]
+            carried = {"host_token": room.state["host_token"], "seats": list(seats_of(room))}
+
+            def state():
+                return {"mode": "play", "game": engine.new_game(names, _rng), **carried}
+
+            fresh = rooms.create(GAME_ID, state)
+            with fresh.lock:
+                save_play_room(fresh)
+            room.state["next"] = fresh.code
+            save_play_room(room)
+        return jsonify({"code": room.state["next"], "host_token": room.state["host_token"]})
+
+
+@bp.route("/api/play/<code>/move", methods=["POST"])
+def api_play_move(code):
+    """One move. `seq` is the state the client was looking at: a move made
+    against anything older is refused (409, with the current table), which
+    is what stops a double tap on Hit from drawing two cards."""
+    room = require_play_room(code)
+    move = request.get_json(silent=True)
+    if not isinstance(move, dict):
+        return jsonify({"error": "expected an object"}), 400
+
+    token = request_token()
+    with room.lock:
+        role, seat = identify(room, token)
+        if role is None:
+            return jsonify({"error": "This device isn't playing in this game."}), 403
+        # A phone moves for its own seat. Dealing the next round is the
+        # table's business, so anyone sitting at it can.
+        if role == "seat" and move.get("type") != "next_round" and move.get("player") != seat:
+            return jsonify({"error": "That's not your seat.", **play_payload(room, token)}), 403
+
+        game = room.state["game"]
+        if move.get("seq") != game["seq"]:
+            return jsonify({"error": "The table had moved on — this is the latest.",
+                            **play_payload(room, token)}), 409
+        # Applied to a copy, so a move the engine refuses can't leave the
+        # room half-changed.
+        trial = copy.deepcopy(game)
+        try:
+            engine.apply(trial, move, _rng)
+        except engine.IllegalMove as err:
+            return jsonify({"error": str(err), **play_payload(room, token)}), 400
+        room.state["game"] = trial
+        record_if_finished(trial)
+        save_play_room(room)
+        return jsonify(play_payload(room, token))
 
 
 # --- stats API -----------------------------------------------------------
@@ -383,4 +694,5 @@ GAME = GameSpec(
     # player endpoint is what makes a code joinable at /join.
     host_endpoint=None,
     player_endpoint="flip7.watch_view",
+    hub_action="Play or keep score",
 )

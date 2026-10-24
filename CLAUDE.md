@@ -23,11 +23,14 @@ problem.
 
 - Python 3 / Flask, single process, no external database.
 - Persisted state is flat files under `data/`, one Docker mount:
-  `data/ito/topics.json` (topic content) and `data/stats.json`
-  (win/loss history, keyed by game id).
+  `data/ito/topics.json` (topic content), `data/stats.json`
+  (win/loss history, keyed by game id) and `data/flip7/play/<code>.json`
+  (Flip 7 games played on the app's deck — see Play mode below).
 - Live state is in-memory rooms (`core/rooms.py`): four-letter codes,
   one state dict per room, swept after 6h idle. Lost on restart, which
-  is fine — a room is one sitting.
+  is fine — a room is one sitting. The exception is opt-in: a game that
+  can't lose a room saves it and registers `rooms.add_loader`, and a code
+  missing from memory is looked for there first.
 - Each game is a blueprint under `games/<id>/`, listed in
   `games/registry.py`. Adding a game shouldn't touch `app.py` at all.
 - Not every game needs rooms, and the two halves are independent.
@@ -41,8 +44,11 @@ problem.
   `/ito/api/<code>/state` every 2s.
 - Single container via `Dockerfile` + `docker-compose.yml`.
 - Smoke tests in `tests/test_smoke.py` (`pytest tests -q`).
-- Flip 7 is one page of client-side JS plus its own `static/flip7.css`;
-  its state never reaches the server.
+- Flip 7's scorekeeper is one page of client-side JS plus its own
+  `static/flip7.css`; its state never reaches the server. Play mode is the
+  opposite — the game runs in `games/flip7/engine.py` on the server.
+  Helpers every Flip 7 page uses (`el`, `icon`/`ICONS`, the Flip 7 flash,
+  chip dragging) live in `static/flip7.js`.
 
 ## Key design decisions (so you don't re-litigate them)
 
@@ -173,10 +179,13 @@ problem.
 
 ## Flip 7 (added v1.2.0)
 
-- **Scorekeeper only**, same narrow scope as ito: the app adds up a round
-  of number cards, modifiers and a x2. It does not deal, track hits, or
-  detect a bust — you tell it who busted.
-- **One device enters scores, and that's the point.** A scorekeeper is one
+- **The scorekeeper is scorekeeping only**, same narrow scope as ito: it
+  adds up a round of number cards, modifiers and a x2. It does not deal,
+  track hits, or detect a bust — you tell it who busted. That's still true
+  of the scorekeeper; Play mode (v1.6.0) is a separate, deliberate
+  exception for nights without the deck, and the scorekeeper is unchanged
+  for nights with it.
+- **One device enters scores, and that's the point** (scorekeeper). A scorekeeper is one
   device on the table that everyone leans over. Five phones editing one
   scoreboard is a worse pad of paper, not a better one. The optional
   spectator room (below) doesn't change that — it copies the board out, it
@@ -307,6 +316,95 @@ problem.
   reload doesn't re-celebrate. The gold banner stays as the persistent
   version.
 
+### Flip 7 Play mode (added v1.6.0)
+
+The app is the deck. One shared device (an iPad flat on the table), a
+phone per player, or a mix of the two; a native iOS app later — which is
+why everything here is shaped around a JSON API.
+
+- **The engine is on the server, in Python** (`games/flip7/engine.py`). A
+  deck shuffled in the browser is a deck anyone can read from the console,
+  and rules written once are rules every future client gets instead of
+  being rewritten in Swift or JS. It knows nothing of Flask or rooms; the
+  state is one JSON-safe dict, which is what makes saving it trivial.
+- **Action cards run off a work queue** (`tasks`). `_run` works through it
+  until a person has to decide — a turn, or who gets a card — and parks
+  that in `pending`. That's how a Flip Three inside a Flip Three, or a
+  Freeze in the middle of the deal, resolve without nesting.
+- **Two readings the rulebook doesn't spell out**, both the common ones:
+  drawing an action card *is* your hit (the turn passes once it's
+  resolved), and a Flip 7 ends the round with everyone else who hasn't
+  bust still scoring. A card with only one legal target is given
+  automatically — the last player in freezes themself without a tap.
+- **`seq` is the double-tap guard.** Every move carries the `seq` the
+  client was looking at; anything older is a 409 with the current table.
+  Two taps on Hit draw one card. Moves are applied to a copy, so a refused
+  one can't leave the room half-changed.
+- **Tokens protect moves, not reads** — same pattern as the spectator
+  board. `/join` sends a play code to `/flip7/play/<code>`, which is
+  read-only until the device sits down.
+- **Two kinds of token.** The dealing device holds the host token
+  (`flip7:play`) and may move for any seat. A phone that taps its name gets
+  a seat token (`flip7:seat`) that moves only for that seat — plus
+  `next_round`, which is the table's business. Seats are first come, first
+  served (the code is the gate, as everywhere here); only the host can free
+  one, and the freed phone notices because `/state` echoes back who its
+  token belongs to (`you`).
+- **The dealer's device plays every seat that isn't on a phone, and steps
+  in for one that is only when asked** ("Play Ana's turn"). Without the
+  first, a mixed table can't work; without the second, someone's turn gets
+  tapped from across the room. Server-side the host token can move anyone
+  — the restraint is in the page.
+- **A rematch carries the tokens over** — host and every seat — into a new
+  room, and the finished room's `next` points at it. Phones see `next` on
+  their next poll and follow with the tokens they already have; nobody
+  re-joins. Asking twice returns the same rematch.
+- **Play pages poll every 1s while a round is live** (2.5s otherwise): on a
+  phone the poll is how you find out it's your turn. Still polling, not
+  sockets — one gunicorn worker with 8 threads handles a table of phones
+  at 1 request/s each easily. Your turn sets `● Your turn` in the title and
+  vibrates where the browser allows it (only after the page has been
+  touched — before that it's refused with a console error).
+- **Saved to disk after every move** (`data/flip7/play/<code>.json`, temp
+  file + `os.replace`, pruned on the same 6h rule as memory). A game played
+  here is the game, not a copy of one, so a Watchtower deploy mid-evening
+  mustn't end it. Restoring is `rooms.add_loader`; codes reaching a loader
+  are validated against the code alphabet first, since they become file
+  names. `_unique_code` asks the loaders too, so a saved code isn't reused.
+- **The server records a finished game itself** via `parse_game`/
+  `record_game`, once (`recorded` in the game state). No page posts it.
+- **`score_hand` mirrors `calcRoundScore`.** The scorekeeper's JS is still
+  pinned by string-matching; the Python is pinned by real tests, including
+  200 random full games that check no card is ever lost or invented.
+- **iPad landscape is the layout that was designed**; everything else is
+  squeezed down from it. At ≥1000px landscape the table is exactly one
+  screen (`100dvh`, nothing scrolls): a grid of mats sized to the player
+  count (`--cols`/`--rows` from `gridShape`), a rail with status, the draw
+  pile, the log and Hit/Stay. Each mat is a CSS size container and its
+  cards are sized in `cqw`/`cqh`, so they scale with the mat, not the
+  screen. Below that, the acting player's mat moves to the top and Hit/
+  Stay are a sticky bottom bar. Seats never move on the iPad — only the
+  highlight does.
+- **Card faces are our own** — cream numbers, gold modifiers, a colour per
+  action with an icon from the shared stroked set. Not the published art.
+- **Handing out an action card can't be cancelled** (the dialog swallows
+  Esc): the rules say it goes to someone.
+- **Side pages take `?back=`** so the rules and records lead back to the
+  table, which matters once there's no browser back button. Only
+  `/flip7/…` paths are honoured.
+
+### Installable (added v1.6.0)
+
+- `/manifest.webmanifest` plus Apple's meta tags in `base.html`; icons in
+  `static/icons/` (`icon.svg` is the source, the PNGs are rasterised from
+  it once with `qlmanage` and committed — nothing new at runtime).
+- **No service worker, deliberately.** The game state is on the server, so
+  offline means nothing, and a worker caching pages would fight `no-store`.
+- `viewport-fit=cover`, so body padding and the sticky bars use
+  `env(safe-area-inset-*)`. Anything new pinned to an edge needs the same.
+- **Every page needs its own way back** — standalone mode has no browser
+  chrome. `join.html` and ito's landing gained one for this.
+
 ### Flip 7 records (added v1.3.0)
 
 - **A finished game is the one thing that reaches the server.** Who won in
@@ -338,7 +436,8 @@ problem.
 ## Hub artwork
 
 - Each game's menu tile has an SVG in `templates/art/<id>.html` and an
-  `accent` colour on its `GameSpec`. Both are required — a test fails a
+  `accent` colour on its `GameSpec`. A tile that doesn't start a room
+  shows `hub_action` as its call to action. Both are required — a test fails a
   game that has neither, since it would render as a blank untinted card.
 - The drawings share a vocabulary (`.art-plate`, `.art-pip`,
   `.art-stroke`) so a third game inherits the same card stock instead of
@@ -367,9 +466,22 @@ problem.
   host page to controls you'd actually touch mid-round.
 - Rooms are in-memory, so a restart mid-game drops the current room.
   Stats and topics survive.
-- Tests are smoke-level only (routing, room isolation, stats). Flip 7's
-  scoring is only pinned by string-matching its JS — there's no JS test
-  runner in this project and adding one for one page isn't worth it yet.
+- Tests are smoke-level for routing, rooms and stats; the Flip 7 engine
+  has real rule tests. The scorekeeper's scoring is still only pinned by
+  string-matching its JS — there's no JS test runner in this project.
+- iOS keeps a home-screen app's storage apart from Safari's. A scorekeeper
+  game (or a Play token) from Safari won't be in the installed app.
+- Not yet tried on a device: signing in through Authelia from the
+  installed app (it affects the ito host pages — iOS opens an off-scope
+  login in a sheet, and the cookie may not come back with it).
+- ito's player display (`/ito/play/<code>`) has no way back, which is fine
+  in a browser tab and a dead end in the installed app.
+- Seats are claimed by whoever taps first. A guest who knows the code can
+  sit in someone else's seat; the dealer frees it. Fine for a living room,
+  not for anything adversarial.
+- `flip7:seat` holds one seat per browser, so two "phones" in tabs of one
+  browser share it. To test a host and a phone on one machine, use
+  `localhost` for one and `127.0.0.1` for the other — separate storage.
 - A Flip 7 spectator room shows the board as of the last successful push,
   and pushes are fire-and-forget: a watcher on a flaky phone can sit a round
   behind until the next one lands. Fine for standings, not for anything

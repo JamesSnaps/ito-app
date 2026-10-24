@@ -5,6 +5,7 @@ what they all need: room codes, joining, persisted stats and QR links.
 / is the menu: ito (a topic randomiser) and Flip 7 (a scorekeeper).
 """
 
+import json
 import os
 from pathlib import Path
 
@@ -21,7 +22,7 @@ APP_NAME = "Game Night"
 # Bump this in the same commit as any user-visible change, before pushing.
 # Watchtower deploys `latest`, so this is the only way to tell from a phone
 # which build the server is actually running. See CLAUDE.md.
-APP_VERSION = "1.5.0"
+APP_VERSION = "1.6.0"
 
 
 def create_app():
@@ -64,6 +65,32 @@ def create_app():
         """For container health checks, and for confirming which build is
         live without opening a page."""
         return {"status": "ok", "version": APP_VERSION}
+
+    @app.route("/manifest.webmanifest")
+    def manifest():
+        """What makes the site installable to a home screen. A route rather
+        than a static file: Flask doesn't know the .webmanifest type, and the
+        icon URLs want the same cache-busting as everything else."""
+        icons = [
+            {"src": asset("icons/icon-192.png"), "sizes": "192x192", "type": "image/png"},
+            {"src": asset("icons/icon-512.png"), "sizes": "512x512", "type": "image/png"},
+            # Full bleed with the drawing inside the safe zone, so the same
+            # file can be cropped to whatever shape the launcher uses.
+            {"src": asset("icons/icon-512.png"), "sizes": "512x512", "type": "image/png",
+             "purpose": "maskable"},
+            {"src": asset("icons/icon.svg"), "sizes": "any", "type": "image/svg+xml"},
+        ]
+        body = {
+            "name": APP_NAME,
+            "short_name": APP_NAME,
+            "start_url": "/",
+            "scope": "/",
+            "display": "standalone",
+            "background_color": "#14161b",
+            "theme_color": "#14161b",
+            "icons": icons,
+        }
+        return Response(json.dumps(body), mimetype="application/manifest+json")
 
     @app.route("/")
     def hub():

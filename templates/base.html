@@ -2,8 +2,19 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>{% block title %}{{ app_name }}{% endblock %}</title>
+{# Installable to the home screen. No service worker, on purpose: the game
+   lives on the server, so there's nothing useful to do offline, and a
+   worker caching pages would fight the no-store rule on HTML. #}
+<link rel="manifest" href="{{ url_for('manifest') }}">
+<link rel="icon" href="{{ asset('icons/icon.svg') }}" type="image/svg+xml">
+<link rel="apple-touch-icon" href="{{ asset('icons/apple-touch-icon.png') }}">
+<meta name="theme-color" content="{% block theme_color %}#14161b{% endblock %}">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="{{ app_name }}">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <link rel="stylesheet" href="{{ asset('style.css') }}">
 {% block head %}{% endblock %}
 </head>
