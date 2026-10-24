@@ -53,6 +53,10 @@
   const NUMBERS = [0,1,2,3,4,5,6,7,8,9,10,11,12];
   const FLAT_MODS = [2,4,6,8,10];
   const TARGET_SCORE = {{ target }};
+  // The server's limits for a recorded game. Checked when a player is added,
+  // because finding out at the end — when the record is refused — is too late.
+  const MAX_PLAYERS = {{ max_players }};
+  const MAX_NAME = {{ max_name }};
   const STORE_KEY = 'flip7:game';
   const RECORD_URL = '{{ url_for("flip7.api_record_game") }}';
   const ROOMS_URL = '{{ url_for("flip7.create_room") }}';
@@ -126,13 +130,42 @@
 
   function playerTotal(p){ return p.rounds.reduce((sum,r)=>sum+r.score,0); }
 
+  // Who has won: the highest total, once anyone is past the line — not the
+  // first player in seat order to cross it. Two players can pass the target
+  // in the same round, and the records go on the top total, so the screen
+  // has to as well. A tie at the top is a shared win, as it is in the records.
+  function winnersOf(totals){
+    const top = totals.length ? Math.max(...totals) : 0;
+    if (top < TARGET_SCORE) return [];
+    return totals.map((t, i) => i).filter(i => totals[i] === top);
+  }
+
+  function joinNames(names){
+    return names.length < 2 ? names.join('')
+      : names.slice(0, -1).join(', ') + ' & ' + names[names.length - 1];
+  }
+
+  // The server keys players case-insensitively (Python's casefold) on the
+  // name cut to MAX_NAME characters. Lower-casing plus ß is close enough to
+  // casefold for names typed at a table; anything it misses still shows up
+  // as a failed record rather than vanishing.
+  function cleanName(name){
+    return Array.from((name || '').trim()).slice(0, MAX_NAME).join('');
+  }
+  function nameKey(name){ return name.toLowerCase().replace(/ß/g, 'ss'); }
+
   // Posted once, the moment somebody crosses the line. Everything else about
   // this game stays in the browser; a finished game is the one thing worth
   // keeping past the evening, and one phone's storage is no place for it.
   let posting = false;
+  // Why the last post failed, shown with a Try again button. While it's set,
+  // render() doesn't post on its own — otherwise a refused game would be
+  // re-sent on every render, and an offline one would retry in a tight loop.
+  let recordFailure = null;
   async function recordGame(){
     if (posting) return;
     posting = true;
+    let failure = null;
     try {
       const res = await fetch(RECORD_URL, {
         method: 'POST',
@@ -145,13 +178,19 @@
         })
       });
       // Only on success, so a server that was down when the game ended gets
-      // another go on the next tap rather than losing the game silently.
+      // another go (Try again) rather than losing the game silently.
       if (res.ok) { state.recorded = true; save(); }
+      else {
+        const data = await res.json().catch(() => ({}));
+        failure = data.error || `the server answered ${res.status}`;
+      }
     } catch (e) {
-      // Offline. The scoreboard on screen is unaffected either way.
+      failure = 'couldn\u2019t reach the server';
     } finally {
       posting = false;
     }
+    recordFailure = failure;
+    render();
   }
 
   // --- sharing ----------------------------------------------------------
@@ -191,6 +230,15 @@
   // seconds, not a lost round — the next one carries the whole board anyway.
   let pushing = false;
   let lastPushed = null;
+  // Shown in the share panel. Re-rendering only when the message changes is
+  // what stops a failing push from looping: render() pushes again, and an
+  // identical failure the second time round is left alone.
+  let pushFailure = null;
+  function setPushFailure(message){
+    if (message === pushFailure) return;
+    pushFailure = message;
+    render();
+  }
   async function pushBoard(){
     if (!share || pushing) return;
     // render() runs on every chip tap; only banked rounds are in a snapshot,
@@ -205,12 +253,19 @@
         headers: {'Content-Type': 'application/json', 'X-Flip7-Token': current.token},
         body: body
       });
-      if (res.ok) lastPushed = body;
+      if (res.ok) { lastPushed = body; setPushFailure(null); }
       // The room expired (6h idle) or was swept by a restart. Say so rather
       // than leaving a code on screen that sends people nowhere.
-      if (res.status === 404 && share === current) { share = null; saveShare(); render(); }
+      else if (res.status === 404) {
+        if (share === current) { share = null; pushFailure = null; saveShare(); render(); }
+      } else if (share === current) {
+        const data = await res.json().catch(() => ({}));
+        setPushFailure(data.error || `the server answered ${res.status}`);
+      }
     } catch (e) {
-      // Offline. The scoreboard on this device is unaffected.
+      // Offline. The scoreboard on this device is unaffected; the next
+      // change tries again.
+      if (share === current) setPushFailure('couldn\u2019t reach the server');
     } finally {
       pushing = false;
     }
@@ -224,6 +279,7 @@
       const data = await res.json();
       share = {code: data.code, token: data.host_token, url: data.watch_url, qr: data.qr_svg};
       lastPushed = null;   // a new room starts empty, whatever we sent the last one
+      pushFailure = null;
       saveShare();
       render();
       pushBoard();
@@ -236,6 +292,7 @@
     // The room is left to expire on its own; there's nothing in it worth a
     // delete endpoint, and spectators simply stop seeing new rounds.
     share = null;
+    pushFailure = null;
     saveShare();
     render();
   }
@@ -341,21 +398,38 @@
     }
   }
 
+  // Why the last name was turned away, shown under the name field.
+  let addError = null;
+
   function addPlayer(name){
-    name = (name || '').trim();
+    name = cleanName(name);
     if (!name) return;
-    state.players.push({name, rounds: []});
-    // Players joining mid-game sit out the rounds already banked, which the
-    // scoreboard shows honestly as a shorter round list.
-    if (state.drafting) state.draft.push(newDraftEntry());
+    // Same rules the records apply, so a game can't be set up that the server
+    // will refuse to record once somebody wins it.
+    if (state.players.length >= MAX_PLAYERS) {
+      addError = `A game takes at most ${MAX_PLAYERS} players.`;
+    } else if (state.players.some(p => nameKey(cleanName(p.name)) === nameKey(name))) {
+      addError = `There\u2019s already a ${name} \u2014 add an initial to tell them apart.`;
+    } else {
+      addError = null;
+      state.players.push({name, rounds: []});
+      // Players joining mid-game sit out the rounds already banked, which the
+      // scoreboard shows honestly as a shorter round list.
+      if (state.drafting) state.draft.push(newDraftEntry());
+    }
     render();
     // Names go in one after another, so the cursor stays where it was. The
-    // field is a fresh node after the re-render, hence the lookup.
+    // field is a fresh node after the re-render, hence the lookup. A refused
+    // name stays in it to be edited.
     const field = document.getElementById('f7-name-input');
-    if (field) field.focus();
+    if (field) {
+      if (addError) field.value = name;
+      field.focus();
+    }
   }
 
   function removePlayer(i){
+    addError = null;
     state.players.splice(i,1);
     if (state.drafting) state.draft.splice(i,1);
     render();
@@ -432,7 +506,7 @@
     const pendingScores = state.players.map((p, i) =>
       state.drafting && state.draft[i] ? calcRoundScore(state.draft[i]) : 0);
     const maxTotal = totals.length ? Math.max(...totals) : 0;
-    const winnerIndex = totals.findIndex(t => t >= TARGET_SCORE);
+    const winners = winnersOf(totals);
     app.textContent = '';
 
     // Two columns once there's room for them: the board stays readable while
@@ -450,17 +524,34 @@
     app.appendChild(left);
     app.appendChild(right);
 
-    if (winnerIndex >= 0 && !state.recorded) recordGame();
+    // A board nobody has won is a game that hasn't been recorded — whether
+    // the scores were cleared or the players were swapped for a new table.
+    // Without this, `recorded` outlived its game and the next one never posted.
+    if (!winners.length) { state.recorded = false; recordFailure = null; }
+    if (winners.length && !state.recorded && !recordFailure) recordGame();
 
-    if (winnerIndex >= 0) {
+    if (winners.length) {
+      const names = joinNames(winners.map(i => state.players[i].name));
+      const top = totals[winners[0]];
       left.appendChild(el('div', {
         class: 'f7-winner',
-        text: `🏆 ${state.players[winnerIndex].name} wins with ${totals[winnerIndex]}!`
+        text: winners.length > 1
+          ? `🏆 ${names} share the win on ${top}!`
+          : `🏆 ${names} wins with ${top}!`
       }));
+      if (recordFailure) {
+        left.appendChild(el('div', {class: 'f7-alert', role: 'alert'}, [
+          el('p', {text: `This game hasn\u2019t been saved to the records: ${recordFailure}.`}),
+          el('button', {
+            class: 'f7-btn f7-btn-gold f7-btn-small', text: 'Try again',
+            onclick: () => { recordFailure = null; render(); }
+          })
+        ]));
+      }
       // Once per crossing, not once per render.
       if (!announcedWinner) {
         announcedWinner = true;
-        announceWinner(state.players[winnerIndex].name, totals[winnerIndex]);
+        announceWinner(names, top, winners.length > 1);
       }
     } else {
       announcedWinner = false;
@@ -502,7 +593,7 @@
     }
 
     const input = el('input', {
-      id: 'f7-name-input', type: 'text', placeholder: 'Player name', maxlength: '20'
+      id: 'f7-name-input', type: 'text', placeholder: 'Player name', maxlength: String(MAX_NAME)
     });
     input.addEventListener('keydown', e => {
       if (e.key === 'Enter') { addPlayer(input.value); }
@@ -511,6 +602,9 @@
       input,
       el('button', {class: 'f7-btn f7-btn-gold', text: 'Add', onclick: () => addPlayer(input.value)})
     ]));
+    if (addError) {
+      players.appendChild(el('div', {class: 'f7-alert', role: 'alert', text: addError}));
+    }
     left.appendChild(players);
 
     // --- share ---
@@ -535,6 +629,11 @@
       // The QR is server-rendered SVG for a URL this page just asked for.
       const slot = sharePanel.querySelector('.f7-share-qr');
       if (slot && share.qr) slot.innerHTML = share.qr;
+      if (pushFailure) {
+        sharePanel.appendChild(el('div', {class: 'f7-alert', role: 'alert',
+          text: `Watchers aren\u2019t getting updates: ${pushFailure}. ` +
+                'It tries again with the next change.'}));
+      }
     } else {
       sharePanel.appendChild(el('div', {class: 'f7-note',
         text: 'Put the standings on everyone else\u2019s phone, read-only.'}));
@@ -726,16 +825,18 @@
   // already announced.
   const winDialog = document.getElementById('win-dialog');
   document.getElementById('win-close').addEventListener('click', () => winDialog.close());
-  function announceWinner(name, score){
-    document.getElementById('win-name').textContent = `${name} wins!`;
-    document.getElementById('win-line').textContent =
-      `First past ${TARGET_SCORE}, on ${score}.`;
+  function announceWinner(names, score, tied){
+    document.getElementById('win-name').textContent =
+      tied ? `${names} share the win!` : `${names} wins!`;
+    document.getElementById('win-line').textContent = tied
+      ? `Level on ${score}, past ${TARGET_SCORE}.`
+      : `Top score past ${TARGET_SCORE}, on ${score}.`;
     try { winDialog.showModal(); } catch (e) { /* already open */ }
   }
 
   restore();
   restoreShare();
-  let announcedWinner = state.players.some(p => playerTotal(p) >= TARGET_SCORE);
+  let announcedWinner = winnersOf(state.players.map(playerTotal)).length > 0;
   render();
 </script>
 {% endblock %}

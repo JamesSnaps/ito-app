@@ -41,6 +41,7 @@ from datetime import datetime, timezone
 from flask import Blueprint, abort, current_app, jsonify, redirect, render_template, request, url_for
 
 from core import stats
+from core.jsonfile import DataUnavailable
 from core.paths import game_data_dir
 from core.qr import svg as qr_svg
 from core.rooms import IDLE_TIMEOUT, require_room, rooms
@@ -154,7 +155,7 @@ def parse_names(payload):
         return None, f"{engine.MIN_PLAYERS}–{engine.MAX_PLAYERS} players"
     names = []
     for name in raw:
-        name = (name if isinstance(name, str) else "").strip()[:MAX_NAME]
+        name = clean_name(name)
         if not name:
             return None, "every player needs a name"
         names.append(name)
@@ -177,7 +178,15 @@ def record_if_finished(game):
         # marked anyway so it isn't retried on every poll.
         current_app.logger.warning("Flip 7 game not recorded: %s", error)
     else:
-        record_game(players)
+        try:
+            record_game(players)
+        except DataUnavailable:
+            # stats.json is damaged and refuses writes. The game itself is
+            # fine and stays saved; it's left unrecorded and tried again on
+            # the next look at the table, once the file has been restored.
+            current_app.logger.error("Flip 7 game %s not recorded yet: stats unavailable",
+                                     ", ".join(p["name"] for p in players))
+            return
     game["recorded"] = True
 
 
@@ -189,13 +198,18 @@ def seats_of(room):
 
 def identify(room, token):
     """Who is asking: ("host", None) for the device that dealt, ("seat", i)
-    for a phone sitting at seat i, or (None, None) for anyone else."""
+    for a phone sitting at seat i, or (None, None) for anyone else.
+
+    Compared as bytes, like api_push_board: compare_digest raises on a
+    non-ASCII str, and a header is whatever the client sent."""
+    if isinstance(token, str):
+        token = token.encode("utf-8", "surrogateescape")
     if not token:
         return None, None
-    if secrets.compare_digest(token, room.state["host_token"]):
+    if secrets.compare_digest(token, room.state["host_token"].encode()):
         return "host", None
     for i, seat_token in enumerate(seats_of(room)):
-        if seat_token and secrets.compare_digest(token, seat_token):
+        if seat_token and secrets.compare_digest(token, seat_token.encode()):
             return "seat", i
     return None, None
 
@@ -215,7 +229,14 @@ def play_payload(room, token=None):
 
 
 def request_token():
-    return request.headers.get("X-Flip7-Token") or ""
+    return (request.headers.get("X-Flip7-Token") or "").encode("utf-8", "surrogateescape")
+
+
+def clean_name(value):
+    """A player name as it's stored: trimmed, then cut to MAX_NAME. Anything
+    that isn't a string is no name at all (a 400, not a 500 on `.strip()`).
+    The scorekeeper applies the same rule when a name is typed in."""
+    return value.strip()[:MAX_NAME] if isinstance(value, str) else ""
 
 
 def parse_board(payload):
@@ -238,7 +259,7 @@ def parse_board(payload):
     for entry in raw_players:
         if not isinstance(entry, dict):
             return None, "each player must be an object"
-        name = (entry.get("name") or "").strip()[:MAX_NAME]
+        name = clean_name(entry.get("name"))
         if not name:
             return None, "every player needs a name"
 
@@ -327,7 +348,7 @@ def parse_game(payload):
     for entry in raw_players:
         if not isinstance(entry, dict):
             return None, "each player must be an object"
-        name = (entry.get("name") or "").strip()[:MAX_NAME]
+        name = clean_name(entry.get("name"))
         if not name:
             return None, "every player needs a name"
 
@@ -420,7 +441,10 @@ def record_game(players):
 
 @bp.route("/")
 def landing():
-    return render_template("flip7/scorekeeper.html", game=GAME, target=TARGET_SCORE)
+    return render_template(
+        "flip7/scorekeeper.html", game=GAME, target=TARGET_SCORE,
+        max_players=MAX_PLAYERS, max_name=MAX_NAME,
+    )
 
 
 @bp.route("/rooms", methods=["POST"])
@@ -511,8 +535,10 @@ def api_push_board(code):
 
     # compare_digest so a wrong token can't be narrowed down by timing. It's
     # a low-stakes secret, but it costs one import.
-    token = request.headers.get("X-Flip7-Token") or ""
-    if not secrets.compare_digest(token, room.state["host_token"]):
+    # Compared as bytes: compare_digest raises on a non-ASCII str, and a header
+    # is whatever the client sent.
+    token = (request.headers.get("X-Flip7-Token") or "").encode("utf-8", "surrogateescape")
+    if not secrets.compare_digest(token, room.state["host_token"].encode()):
         return jsonify({"error": "not the scorekeeper for this room"}), 403
 
     board, error = parse_board(payload)
@@ -558,6 +584,13 @@ def api_play_create():
 def api_play_state(code):
     room = require_play_room(code)
     with room.lock:
+        game = room.state["game"]
+        # A finished game that couldn't be recorded (stats.json was damaged)
+        # gets another go whenever anyone looks at the table.
+        if game["phase"] == "game_over" and not game["recorded"]:
+            record_if_finished(game)
+            if game["recorded"]:
+                save_play_room(room)
         return jsonify(play_payload(room, request_token()))
 
 

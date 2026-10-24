@@ -9,9 +9,10 @@ import json
 import os
 from pathlib import Path
 
-from flask import Flask, Response, redirect, render_template, request, url_for
+from flask import Flask, Response, jsonify, redirect, render_template, request, url_for
 from werkzeug.middleware.proxy_fix import ProxyFix
 
+from core.jsonfile import DataUnavailable
 from core.qr import svg as qr_svg
 from core.ratelimit import code_guesses
 from core.rooms import rooms
@@ -152,6 +153,15 @@ def create_app():
         return render_template(
             "error.html", message=getattr(err, "description", "Too many attempts.")
         ), 429
+
+    # A damaged data file is a 503 with a sentence saying which one, not a
+    # bare 500 — and, for stats, never a quiet overwrite (see core/jsonfile).
+    @app.errorhandler(DataUnavailable)
+    def data_unavailable(err):
+        app.logger.error("Data file unreadable: %s", err.__cause__ or err)
+        if "/api/" in request.path:
+            return jsonify({"error": str(err)}), 503
+        return render_template("error.html", message=str(err)), 503
 
     @app.errorhandler(500)
     def server_error(err):

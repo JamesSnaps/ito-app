@@ -224,7 +224,14 @@
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ category: selectedCategory || null, reroll: !!reroll })
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      // e.g. every topic was deleted. Say so where you're looking, rather
+      // than dealing a blank card off an error body.
+      deckHint.textContent = data.error || "Couldn't draw a card — try again.";
+      dialog.close();
+      return;
+    }
     renderState(data, true);   // every draw deals, even a repeat category
     dialog.close();
   }

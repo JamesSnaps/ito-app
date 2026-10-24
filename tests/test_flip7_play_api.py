@@ -276,3 +276,34 @@ def test_a_rematch_keeps_everyone_in_their_seat():
     assert new["you"] == {"role": "seat", "seat": 1}
     assert new["game"]["phase"] == "playing" and new["game"]["round"] == 1
     assert [p["name"] for p in new["game"]["players"]] == ["Ana", "Ben"]
+
+
+def test_a_token_in_an_odd_encoding_is_refused_not_a_crash():
+    c = client()
+    game = new_game(c)
+    move = current_move(game["game"])
+    weird = {"X-Flip7-Token": "tökén"}
+    assert c.post(f"/flip7/api/play/{game['code']}/move",
+                  json={**move, "seq": game["game"]["seq"]}, headers=weird).status_code == 403
+    view = c.get(f"/flip7/api/play/{game['code']}", headers=weird)
+    assert view.status_code == 200 and view.get_json()["you"]["role"] is None
+
+
+def test_a_damaged_stats_file_holds_the_record_not_the_game():
+    """stats.json refuses writes once it's damaged. The final move must still
+    land, and the game gets recorded once the file is back."""
+    from core import paths
+
+    c = client()
+    game = new_game(c, names=("Ana", "Ben"))
+    good = paths.STATS_PATH.read_text()
+    paths.STATS_PATH.write_text("{ not json")
+
+    view = finish(c, game, game["host_token"])
+    assert view["game"]["phase"] == "game_over"
+    assert view["game"]["recorded"] is False
+
+    paths.STATS_PATH.write_text(good)
+    after = c.get(f"/flip7/api/play/{game['code']}").get_json()
+    assert after["game"]["recorded"] is True
+    assert c.get("/flip7/api/stats").get_json()["games_played"] == 1

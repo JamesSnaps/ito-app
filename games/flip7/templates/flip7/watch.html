@@ -44,11 +44,19 @@
 
     const totals = players.map(p => p.total);
     const maxTotal = Math.max(...totals);
-    const winner = players.find(p => p.total >= TARGET_SCORE);
-    if (winner) {
+    // The highest total once anyone is past the line, not the first in seat
+    // order to cross it — same rule as the scorekeeper and the records. A tie
+    // at the top is a shared win.
+    const winners = maxTotal >= TARGET_SCORE ? players.filter(p => p.total === maxTotal) : [];
+    if (winners.length) {
+      const names = winners.map(p => p.name);
+      const joined = names.length < 2 ? names.join('')
+        : names.slice(0, -1).join(', ') + ' & ' + names[names.length - 1];
       app.appendChild(el('div', {
         class: 'f7-winner',
-        text: `\u{1F3C6} ${winner.name} wins with ${winner.total}!`
+        text: winners.length > 1
+          ? `\u{1F3C6} ${joined} share the win on ${maxTotal}!`
+          : `\u{1F3C6} ${joined} wins with ${maxTotal}!`
       }));
     }
 

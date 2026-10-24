@@ -1,5 +1,6 @@
 """Enough coverage to catch a broken route or a room that doesn't isolate."""
 
+import json
 import sys
 from pathlib import Path
 
@@ -508,7 +509,7 @@ def test_flip7_page_posts_the_game_once():
     """The winner banner survives a reload, so the post has to be guarded by
     something that survives with it."""
     body = client().get("/flip7/").get_data(as_text=True)
-    assert "if (winnerIndex >= 0 && !state.recorded) recordGame();" in body
+    assert "if (winners.length && !state.recorded && !recordFailure) recordGame();" in body
     assert "state.recorded = !!saved.recorded;" in body
     # Only a successful post counts, or a server that was down at the final
     # round would lose the game silently.
@@ -598,6 +599,252 @@ def test_flip7_watch_page_has_no_way_to_enter_a_score():
 
     for entry in ("f7-num", "f7-mod", "Save round", "Add round", "addPlayer"):
         assert entry not in body, entry
+
+
+# --- sweep fixes: winners, empty categories, data files, junk JSON ---------
+
+def two_past_the_line(first=205, second=230):
+    """Both players cross 200 in the same final round, the lower one seated
+    first — the case the scorekeeper used to get wrong."""
+    return {"players": [
+        {"name": "Ana", "rounds": [{"score": first - 20}, {"score": 20}]},
+        {"name": "Bo", "rounds": [{"score": second - 40}, {"score": 40}]},
+    ]}
+
+
+def test_flip7_highest_total_wins_not_the_first_past_the_line():
+    record = client().post("/flip7/api/stats/games", json=two_past_the_line()).get_json()
+    assert record["players"]["bo"]["wins"] == 1
+    assert record["players"]["ana"]["wins"] == 0
+    assert record["recent"][0] == {**record["recent"][0], "winner": "Bo", "score": 230}
+
+
+def test_flip7_a_tie_at_the_top_is_a_shared_win():
+    record = client().post("/flip7/api/stats/games",
+                           json=two_past_the_line(210, 210)).get_json()
+    assert record["players"]["ana"]["wins"] == record["players"]["bo"]["wins"] == 1
+    assert record["recent"][0]["winner"] == "Ana, Bo"
+
+
+def test_flip7_pages_pick_the_winner_the_way_the_records_do():
+    """No JS runner here, so pin the rule by its text: the screen must go on
+    the top total, like record_game, not the first seat to reach 200."""
+    c = client()
+    page = c.get("/flip7/").get_data(as_text=True)
+    assert "totals.findIndex(t => t >= TARGET_SCORE)" not in page
+    assert "if (top < TARGET_SCORE) return [];" in page
+    assert "filter(i => totals[i] === top)" in page
+
+    code = c.post("/flip7/rooms").get_json()["code"]
+    watch = c.get(f"/flip7/watch/{code}").get_data(as_text=True)
+    assert "players.find(p => p.total >= TARGET_SCORE)" not in watch
+    assert "players.filter(p => p.total === maxTotal)" in watch
+
+
+def test_flip7_page_checks_names_the_way_the_records_do():
+    """A game the server would refuse (duplicate names, too many players)
+    mustn't be set up in the first place, and a refusal must be shown."""
+    from games.flip7.game import MAX_NAME, MAX_PLAYERS
+
+    page = client().get("/flip7/").get_data(as_text=True)
+    assert f"const MAX_PLAYERS = {MAX_PLAYERS};" in page
+    assert f"const MAX_NAME = {MAX_NAME};" in page
+    assert "state.players.length >= MAX_PLAYERS" in page
+    assert "nameKey(cleanName(p.name)) === nameKey(name)" in page
+    assert "recordFailure = failure;" in page
+    # A board nobody has won can't have been recorded: a new game resets it.
+    assert "if (!winners.length) { state.recorded = false; recordFailure = null; }" in page
+
+
+def empty_category(c):
+    """Delete every topic in one category through the API, as Settings would."""
+    topics = c.get("/ito/api/topics").get_json()
+    category = next(iter(topics))
+    for topic in topics[category]:
+        assert c.post("/ito/api/topics/delete",
+                      json={"category": category, "text": topic["text"]}).status_code == 200
+    return category
+
+
+def test_an_emptied_category_is_a_clear_409_not_a_500():
+    c = client()
+    code = new_room(c)
+    category = empty_category(c)
+    res = c.post(f"/ito/api/{code}/draw", json={"category": category})
+    assert res.status_code == 409
+    assert "no topics" in res.get_json()["error"]
+    # Nothing was dealt.
+    assert c.get(f"/ito/api/{code}/state").get_json()["draw_id"] == 0
+    # "Any" still draws from what's left.
+    assert c.post(f"/ito/api/{code}/draw", json={}).status_code == 200
+
+
+def test_an_emptied_category_is_kept_off_the_wheel():
+    c = client()
+    code = new_room(c)
+    category = empty_category(c)
+    host = c.get(f"/ito/host/{code}").get_data(as_text=True)
+    assert f'data-cat="{category}"' not in host
+    # Settings still lists it, so it can be topped up again.
+    assert f'value="{category}"' in c.get("/ito/settings").get_data(as_text=True)
+
+
+def test_an_empty_topic_list_does_not_break_any(monkeypatch):
+    from games.ito import game
+
+    c = client()
+    code = new_room(c)
+    for content in ({}, {"wordplay": []}):
+        game.TOPICS_PATH.write_text(json.dumps(content))
+        res = c.post(f"/ito/api/{code}/draw", json={})
+        assert res.status_code == 409, content
+        assert "no topics" in res.get_json()["error"]
+
+
+def test_a_damaged_topics_file_falls_back_to_its_backup():
+    from core import jsonfile
+    from games.ito import game
+
+    c = client()
+    code = new_room(c)
+    category = next(iter(c.get("/ito/api/topics").get_json()))
+    # Any save leaves the previous good copy behind as .bak.
+    c.post("/ito/api/topics", json={"category": category, "text": "Kept"})
+    assert jsonfile.backup_path(game.TOPICS_PATH).exists()
+
+    game.TOPICS_PATH.write_text('{"half a fi')
+    assert c.post(f"/ito/api/{code}/draw", json={}).status_code == 200
+
+    jsonfile.backup_path(game.TOPICS_PATH).write_text("")
+    res = c.post(f"/ito/api/{code}/draw", json={})
+    assert res.status_code == 503 and "topic list is damaged" in res.get_json()["error"]
+    assert c.get(f"/ito/host/{code}").status_code == 503
+
+
+def test_stats_writes_are_atomic_and_keep_a_backup(tmp_path):
+    from core import jsonfile, stats
+
+    stats.record("ito", "win")
+    stats.record("ito", "lose")
+    assert json.loads(stats.STATS_PATH.read_text())["ito"]["rounds_played"] == 2
+    # The copy from before the last write.
+    assert json.loads(jsonfile.backup_path(stats.STATS_PATH).read_text())["ito"]["rounds_played"] == 1
+    # No temp files left lying around.
+    assert sorted(p.name for p in stats.STATS_PATH.parent.glob(".stats.json.*")) == []
+
+
+def test_a_damaged_stats_file_is_never_written_over():
+    """It used to read as {} — and the next result saved 'empty plus one' over
+    everybody's history."""
+    from core import jsonfile, stats
+
+    c = client()
+    code = new_room(c)
+    stats.record("ito", "win")
+    stats.record("ito", "win")       # .bak now holds one win
+    stats.STATS_PATH.write_text('{"ito": {"wins": 2, "rou')
+    damaged = stats.STATS_PATH.read_text()
+
+    c.post(f"/ito/api/{code}/draw", json={})
+    res = c.post(f"/ito/api/{code}/result", json={"outcome": "win"})
+    assert res.status_code == 503 and "damaged" in res.get_json()["error"]
+    assert c.post("/flip7/api/stats/games", json=finished_game()).status_code == 503
+    assert c.post("/flip7/api/stats/reset").status_code == 503
+    assert stats.STATS_PATH.read_text() == damaged
+
+    # The round is still owed its result, so it can be logged once fixed.
+    assert c.get(f"/ito/api/{code}/state").get_json()["scored"] is False
+
+    # Read-only pages show the last good copy rather than falling over.
+    assert c.get("/ito/api/stats").get_json()["wins"] == 1
+    assert c.get("/flip7/stats").status_code == 200
+    assert c.get("/ito/stats").status_code == 200
+
+    stats.STATS_PATH.write_text(jsonfile.backup_path(stats.STATS_PATH).read_text())
+    assert c.post(f"/ito/api/{code}/result", json={"outcome": "win"}).status_code == 200
+
+
+def test_concurrent_topic_edits_all_land():
+    import threading
+
+    c_app = create_app()
+    category = next(iter(c_app.test_client().get("/ito/api/topics").get_json()))
+
+    def add(n):
+        c_app.test_client().post("/ito/api/topics",
+                                 json={"category": category, "text": f"Concurrent {n}"})
+
+    threads = [threading.Thread(target=add, args=(n,)) for n in range(20)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    texts = {t["text"] for t in c_app.test_client().get("/ito/api/topics").get_json()[category]}
+    assert {f"Concurrent {n}" for n in range(20)} <= texts
+
+
+def test_junk_json_is_a_400_not_a_500():
+    c = client()
+    code = new_room(c)
+    category = next(iter(c.get("/ito/api/topics").get_json()))
+    for url, payload in (
+        (f"/ito/api/{code}/draw", ["not", "an", "object"]),
+        (f"/ito/api/{code}/draw", {"category": ["a", "list"]}),
+        (f"/ito/api/{code}/draw", {"category": {"a": 1}}),
+        (f"/ito/api/{code}/result", ["win"]),
+        (f"/ito/api/{code}/result", "win"),
+        ("/ito/api/topics", ["x"]),
+        ("/ito/api/topics", {"category": ["x"], "text": "Hi"}),
+        ("/ito/api/topics", {"category": category, "text": 7}),
+        ("/ito/api/topics", {"category": category, "text": "Hi", "low": 3}),
+        ("/ito/api/topics/delete", ["x"]),
+        ("/ito/api/topics/delete", {"category": ["x"], "text": "Hi"}),
+        ("/ito/api/topics/delete", {"category": category, "text": ["Hi"]}),
+        ("/flip7/api/stats/games", {"players": [{"name": 7, "rounds": [{"score": 200}]}]}),
+        ("/flip7/api/stats/games", {"players": [{"name": ["A"], "rounds": []}]}),
+        ("/flip7/api/stats/games", ["players"]),
+    ):
+        assert c.post(url, json=payload).status_code == 400, (url, payload)
+
+    room = new_flip7_room(c)
+    head = {"X-Flip7-Token": room["host_token"]}
+    assert c.post(f"/flip7/api/{room['code']}/board", headers=head,
+                  json={"players": [{"name": 7, "scores": []}]}).status_code == 400
+    # A non-ASCII token is just a wrong token.
+    assert c.post(f"/flip7/api/{room['code']}/board",
+                  headers={"X-Flip7-Token": "caf\u00e9".encode().decode("latin-1")},
+                  json={"players": []}).status_code == 403
+
+
+def test_a_hand_edited_topics_file_with_junk_entries_still_loads():
+    from games.ito import game
+
+    game.TOPICS_PATH.write_text(json.dumps({
+        "wordplay": ["Fine", 42, None, {"text": 5}, {"text": "Also fine", "low": 1}],
+        "broken": "not a list",
+    }))
+    topics = game.load_topics()
+    assert [t["text"] for t in topics["wordplay"]] == ["Fine", "Also fine"]
+    assert topics["wordplay"][1]["low"] == "Low"
+    assert "broken" not in topics
+
+
+def test_side_pages_count_wrong_codes_against_the_throttle():
+    """Whether the back link names a room says whether the code is live, so
+    /ito/rules and /ito/stats are a guessing oracle without this."""
+    from core.ratelimit import DEFAULT_LIMIT
+
+    c = client()
+    code = new_room(c)
+    for i in range(DEFAULT_LIMIT):
+        page = "/ito/rules" if i % 2 else "/ito/stats"
+        assert c.get(f"{page}?code=ZZZZ").status_code == 200
+    assert c.get("/ito/rules?code=ZZZZ").status_code == 429
+    assert c.get("/ito/api/YYYY/state").status_code == 429   # one budget, shared
+
+    # The right code still works, and clears the misses.
+    assert f"/ito/host/{code}" in c.get(f"/ito/stats?code={code}").get_data(as_text=True)
+    assert c.get("/ito/rules?code=ZZZZ").status_code == 200
 
 
 def test_the_site_is_installable():

@@ -14,3 +14,7 @@ data/ito/topics.json
 # Flip 7 games played on the app's deck, saved after every move so a
 # restart doesn't end them. Runtime state, like stats.json.
 data/flip7/
+
+# Last-good copies and in-flight temp files from core/jsonfile.py.
+data/**/*.bak
+data/**/.*.tmp

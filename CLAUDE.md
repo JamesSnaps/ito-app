@@ -26,6 +26,13 @@ problem.
   `data/ito/topics.json` (topic content), `data/stats.json`
   (win/loss history, keyed by game id) and `data/flip7/play/<code>.json`
   (Flip 7 games played on the app's deck — see Play mode below).
+  `stats.json` and `topics.json` are written through
+  `core/jsonfile.py`: temp file + `os.replace`, previous good copy kept as
+  `<name>.bak`. A corrupt `stats.json` is never written over — writes 503
+  (`DataUnavailable`, handled once in `app.py`) and read-only pages fall
+  back to the `.bak`. It used to read as `{}`, so the next result saved
+  "empty plus one" over everyone's history. A corrupt `topics.json` falls
+  back to its `.bak` for reads too; topic edits run under a lock.
 - Live state is in-memory rooms (`core/rooms.py`): four-letter codes,
   one state dict per room, swept after 6h idle. Lost on restart, which
   is fine — a room is one sitting. The exception is opt-in: a game that
@@ -153,9 +160,8 @@ problem.
 - **Settings is reachable without a room** (`/ito/settings`, alongside
   `/ito/settings/<code>`). Topics are global and editing them is a
   before-anyone-sits-down job; without a code the page just drops the
-  room-scoped parts. **Traefik's `auth@file` router matches
-  `/ito/settings/*`** — check that rule covers the bare path too, or the
-  roomless page is public while the room one isn't.
+  room-scoped parts. Traefik's `auth@file` router covers the bare
+  `/ito/settings` as well as `/ito/settings/<code>` (see Deployment).
 - **Win/lose only writes stats.** It doesn't advance the round or change
   what players see, and topic shuffling is unrelated to it. One result
   per round (`state["scored"]`), so a double tap can't log two. The
@@ -167,6 +173,12 @@ problem.
   a phone showing the card (poll interval plus the 320ms card flip), so
   two phones can be up to ~2s apart. Fine for a shared prompt everyone
   reads at their own pace; it would not be fine for anything timed.
+- **An empty category stays in the file but leaves the wheel.** Deleting
+  a category's last topic in Settings is allowed (so it can be topped up
+  again), but `drawable_categories()` keeps it off the host's wheel, and a
+  draw from an empty pool — that category, or "Any" with nothing at all —
+  is a 409 with a sentence the host shows under the deck. It used to be
+  `random.choice([])` and a 500.
 - **Topic categories `summer`, `football`, `animals`, `geeks`,
   `halloween`, `work`** were translated from HeidelBÄR Games' free
   bonus topic PDFs (https://www.heidelbaer.de/ito-extras — the German
@@ -413,12 +425,29 @@ why everything here is shaped around a JSON API.
 - **Only finished games count** — somebody has to have crossed 200. An
   abandoned game has no winner, and recording it would quietly punish
   whoever happened to be ahead when it stopped. The API 400s otherwise.
+- **The winner is the top total, not the first across the line.** Two
+  players can pass 200 in the same round; `winnersOf()` (scorekeeper) and
+  the watch page both take the highest total among those past it, which is
+  what `record_game` does. They disagreed once — the screen named whoever
+  sat first. A tie at the top shows as a shared win ("A & B share the win"),
+  matching the records.
 - **Posted once, guarded by a flag that persists with the game**
   (`recorded` in `flip7:game`). The winner banner survives a reload, so a
   guard that didn't survive with it would re-post on every refresh. It's
-  only set on a successful POST — a server that was down at the final
-  round gets another go on the next tap instead of losing the game.
-  "Reset scores" clears it: a cleared board is a new game.
+  only set on a successful POST. A failed one is shown under the banner
+  with the server's reason and a Try again button, and render() doesn't
+  re-post on its own while that's up — a refused game would otherwise be
+  re-sent on every render and an offline one would retry in a loop.
+- **`recorded` resets whenever the board has no winner.** "Reset scores"
+  was the only thing that cleared it, so removing the players and adding a
+  new table's meant the next finished game was never posted. A board nobody
+  has won can't have been recorded, whatever route led to it.
+- **Names are checked against the records' rules when they're added**:
+  trimmed and cut to `MAX_NAME`, compared case-insensitively, at most
+  `MAX_PLAYERS` (both rendered into the page from `game.py`). The server
+  refused duplicates and a 13th player only at the end, silently. JS has no
+  `casefold`; lower-casing plus ß covers names typed at a table, and
+  anything it misses surfaces as a failed record rather than vanishing.
 - **Players are keyed case-insensitively, and the newest spelling wins**
   the display name. Names are typed fresh at the table every time; "ana"
   and "Ana" being two people on the leaderboard is never what was meant.
@@ -450,18 +479,23 @@ why everything here is shaped around a JSON API.
   not hardened — swap to gunicorn if this ever needs to handle more
   than a handful of concurrent players.
 - No auth on host URLs in the app itself — knowing a room code is the
-  only gate. In production Traefik puts `/ito/host/*` and
-  `/ito/settings/*` behind Authelia, so a guessed code only lets someone
-  watch a topic, not drive the game.
+  only gate there. In production Traefik puts `/ito/host`, `/ito/settings`,
+  `/ito/api/topics*`, `/ito/api/stats/reset`, `/flip7/api/stats/reset` and
+  `/ito/api/<code>/draw|result|reset` behind Authelia, so a guessed code
+  only lets someone watch a topic — not drive the game, edit topics or
+  wipe stats.
 - Room codes are throttled, not secret: `core/ratelimit.py` counts wrong
   guesses per IP (15 per 5 min, then 429). Two invariants worth keeping
   — only *failures* count (players poll every 2s), and a correct code
   always works even from a blocked client and clears its failures, so a
-  scanner can't lock out a guest sharing their NAT.
+  scanner can't lock out a guest sharing their NAT. ito's rules and stats
+  pages count too (`core.rooms.find_room`): they render with or without a
+  room, but whether the back link named one told a scanner the code was
+  live.
 - `/healthz` deliberately reports no room count: it's public, and the
   count tells a scanner whether guessing is worth the effort.
-- Topic editing (`/ito/api/topics`) is global and unauthenticated, so
-  any player in any room can edit the shared topic list. It lives on
+- Topic editing (`/ito/api/topics`) is global and has no auth of its own;
+  in production it's behind Authelia with the host pages. It lives on
   `/ito/settings/<code>` rather than the host screen, which keeps the
   host page to controls you'd actually touch mid-round.
 - Rooms are in-memory, so a restart mid-game drops the current room.
@@ -482,18 +516,21 @@ why everything here is shaped around a JSON API.
 - `flip7:seat` holds one seat per browser, so two "phones" in tabs of one
   browser share it. To test a host and a phone on one machine, use
   `localhost` for one and `127.0.0.1` for the other — separate storage.
-- A Flip 7 spectator room shows the board as of the last successful push,
-  and pushes are fire-and-forget: a watcher on a flaky phone can sit a round
-  behind until the next one lands. Fine for standings, not for anything
-  timed.
+- A Flip 7 spectator room shows the board as of the last successful push.
+  A failed push is shown in the share panel and retried on the next change,
+  not on a timer, so watchers can sit a round behind until then. Fine for
+  standings, not for anything timed.
 - Flip 7's in-progress scores are per-browser. Clearing site data or
   switching device mid-game loses the night — only the finished game is
   posted, so there's nothing on the server to recover mid-game from.
 - `/flip7/api/stats/games` is unauthenticated, like ito's topic editing,
   and its validation (player/round/score bounds) is there to stop a bug or
-  a bored guest filling the leaderboard with junk — not real auth. The
-  same goes for `/flip7/api/stats/reset`, which wipes records for everyone
-  and so asks twice in the UI.
+  a bored guest filling the leaderboard with junk — not real auth.
+  `/flip7/api/stats/reset` wipes records for everyone, so it's behind
+  Authelia in production and asks twice in the UI.
+- API bodies are type-checked: a JSON list, or a number where a name or
+  category should be, is a 400. Several routes used to call `.get()` /
+  `.strip()` on whatever arrived and 500.
 - Card faces are swapped with a `.show-back` class at the deal
   animation's midpoint, not `backface-visibility` — Chrome stops
   culling backfaces once a face is clipped by `overflow` +
@@ -527,10 +564,15 @@ Runs on vm-core behind Traefik at gamenight.collardserver.co.uk. The
 stack file is `docker-compose.gamenight.yml` in the docker repo, wired
 into `docker-compose.sh` as the `gamenight` group.
 
-- **Two Traefik routers on one host.** `/ito/host/*` and `/ito/settings/*`
-  go through `auth@file` (Authelia); everything else is public, because
-  guests scan a QR to join and can't have accounts. This is the only
-  stack there that isn't wholly behind Authelia — deliberate.
+- **Two Traefik routers on one host.** The host and admin surface goes
+  through `auth@file` (Authelia): `/ito/host`, `/ito/settings`,
+  `/ito/api/topics*`, `/ito/api/stats/reset`, `/flip7/api/stats/reset` and
+  `/ito/api/<code>/draw|result|reset`. Everything else is public — the hub,
+  `/join`, the player and watch views, state polling, the Flip 7
+  scorekeeper and its record/board posts — because guests scan a QR to join
+  and can't have accounts. This is the only stack there that isn't wholly
+  behind Authelia — deliberate. A new host-only route needs adding to that
+  rule in the docker repo (`docker-compose.gamenight.yml`).
 - **`ProxyFix` is required**, not optional. QR codes are built from
   `request.host_url`; without trusting Traefik's `X-Forwarded-*` they'd
   encode `http://10.0.5.9:5000/` and no phone could reach it.

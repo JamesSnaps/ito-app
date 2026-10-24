@@ -351,6 +351,19 @@
 .f7-confirm .f7-confirm-row button { flex: 1; padding: 8px; border-radius: 8px; font-size: 0.8rem; font-weight: 700; }
 .f7-btn-crimson { background: var(--crimson); color: var(--cream); border: none; }
 
+/* Something the scorekeeper needs to know went wrong: a refused name, a game
+   the records wouldn't take, a share that isn't reaching anyone. */
+.f7-alert {
+  background: rgba(179, 67, 43, 0.18);
+  border: 1px solid var(--crimson);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin: 8px 0 12px;
+  color: var(--cream);
+  font-size: 0.85rem;
+}
+.f7-alert p { margin: 0 0 8px; }
+
 .f7-winner {
   background: linear-gradient(180deg, var(--gold-bright), var(--gold));
   color: var(--ink);
