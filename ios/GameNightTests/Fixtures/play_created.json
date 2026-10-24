@@ -1,0 +1,124 @@
+{
+ "code": "XCVY",
+ "game": {
+  "dealer": 2,
+  "deck_count": 91,
+  "discard_count": 0,
+  "event": 4,
+  "exhausted": false,
+  "flip7_by": null,
+  "last_round": null,
+  "log": [
+   {
+    "dealer": 2,
+    "id": 1,
+    "kind": "round",
+    "round": 1
+   },
+   {
+    "card": "n12",
+    "context": "deal",
+    "id": 2,
+    "kind": "draw",
+    "player": 0
+   },
+   {
+    "card": "n3",
+    "context": "deal",
+    "id": 3,
+    "kind": "draw",
+    "player": 1
+   },
+   {
+    "card": "n12",
+    "context": "deal",
+    "id": 4,
+    "kind": "draw",
+    "player": 2
+   }
+  ],
+  "pending": {
+   "kind": "turn",
+   "player": 0
+  },
+  "phase": "playing",
+  "players": [
+   {
+    "hand": {
+     "actions": [],
+     "bust_card": null,
+     "chance": false,
+     "held": [],
+     "mods": [],
+     "numbers": [
+      12
+     ],
+     "x2": false
+    },
+    "name": "Ana",
+    "round_score": 12,
+    "rounds": [],
+    "status": "active",
+    "total": 0
+   },
+   {
+    "hand": {
+     "actions": [],
+     "bust_card": null,
+     "chance": false,
+     "held": [],
+     "mods": [],
+     "numbers": [
+      3
+     ],
+     "x2": false
+    },
+    "name": "Ben",
+    "round_score": 3,
+    "rounds": [],
+    "status": "active",
+    "total": 0
+   },
+   {
+    "hand": {
+     "actions": [],
+     "bust_card": null,
+     "chance": false,
+     "held": [],
+     "mods": [],
+     "numbers": [
+      12
+     ],
+     "x2": false
+    },
+    "name": "Cat",
+    "round_score": 12,
+    "rounds": [],
+    "status": "active",
+    "total": 0
+   }
+  ],
+  "recorded": false,
+  "round": 1,
+  "seq": 0,
+  "target": 200,
+  "winners": []
+ },
+ "host_token": "QFJJ23xTN1Nc4P_S",
+ "next": null,
+ "seats": [
+  {
+   "taken": false
+  },
+  {
+   "taken": false
+  },
+  {
+   "taken": false
+  }
+ ],
+ "you": {
+  "role": "host",
+  "seat": null
+ }
+}

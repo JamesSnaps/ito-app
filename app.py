@@ -23,7 +23,12 @@ APP_NAME = "Game Night"
 # Bump this in the same commit as any user-visible change, before pushing.
 # Watchtower deploys `latest`, so this is the only way to tell from a phone
 # which build the server is actually running. See CLAUDE.md.
-APP_VERSION = "1.6.0"
+APP_VERSION = "1.6.1"
+
+# The iOS app (ios/project.yml): team C729B84RYG, the paid personal
+# membership Dishes, Keepsake and Brief use. Named in the file Apple checks
+# before letting the app open links to rooms (apple_app_site_association).
+IOS_APP_ID = "C729B84RYG.uk.collco.gamenight"
 
 
 def create_app():
@@ -135,6 +140,54 @@ def create_app():
         if game is None:
             return render_template("join.html", error="That game is no longer available.", code=code), 404
         return redirect(url_for(game.player_endpoint, code=room.code))
+
+    @app.route("/.well-known/apple-app-site-association")
+    def apple_app_site_association():
+        """Lets the iOS app open links to rooms — a QR scanned, a link in a
+        message — instead of Safari. Apple fetches this from the domain (no
+        redirect, no sign-in: it's on the public Traefik router) and checks
+        it names the app. Only the pages a player is sent to are claimed;
+        the hub, rules and settings stay in the browser, as do the host's
+        pages behind Authelia."""
+        body = {
+            "applinks": {
+                "details": [{
+                    "appIDs": [IOS_APP_ID],
+                    "components": [
+                        {"/": "/flip7/play/*"},
+                        {"/": "/flip7/watch/*"},
+                        {"/": "/ito/play/*"},
+                        {"/": "/join", "?": {"code": "?*"}},
+                    ],
+                }],
+            },
+        }
+        return Response(json.dumps(body), mimetype="application/json")
+
+    @app.route("/api/join/<code>")
+    def api_join(code):
+        """/join for an app: which game a code belongs to, and its web page.
+
+        Throttled exactly like /join — a wrong code counts, a right one
+        clears the client — so a native client is no better a scanner than
+        the browser."""
+        code = (code or "").strip().upper()
+        client = request.remote_addr or "unknown"
+        room = rooms.get(code)
+        if room is None:
+            if code_guesses.record_failure(client):
+                return jsonify({"error": "Too many incorrect codes from this device. "
+                                         "Wait a few minutes, then try again."}), 429
+            return jsonify({"error": "No active room with that code. Check it with the host."}), 404
+        code_guesses.clear(client)
+        game = get_game(room.game_id)
+        if game is None or not game.has_rooms:
+            return jsonify({"error": "That game is no longer available."}), 404
+        return jsonify({
+            "code": room.code,
+            "game": game.id,
+            "path": url_for(game.player_endpoint, code=room.code),
+        })
 
     @app.route("/qr.svg")
     def qr():

@@ -1,0 +1,103 @@
+# Game Night for iOS. The Xcode project is generated from this file:
+#
+#   cd ios && xcodegen
+#
+# GameNight.xcodeproj is gitignored — edit this, not the project.
+
+name: GameNight
+options:
+  bundleIdPrefix: uk.collco
+  deploymentTarget:
+    iOS: "18.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    # Everything here is UI or talks to the UI; the network calls suspend
+    # rather than block, so the main actor is the right default.
+    SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+    SWIFT_APPROACHABLE_CONCURRENCY: YES
+    MARKETING_VERSION: "0.1.0"
+    # The build number: scripts/testflight.sh sets it to the UTC time.
+    CURRENT_PROJECT_VERSION: "1"
+    # James Collard's paid individual membership, as Dishes, Keepsake and
+    # Brief: a personal app, kept off the Snapdragons company team.
+    DEVELOPMENT_TEAM: C729B84RYG
+    CODE_SIGN_STYLE: Automatic
+
+targets:
+  GameNight:
+    type: application
+    platform: iOS
+    sources: [GameNight]
+    # Associated Domains: links to rooms on gamenight.collardserver.co.uk open
+    # the app. The server's /.well-known/apple-app-site-association names it.
+    entitlements:
+      path: GameNight/GameNight.entitlements
+      properties:
+        com.apple.developer.associated-domains:
+          - applinks:gamenight.collardserver.co.uk
+    info:
+      path: GameNight/Info.plist
+      properties:
+        CFBundleDisplayName: Game Night
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UIRequiresFullScreen: false
+        # gamenight://join/ABCD opens a room; https links to rooms do too, via
+        # Associated Domains (the entitlements above).
+        CFBundleURLTypes:
+          - CFBundleURLName: uk.collco.gamenight
+            CFBundleURLSchemes: [gamenight]
+        # Only standard HTTPS — no encryption of our own — so App Store
+        # Connect needn't ask about export compliance on every upload.
+        ITSAppUsesNonExemptEncryption: false
+        # The production server is https. This only lets a dev build talk to
+        # a server on the LAN or the Mac running the simulator.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: uk.collco.gamenight
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ENABLE_PREVIEWS: YES
+
+  GameNightTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: GameNightTests
+        excludes: [Fixtures/**]
+      - path: GameNightTests/Fixtures
+        type: folder
+        buildPhase: resources
+    dependencies:
+      - target: GameNight
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  GameNight:
+    build:
+      targets:
+        GameNight: all
+        GameNightTests: [test]
+    test:
+      targets: [GameNightTests]
+    run:
+      # For a dev build against the Flask server on this Mac. Remove or
+      # change in the scheme editor to use another server.
+      commandLineArguments:
+        "-serverURL http://localhost:5001": false

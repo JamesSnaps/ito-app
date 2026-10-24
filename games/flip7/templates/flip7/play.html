@@ -372,13 +372,16 @@
 
     // Everything the server says comes through here: the table, the seats,
     // who this device is, and whether a rematch has started elsewhere.
-    function take(data){
+    // `askedAs` is the token the request carried. `you` describes that token,
+    // so only an answer to the seat token can say the seat is gone — a move
+    // made as the dealer comes back as "host" even on a device with a seat.
+    function take(data, askedAs){
       if (!data || !data.game) return;
       const before = view;
       takeEvents(data.game);
       view = data.game;
       seats = data.seats || [];
-      if (seatToken && data.you && data.you.role !== 'seat') {
+      if (seatToken && askedAs === seatToken && data.you && data.you.role !== 'seat') {
         forgetSeat();
         showToast('Your seat was freed on the dealer’s device. Pick it again to rejoin.');
       }
@@ -437,7 +440,7 @@
       render();
       try {
         const {res, data} = await post(MOVE_URL, {...move, seq: view.seq}, token);
-        take(data);
+        take(data, token);
         if (res.status === 404) gone = true;
         else if (!res.ok) showToast(data.error || 'That didn’t work — try again.');
       } catch (e) {
@@ -460,7 +463,7 @@
         } else {
           showToast(data.error || 'Couldn’t take that seat.');
         }
-        take(data);
+        take(data, seatToken);
       } catch (e) {
         showToast('Couldn’t reach the server. Try again.');
       }
@@ -475,7 +478,7 @@
         const {res, data} = await post(`/flip7/api/play/${CODE}/seats/${seat}/release`, {}, hostToken);
         if (!res.ok) showToast(data.error || 'Couldn’t free that seat.');
         if (seat === mySeat) forgetSeat();
-        take(data);
+        take(data, hostToken);
       } catch (e) {
         showToast('Couldn’t reach the server. Try again.');
       }
@@ -514,7 +517,7 @@
             const data = await res.json();
             const changed = !view || data.game.seq !== view.seq
               || JSON.stringify(data.seats) !== JSON.stringify(seats) || data.next;
-            if (!busy && changed) { take(data); render(); }
+            if (!busy && changed) { take(data, token); render(); }
           }
         } catch (e) {
           // Retry on the next tick.

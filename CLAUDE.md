@@ -462,6 +462,81 @@ why everything here is shaped around a JSON API.
 - **A draw at the top gives everyone tied a win.** Vanishingly rare, but
   nobody at the table would call it half a win each.
 
+## iOS app (`ios/`, started alongside v1.6.0)
+
+A native SwiftUI front end to the same server: Flip 7 Play (dealer or
+seat), Flip 7 records, and ito's topic display. Rules pages, ito hosting
+and a scorekeeper's spectator board open the server's own pages in an
+in-app Safari sheet rather than being rebuilt.
+
+- **The server is still the game.** The app holds no rules: it shows the
+  table from `/flip7/api/play/<code>` and sends moves, exactly like
+  `play.html`. Anything rule-shaped belongs in `engine.py`, not in Swift.
+- **It mirrors the web table on purpose.** The same three modes (`table`,
+  `player`, `watch`), the same `canAct` / `takenByPhone` / `token(for:)`
+  rules, the same card order and log wording, the same layout split (iPad
+  landscape: mat grid + rail; anything narrower: your mat first and a
+  bottom Hit/Stay bar). When one changes, change the other — they're
+  played at the same table.
+- **Project is generated.** `ios/project.yml` → `cd ios && xcodegen`.
+  `GameNight.xcodeproj` is gitignored. iOS 18+, Swift 6, default actor
+  isolation `MainActor`; the API value types are `nonisolated` because
+  they're compared and decoded off the main actor.
+- **Tokens live in UserDefaults** (`TokenStore`), per game code — the same
+  low stakes as the web's localStorage. A rematch copies them to the new
+  code (`carry(from:to:)`).
+- **Server URL**: production by default; `-serverURL http://localhost:5001`
+  as a launch argument or the Settings screen for a dev server.
+  `NSAllowsLocalNetworking` permits plain http on the LAN only.
+- **Fixtures are real responses.** `ios/GameNightTests/Fixtures/*.json`
+  were captured from the Flask code, the Swift models are tested against
+  them, and `test_the_ios_app_fixtures_still_match_the_api` fails the
+  Python suite if the API's keys drift — iOS tests don't run in CI.
+- **The invite QR opens the web table**, not the app, so a phone without
+  the app can still join.
+- **One join for every game.** `GET /api/join/<code>` (app.py) is /join's
+  JSON twin — same throttle — and answers `{code, game, path}`. The app
+  then opens Flip 7 play natively, ito natively, or the web `path` (a
+  scorekeeper's board). `Joining.resolve` is shared by the Join screen and
+  links.
+- **Links open in the app.** `gamenight://join/ABCD`, and the web paths
+  `/flip7/play|watch/<code>`, `/ito/play/<code>`, `/join?code=` all parse to
+  a code (`Joining.code(in:)`). The https ones reach the app through
+  Associated Domains (below).
+- **`/flip7/api/stats` carries `leaderboard`** in the records page's order,
+  so the app doesn't re-implement the ranking.
+- **Tables and the topic display keep the screen awake**
+  (`.keepsScreenAwake()`): they sit on the table for an hour.
+- **ito's card is drawn natively** from the same geometry as
+  `ito/_card.html` — the scale line and the back's swirl are the SVG paths,
+  ported point for point, and the deal is the same edge-on swap.
+- **ito hosting isn't native**: its host pages sit behind Authelia, which
+  a native app can't get through, so "Host a room" opens the web page.
+  Native hosting needs a token or OIDC decision first.
+- **Distribution is TestFlight with a public link** for family and
+  friends — no App Store listing, which also sidesteps the App Store's
+  likely objection to the "Flip 7" and "ito" trademarks. Builds expire after
+  90 days, so one goes up at least quarterly. Steps in `ios/README.md`.
+- **Signing follows the other apps** (Dishes, Keepsake, Brief): team
+  `C729B84RYG` — the personal membership, not the Snapdragons team — in
+  `project.yml`, automatic signing, bundle `uk.collco.gamenight`. A test
+  checks `project.yml` and `app.py`'s `IOS_APP_ID` agree.
+- **`ios/scripts/testflight.sh`** is Brief's script adapted: archive and
+  upload with the Xcode-signed-in account, build number = UTC time,
+  archives outside the repo.
+- **Required for any upload**: `PrivacyInfo.xcprivacy` (no tracking, no
+  data collected; UserDefaults declared with reason CA92.1) and
+  `ITSAppUsesNonExemptEncryption: false` (HTTPS only). Add to the manifest
+  if the app ever touches another required-reason API.
+- **Room links open the app**: `/.well-known/apple-app-site-association`
+  (app.py) names `IOS_APP_ID`, hard-coded as news-hub does for Brief, and
+  claims only the pages a player is sent to; the app carries the
+  `applinks:gamenight.collardserver.co.uk` entitlement. The file must stay
+  on the public Traefik router — Apple fetches it with no sign-in.
+- **The app talks to production by default**, so the server must be on a
+  version with the app's endpoints (v1.6.1+) before a build goes out.
+- **`.dockerignore` keeps `ios/` out of the server image.**
+
 ## Hub artwork
 
 - Each game's menu tile has an SVG in `templates/art/<id>.html` and an
@@ -510,6 +585,10 @@ why everything here is shaped around a JSON API.
   login in a sheet, and the cookie may not come back with it).
 - ito's player display (`/ito/play/<code>`) has no way back, which is fine
   in a browser tab and a dead end in the installed app.
+- A device that's both the dealer and a seat must only treat an answer to
+  its *seat* token as news about its seat: a move made as the dealer comes
+  back with `you.role == "host"`. Getting this wrong dropped the seat of a
+  dealer covering someone's turn (fixed in play.html and the app alike).
 - Seats are claimed by whoever taps first. A guest who knows the code can
   sit in someone else's seat; the dealer frees it. Fine for a living room,
   not for anything adversarial.
@@ -549,6 +628,12 @@ why everything here is shaped around a JSON API.
 same commit as any user-visible change, before pushing.** Watchtower
 deploys `latest`, so without it there is no way to tell from a phone
 which build the server is actually running.
+
+Watchtower on vm-core runs **once a day, at 02:00** (`WATCHTOWER_SCHEDULE`
+in the docker repo's `docker-stacks/vm-core/docker-compose.yml`), so a
+merge to `main` goes live the following night, not within minutes. To ship
+sooner, pull and restart the `gamenight` service on vm-core by hand. Don't
+read a stale `/healthz` on the evening of a merge as a broken deploy.
 
 - Semver-ish: patch for fixes and copy tweaks, minor for new behaviour
   or a redesign, major for anything that breaks a URL or a data file.
@@ -595,6 +680,11 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python app.py  # http://localhost:5000 (PORT= to override;
                          # macOS AirPlay squats on 5000)
 .venv/bin/python -m pytest tests -q
+
+# iOS (needs Xcode + XcodeGen)
+cd ios && xcodegen && open GameNight.xcodeproj
+xcodebuild test -project ios/GameNight.xcodeproj -scheme GameNight \
+  -destination 'platform=iOS Simulator,name=iPhone 18 Pro'
 
 # docker
 docker compose up -d --build
