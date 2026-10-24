@@ -1,0 +1,847 @@
+{% extends "base.html" %}
+{% block title %}Flip 7 — {% if code %}game {{ code }}{% else %}new game{% endif %} — {{ app_name }}{% endblock %}
+{% block body_class %}flip7 f7-play{% if code %} f7-at-table{% endif %}{% endblock %}
+{% block theme_color %}#0f2e24{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ asset('flip7.css') }}">
+<script src="{{ asset('flip7.js') }}"></script>{% endblock %}
+{% block body %}
+<div class="wrap">
+  <header class="f7-bar">
+    {% if code %}
+    <a class="f7-btn-icon" href="{{ url_for('flip7.play_setup') }}"
+       aria-label="Leave the table" title="Leave the table — the game keeps">←</a>
+    {% else %}
+    <a class="f7-btn-icon" href="{{ url_for('flip7.landing') }}"
+       aria-label="Back to the scorekeeper" title="Back to the scorekeeper">←</a>
+    {% endif %}
+    <h1 class="f7-title">Flip <span>7</span></h1>
+    {% if code %}<span class="f7-room-code" title="Room code — /join with it to watch">{{ code }}</span>{% endif %}
+    {% set here = request.path %}
+    <a class="f7-btn-icon" href="{{ url_for('flip7.stats_view', back=here) }}"
+       aria-label="Records" title="Records">★</a>
+    <a class="f7-btn-icon" href="{{ url_for('flip7.rules_view', back=here) }}"
+       aria-label="Rules" title="Rules">?</a>
+  </header>
+  {% if not code %}
+  <div class="f7-subtitle">Played on the app's deck · first to {{ target }} wins</div>
+  {% endif %}
+
+  <div id="app"></div>
+
+  {% if not code %}<div class="version">{{ app_name }} v{{ app_version }}</div>{% endif %}
+</div>
+
+{# Handing out an action card. No cancel: the rules say it has to go to
+   someone, so the only way out is to pick. #}
+<dialog class="f7-dialog f7-give" id="give-dialog">
+  <div class="f7-dialog-body" id="give-body"></div>
+</dialog>
+
+<dialog class="f7-dialog" id="win-dialog">
+  <div class="f7-dialog-body">
+    <div class="f7-dialog-trophy">🏆</div>
+    <h2 id="win-name">—</h2>
+    <p id="win-line">—</p>
+    <button class="f7-btn f7-btn-gold" id="win-close">Nice one</button>
+  </div>
+</dialog>
+
+{# The dealer's view of the phones: a QR into the game, and who's sitting
+   where. #}
+<dialog class="f7-dialog f7-invite" id="invite-dialog">
+  <div class="f7-dialog-body">
+    <h2>Play on your phones</h2>
+    <div id="invite-body"></div>
+    <button class="f7-btn f7-btn-gold" id="invite-close">Done</button>
+  </div>
+</dialog>
+
+<div class="f7-toast" id="toast" role="status" hidden></div>
+
+<script>
+  const CODE = {{ code|tojson }};
+  const TARGET_SCORE = {{ target }};
+  const CREATE_URL = '{{ url_for("flip7.api_play_create") }}';
+  const TABLE_URL = '{{ url_for("flip7.play_view", code="CODE") }}';
+  const MAX_PLAYERS = 12;
+  const MAX_NAME = 20;
+  // The game this device deals: its code and the token that lets it move.
+  // Anyone else who opens the table can watch, and that's all.
+  const PLAY_KEY = 'flip7:play';
+  // Last game's seating, so the same group isn't typed in every time.
+  const NAMES_KEY = 'flip7:play-names';
+  // The seat this phone took in a game: {code, seat, token}.
+  const SEAT_KEY = 'flip7:seat';
+  const SETUP_URL = '{{ url_for("flip7.play_setup") }}';
+
+  function readJSON(key){
+    try { return JSON.parse(localStorage.getItem(key)); } catch (e) { return null; }
+  }
+  function writeJSON(key, value){
+    // Private browsing: the game still plays, it just won't offer itself back.
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {}
+  }
+  function tableUrl(code){ return TABLE_URL.replace('CODE', code); }
+
+  const app = document.getElementById('app');
+
+  let toastTimer;
+  function showToast(text){
+    const node = document.getElementById('toast');
+    node.textContent = text;
+    node.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { node.hidden = true; }, 3200);
+  }
+
+  async function startGame(names){
+    const res = await fetch(CREATE_URL, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({players: names})
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Couldn’t start the game.');
+    writeJSON(PLAY_KEY, {code: data.code, token: data.host_token});
+    writeJSON(NAMES_KEY, names);
+    location.href = tableUrl(data.code);
+  }
+
+  // --- cards ----------------------------------------------------------------
+
+  const ACTION_LABELS = {freeze: 'Freeze', flip3: 'Flip 3', chance: '2nd Chance'};
+  const ACTION_NAMES = {freeze: 'Freeze', flip3: 'Flip Three', chance: 'Second Chance'};
+
+  function cardName(id){
+    if (id[0] === 'n') return id.slice(1);
+    if (id === 'x2') return '×2';
+    return ACTION_NAMES[id] || id;
+  }
+  function withArticle(id){
+    if (id[0] === 'n') return (id === 'n8' || id === 'n11' ? 'an ' : 'a ') + id.slice(1);
+    if (id === 'x2') return 'the ×2';
+    return 'a ' + cardName(id);
+  }
+
+  function cardEl(id, extra){
+    let kind = 'act', label = ACTION_LABELS[id], symbol = id;
+    if (id[0] === 'n') { kind = 'num'; label = id.slice(1); symbol = null; }
+    else if (id[0] === '+') { kind = 'mod'; label = id; symbol = null; }
+    else if (id === 'x2') { kind = 'mod'; label = '×2'; symbol = null; }
+    return el('div', {
+      class: `f7-card f7-card-${kind} f7-card-${id.replace('+', 'plus')}` + (extra ? ' ' + extra : ''),
+      title: cardName(id)
+    }, [symbol ? icon(symbol) : null, el('span', {class: 'f7-card-label', text: label})]);
+  }
+
+  // What's in front of a player, in the order it's laid out: numbers low to
+  // high (so a duplicate is easy to spot), the one that busted them, then
+  // modifiers, then action cards.
+  function tableCards(hand){
+    const cards = [...hand.numbers].sort((a, b) => a - b).map(n => ({id: 'n' + n}));
+    if (hand.bust_card !== null) cards.push({id: 'n' + hand.bust_card, extra: 'is-bust-card'});
+    [...hand.mods].sort((a, b) => a - b).forEach(m => cards.push({id: '+' + m}));
+    if (hand.x2) cards.push({id: 'x2'});
+    if (hand.chance) cards.push({id: 'chance'});
+    hand.actions.forEach(a => cards.push({id: a, extra: 'is-played'}));
+    hand.held.forEach(a => cards.push({id: a, extra: 'is-held'}));
+    return cards;
+  }
+
+  // --- setup ----------------------------------------------------------------
+
+  if (!CODE) {
+    let names = (readJSON(NAMES_KEY) || []).filter(n => typeof n === 'string').slice(0, MAX_PLAYERS);
+    let resume = null;
+    let error = '';
+    let dealing = false;
+
+    function addName(raw){
+      const name = (raw || '').trim().slice(0, MAX_NAME);
+      if (!name) return;
+      if (names.some(n => n.toLowerCase() === name.toLowerCase())) {
+        error = `${name} is already at the table.`;
+      } else if (names.length >= MAX_PLAYERS) {
+        error = `${MAX_PLAYERS} players is the most the deck can take.`;
+      } else {
+        names.push(name);
+        error = '';
+      }
+      renderSetup();
+      const field = document.getElementById('f7-name-input');
+      if (field) field.focus();
+    }
+
+    async function deal(){
+      if (dealing || names.length < 2) return;
+      dealing = true;
+      renderSetup();
+      try {
+        await startGame(names);
+      } catch (e) {
+        error = e.message;
+        dealing = false;
+        renderSetup();
+      }
+    }
+
+    function renderSetup(){
+      app.textContent = '';
+
+      if (resume) {
+        const g = resume.game;
+        app.appendChild(el('div', {class: 'f7-panel f7-resume'}, [
+          el('div', {class: 'f7-panel-title'}, [el('span', {text: 'Game in progress'})]),
+          el('p', {class: 'f7-note', text:
+            `Room ${resume.code} · round ${g.round} · ` + g.players.map(p => p.name).join(', ')}),
+          el('a', {class: 'f7-btn f7-btn-gold f7-btn-wide', href: tableUrl(resume.code)}, [
+            el('span', {text: 'Back to the table'}), icon('next')
+          ])
+        ]));
+      }
+
+      const chips = el('div', {class: 'f7-chips'});
+      names.forEach((name, i) => {
+        const chip = el('span', {class: 'f7-chip', 'data-index': String(i)}, [
+          names.length > 1 ? icon('grip') : null,
+          el('span', {text: name}),
+          el('button', {
+            type: 'button', 'aria-label': `Remove ${name}`,
+            onclick: () => { names.splice(i, 1); renderSetup(); }
+          }, [el('span', {text: '✕'})])
+        ]);
+        if (names.length > 1) makeChipDraggable(chip, chips, () => {
+          names = [...chips.querySelectorAll('.f7-chip')].map(c => names[Number(c.dataset.index)]);
+          renderSetup();
+        });
+        chips.appendChild(chip);
+      });
+
+      const input = el('input', {
+        type: 'text', id: 'f7-name-input', placeholder: 'Player name',
+        maxlength: String(MAX_NAME), autocomplete: 'off', enterkeyhint: 'done'
+      });
+      input.addEventListener('keydown', e => { if (e.key === 'Enter') addName(input.value); });
+
+      const panel = el('div', {class: 'f7-panel'}, [
+        el('div', {class: 'f7-panel-title'}, [
+          el('span', {text: 'Who’s playing?'}),
+          el('span', {class: 'f7-note', text: `${names.length} / ${MAX_PLAYERS}`})
+        ]),
+        names.length ? chips : el('p', {class: 'f7-note', text: 'Add everyone at the table, in the order you’re sitting.'}),
+        names.length > 1
+          ? el('p', {class: 'f7-note f7-reorder-hint', text: 'Drag to match where people are sitting — the first name is dealt to first.'})
+          : null,
+        el('div', {class: 'f7-add-row'}, [
+          input,
+          el('button', {class: 'f7-btn f7-btn-ghost', type: 'button', onclick: () => addName(input.value), text: 'Add'})
+        ]),
+        error ? el('p', {class: 'f7-error', role: 'alert', text: error}) : null
+      ]);
+      app.appendChild(panel);
+
+      app.appendChild(el('button', {
+        class: 'f7-btn f7-btn-gold f7-btn-wide f7-deal', type: 'button',
+        disabled: names.length < 2 || dealing, onclick: deal
+      }, [el('span', {text: dealing ? 'Shuffling…' : names.length < 2 ? 'Add at least two players' : 'Shuffle & deal'})]));
+
+      app.appendChild(el('p', {class: 'f7-note f7-play-note', text:
+        'Play on one device in the middle of the table, or let everyone join on their own ' +
+        'phone with the room code — or a bit of both.'}));
+    }
+
+    // A saved game is only offered back once it's confirmed to still exist —
+    // a dead code offered up is worse than no offer. The game this device
+    // dealt comes first; failing that, the one it has a seat in.
+    async function checkResume(){
+      for (const key of [PLAY_KEY, SEAT_KEY]) {
+        const saved = readJSON(key);
+        if (!saved || !saved.code) continue;
+        try {
+          const res = await fetch(`/flip7/api/play/${saved.code}`, {headers: {'X-Flip7-Token': saved.token || ''}});
+          if (res.status === 404) { try { localStorage.removeItem(key); } catch (e) {} continue; }
+          if (!res.ok) continue;
+          const data = await res.json();
+          if (data.game.phase !== 'game_over' && data.you.role) {
+            resume = {code: saved.code, game: data.game};
+            renderSetup();
+            return;
+          }
+        } catch (e) {}
+      }
+    }
+
+    renderSetup();
+    checkResume();
+  }
+
+  // --- the table ------------------------------------------------------------
+  //
+  // One page, three ways to be at it:
+  //   table  — this device dealt (host token) and plays every turn: the
+  //            iPad in the middle, passed round.
+  //   player — this phone sits at one seat (seat token) and plays that
+  //            seat's turns. If it dealt too, it can still step in for a
+  //            phone that's gone quiet.
+  //   watch  — neither: a read-only table, with an offer to sit down.
+
+  if (CODE) {
+    const STATE_URL = `/flip7/api/play/${CODE}`;
+    const MOVE_URL = `/flip7/api/play/${CODE}/move`;
+
+    const hostSaved = readJSON(PLAY_KEY);
+    let hostToken = hostSaved && hostSaved.code === CODE ? hostSaved.token : null;
+    const seatSaved = readJSON(SEAT_KEY);
+    let seatToken = seatSaved && seatSaved.code === CODE ? seatSaved.token : null;
+    let mySeat = seatToken ? seatSaved.seat : null;
+
+    let view = null;
+    let seats = [];
+    let busy = false;
+    let gone = false;
+    let lastEvent = null;     // newest log entry already acted on
+    let shaking = new Set();  // mats that just busted
+    let seenCards = null;     // per player, card ids at the last render
+    let actingFor = null;     // a quiet phone's seat the dealer is covering
+    let justWatching = false;
+    try { justWatching = sessionStorage.getItem(`flip7:watch:${CODE}`) === '1'; } catch (e) {}
+
+    const giveDialog = document.getElementById('give-dialog');
+    giveDialog.addEventListener('cancel', e => e.preventDefault());
+    const winDialog = document.getElementById('win-dialog');
+    document.getElementById('win-close').addEventListener('click', () => winDialog.close());
+    const inviteDialog = document.getElementById('invite-dialog');
+    document.getElementById('invite-close').addEventListener('click', () => inviteDialog.close());
+
+    const nameOf = i => view.players[i].name;
+    const mode = () => mySeat !== null ? 'player' : hostToken ? 'table' : 'watch';
+    // Your own seat, always. The dealer's device also plays every seat that
+    // isn't on a phone — that's the shared iPad — and steps in for one that
+    // is only when asked to, so nobody's turn gets tapped from across the room.
+    const takenByPhone = p => !!(seats[p] && seats[p].taken) && p !== mySeat;
+    const canAct = p => p === mySeat || (hostToken !== null && (p === actingFor || !takenByPhone(p)));
+    // A phone's own seat goes out with its seat token; anything else this
+    // device does, it does as the dealer.
+    const tokenFor = p => (p === mySeat && seatToken) ? seatToken : (hostToken || seatToken);
+    const you = (i, own, other) => (i === mySeat ? own : other);
+
+    function describe(e){
+      const who = e.player !== undefined ? nameOf(e.player) : '';
+      switch (e.kind) {
+        case 'round': return `Round ${e.round} — ${nameOf(e.dealer)} deals`;
+        case 'draw':
+          return e.context === 'deal' ? `${who} was dealt ${withArticle(e.card)}`
+               : e.context === 'flip3' ? `${who} flipped ${withArticle(e.card)}`
+               : `${who} drew ${withArticle(e.card)}`;
+        case 'bust': return `${who} busted on ${e.card.slice(1)}`;
+        case 'saved': return `Second Chance saved ${who} from a second ${e.card.slice(1)}`;
+        case 'flip7': return `${who} flipped 7!`;
+        case 'stay': return `${who} stayed`;
+        case 'discarded': return `${who}’s spare ${cardName(e.card)} was discarded`;
+        case 'reshuffle': return 'Discards shuffled back into the deck';
+        case 'round_end': return `Round ${e.round} is over`;
+        case 'give': {
+          const target = e.target === e.player ? 'themself' : nameOf(e.target);
+          if (e.card === 'freeze') return `${who} froze ${target}`;
+          if (e.card === 'flip3') return `${who} gave ${target} Flip Three`;
+          return `${who} gave ${target} a Second Chance`;
+        }
+      }
+      return '';
+    }
+
+    // New log entries since the last look: the moments worth more than a
+    // re-render. Skipped on the first load, so a reload doesn't replay them.
+    function takeEvents(game){
+      const fresh = lastEvent === null ? [] : game.log.filter(e => e.id > lastEvent);
+      lastEvent = game.log.length ? game.log[game.log.length - 1].id : 0;
+      fresh.forEach(e => {
+        if (e.kind === 'flip7') flashFlip7(game.players[e.player].name);
+        if (e.kind === 'bust') {
+          shaking.add(e.player);
+          setTimeout(() => { shaking.delete(e.player); }, 700);
+        }
+      });
+    }
+
+    function forgetSeat(){
+      seatToken = null;
+      mySeat = null;
+      try { localStorage.removeItem(SEAT_KEY); } catch (e) {}
+    }
+
+    // Everything the server says comes through here: the table, the seats,
+    // who this device is, and whether a rematch has started elsewhere.
+    function take(data){
+      if (!data || !data.game) return;
+      const before = view;
+      takeEvents(data.game);
+      view = data.game;
+      seats = data.seats || [];
+      if (seatToken && data.you && data.you.role !== 'seat') {
+        forgetSeat();
+        showToast('Your seat was freed on the dealer’s device. Pick it again to rejoin.');
+      }
+      if (actingFor !== null && !(view.pending && view.pending.player === actingFor)) actingFor = null;
+      if (before && before.phase !== 'game_over' && view.phase === 'game_over') announceWinner();
+      if (data.next) follow(data.next);
+      nudge();
+    }
+
+    // A rematch is a new room. The dealer's and the players' tokens carry
+    // over, so everyone just moves across with the codes they have.
+    function follow(code){
+      if (hostToken) writeJSON(PLAY_KEY, {code, token: hostToken});
+      if (seatToken) writeJSON(SEAT_KEY, {code, seat: mySeat, token: seatToken});
+      location.href = tableUrl(code);
+    }
+
+    // On a phone, your turn is the thing worth interrupting for.
+    let nudged = null;
+    function nudge(){
+      const p = view.pending;
+      const mine = mode() === 'player' && view.phase === 'playing' && p && p.player === mySeat;
+      document.title = (mine ? '● Your turn — ' : '') + BASE_TITLE;
+      const key = mine ? `${view.seq}` : null;
+      // Browsers refuse to vibrate a page nobody has touched yet (right after
+      // following a rematch, say), and log it as an error.
+      const touched = !navigator.userActivation || navigator.userActivation.hasBeenActive;
+      if (mine && nudged !== key && touched && navigator.vibrate) { try { navigator.vibrate(120); } catch (e) {} }
+      nudged = key;
+    }
+    const BASE_TITLE = document.title;
+
+    function announceWinner(){
+      const names = view.winners.map(nameOf);
+      const score = view.players[view.winners[0]].total;
+      document.getElementById('win-name').textContent =
+        view.winners.includes(mySeat) && names.length === 1 ? 'You win!'
+        : names.length > 1 ? `${names.join(' & ')} share it!` : `${names[0]} wins!`;
+      document.getElementById('win-line').textContent = `First past ${TARGET_SCORE}, on ${score}.`;
+      try { winDialog.showModal(); } catch (e) {}
+    }
+
+    async function post(url, body, token){
+      const headers = {'Content-Type': 'application/json'};
+      if (token) headers['X-Flip7-Token'] = token;
+      const res = await fetch(url, {method: 'POST', headers, body: JSON.stringify(body || {})});
+      const data = await res.json().catch(() => ({}));
+      return {res, data};
+    }
+
+    async function send(move){
+      if (busy || !view) return;
+      const token = tokenFor(move.player);
+      if (!token) return;
+      busy = true;
+      render();
+      try {
+        const {res, data} = await post(MOVE_URL, {...move, seq: view.seq}, token);
+        take(data);
+        if (res.status === 404) gone = true;
+        else if (!res.ok) showToast(data.error || 'That didn’t work — try again.');
+      } catch (e) {
+        showToast('Couldn’t reach the server. Check the connection and try again.');
+      }
+      busy = false;
+      render();
+    }
+
+    async function sitAt(seat){
+      if (busy) return;
+      busy = true;
+      try {
+        const {res, data} = await post(`/flip7/api/play/${CODE}/seats/${seat}/claim`);
+        if (res.ok) {
+          seatToken = data.seat_token;
+          mySeat = seat;
+          writeJSON(SEAT_KEY, {code: CODE, seat, token: seatToken});
+          if (inviteDialog.open) inviteDialog.close();
+        } else {
+          showToast(data.error || 'Couldn’t take that seat.');
+        }
+        take(data);
+      } catch (e) {
+        showToast('Couldn’t reach the server. Try again.');
+      }
+      busy = false;
+      render();
+    }
+
+    async function freeSeat(seat){
+      if (!hostToken || busy) return;
+      busy = true;
+      try {
+        const {res, data} = await post(`/flip7/api/play/${CODE}/seats/${seat}/release`, {}, hostToken);
+        if (!res.ok) showToast(data.error || 'Couldn’t free that seat.');
+        if (seat === mySeat) forgetSeat();
+        take(data);
+      } catch (e) {
+        showToast('Couldn’t reach the server. Try again.');
+      }
+      busy = false;
+      render();
+      if (inviteDialog.open) fillInvite();
+    }
+
+    async function rematch(){
+      if (busy || !hostToken) return;
+      busy = true;
+      render();
+      try {
+        const {res, data} = await post(`/flip7/api/play/${CODE}/rematch`, {}, hostToken);
+        if (res.ok) { follow(data.code); return; }
+        showToast(data.error || 'Couldn’t start another game.');
+      } catch (e) {
+        showToast('Couldn’t reach the server. Try again.');
+      }
+      busy = false;
+      render();
+    }
+
+    // The dealer's own moves come back in the response; this is for
+    // everyone else's. Faster while a round is live, since on a phone it's
+    // how you find out it's your turn.
+    async function poll(){
+      if (!busy && !gone) {
+        try {
+          const headers = {};
+          const token = seatToken || hostToken;
+          if (token) headers['X-Flip7-Token'] = token;
+          const res = await fetch(STATE_URL, {headers});
+          if (res.status === 404) { gone = true; render(); }
+          else if (res.ok) {
+            const data = await res.json();
+            const changed = !view || data.game.seq !== view.seq
+              || JSON.stringify(data.seats) !== JSON.stringify(seats) || data.next;
+            if (!busy && changed) { take(data); render(); }
+          }
+        } catch (e) {
+          // Retry on the next tick.
+        }
+      }
+      setTimeout(poll, view && view.phase === 'playing' ? 1000 : 2500);
+    }
+
+    // --- rendering ---
+
+    function gridShape(n){
+      if (n <= 3) return [n, 1];
+      if (n === 4) return [2, 2];
+      if (n <= 6) return [3, 2];
+      if (n <= 8) return [4, 2];
+      if (n === 9) return [3, 3];
+      return [4, 3];
+    }
+
+    function actingSeat(){
+      if (view.phase !== 'playing' || !view.pending) return null;
+      return view.pending.player;
+    }
+
+    function mat(p, i, seen){
+      const acting = actingSeat() === i;
+      const flip7 = p.hand.numbers.length >= 7;
+      const statusText = flip7 ? 'Flip 7!'
+        : p.status === 'busted' ? `Bust on ${p.hand.bust_card}`
+        : p.status === 'stayed' ? 'Stayed'
+        : p.status === 'frozen' ? 'Frozen'
+        : acting ? (view.pending.kind === 'give' ? 'Choosing' : you(i, 'Your turn', 'Their turn'))
+        : '';
+
+      // Anything that wasn't there last time flips in.
+      const counts = {};
+      (seen || []).forEach(id => { counts[id] = (counts[id] || 0) + 1; });
+      const cards = el('div', {class: 'f7-mat-cards'});
+      tableCards(p.hand).forEach(c => {
+        const isNew = seen && !(counts[c.id] > 0);
+        if (!isNew && seen) counts[c.id] -= 1;
+        cards.appendChild(cardEl(c.id, [c.extra, isNew ? 'is-new' : ''].filter(Boolean).join(' ')));
+      });
+
+      const pips = el('div', {class: 'f7-pips', 'aria-label': `${p.hand.numbers.length} of 7 numbers`});
+      for (let k = 0; k < 7; k++) pips.appendChild(el('span', {class: k < p.hand.numbers.length ? 'is-on' : ''}));
+
+      const running = view.phase === 'playing' && p.status !== 'busted' && p.round_score > 0
+        ? el('span', {class: 'f7-mat-round', text: `+${p.round_score}`}) : null;
+      const onPhone = seats[i] && seats[i].taken && i !== mySeat;
+
+      return el('div', {
+        class: ['f7-mat', `is-${p.status}`, acting ? 'is-turn' : '', flip7 ? 'is-flip7' : '',
+                i === mySeat ? 'is-me' : '', shaking.has(i) ? 'is-shaking' : ''].filter(Boolean).join(' ')
+      }, [
+        el('div', {class: 'f7-mat-head'}, [
+          el('span', {class: 'f7-mat-name', text: p.name}),
+          i === mySeat ? el('span', {class: 'f7-you', text: 'You'}) : null,
+          onPhone ? el('span', {class: 'f7-on-phone', title: 'Playing on their own phone'}, [icon('phone')]) : null,
+          view.dealer === i ? el('span', {class: 'f7-dealer', title: 'Dealer', text: 'D'}) : null,
+          statusText ? el('span', {class: 'f7-mat-status', text: statusText}) : null
+        ]),
+        el('div', {class: 'f7-mat-score'}, [
+          el('span', {class: 'f7-mat-total', text: String(p.total)}), running, pips
+        ]),
+        cards
+      ]);
+    }
+
+    // Offered to anyone watching while there's still a seat free.
+    function seatPicker(){
+      const open = seats.map((s, i) => i).filter(i => !seats[i].taken);
+      if (mode() !== 'watch' || justWatching || !open.length || view.phase === 'game_over') return null;
+      const list = el('div', {class: 'f7-seat-list'});
+      view.players.forEach((p, i) => list.appendChild(el('button', {
+        class: 'f7-btn f7-btn-ghost f7-seat', type: 'button', disabled: busy || seats[i].taken,
+        onclick: () => sitAt(i)
+      }, [el('span', {text: p.name}), seats[i].taken ? el('span', {class: 'f7-note', text: 'taken'}) : null])));
+      return el('div', {class: 'f7-panel f7-seat-picker'}, [
+        el('div', {class: 'f7-panel-title'}, [el('span', {text: 'Which one are you?'})]),
+        el('p', {class: 'f7-note', text: 'Tap your name to play your own turns from this phone.'}),
+        list,
+        el('button', {
+          class: 'f7-btn f7-btn-ghost f7-btn-small', type: 'button',
+          onclick: () => {
+            justWatching = true;
+            try { sessionStorage.setItem(`flip7:watch:${CODE}`, '1'); } catch (e) {}
+            render();
+          }
+        }, [el('span', {text: 'Just watching'})])
+      ]);
+    }
+
+    function statusPanel(){
+      const panel = el('div', {class: 'f7-status'});
+      const pending = view.pending;
+
+      if (view.phase === 'playing' && pending && pending.kind === 'turn') {
+        const p = view.players[pending.player];
+        const hasCards = p.hand.numbers.length || p.hand.mods.length || p.hand.x2 || p.hand.chance;
+        const mine = pending.player === mySeat;
+        panel.append(
+          el('div', {class: 'f7-status-head', text: mine ? 'Your turn' : `${p.name}’s turn`}),
+          el('div', {class: 'f7-status-sub', text: !canAct(pending.player)
+            ? (takenByPhone(pending.player) ? 'On their phone.' : 'On the dealer’s device.')
+            : hasCards ? `Hit for another card, or stay on ${p.round_score}.`
+            : 'No cards yet — hit to get one.'})
+        );
+      } else if (view.phase === 'playing' && pending && pending.kind === 'give') {
+        const mine = pending.player === mySeat;
+        panel.append(
+          el('div', {class: 'f7-status-head', text: `${mine ? 'You' : nameOf(pending.player)} drew ${withArticle(pending.card)}`}),
+          el('div', {class: 'f7-status-sub', text: canAct(pending.player) ? 'Who gets it?' : 'Deciding who gets it…'})
+        );
+      } else if (view.phase === 'round_over' || view.phase === 'game_over') {
+        const over = view.phase === 'game_over';
+        const last = view.last_round;
+        const head = over
+          ? (view.winners.length > 1 ? `${view.winners.map(nameOf).join(' & ')} share it!` : `${nameOf(view.winners[0])} wins!`)
+          : `Round ${view.round} is over`;
+        const sub = last.flip7_by !== null ? `${nameOf(last.flip7_by)} flipped 7.`
+          : last.exhausted ? 'The deck ran out.' : 'Everyone’s stayed or bust.';
+        panel.append(el('div', {class: 'f7-status-head', text: head}), el('div', {class: 'f7-status-sub', text: sub}));
+
+        const table = el('table', {class: 'f7-summary'});
+        view.players.map((p, i) => i)
+          .sort((a, b) => view.players[b].total - view.players[a].total)
+          .forEach(i => {
+            const p = view.players[i];
+            const r = p.rounds[p.rounds.length - 1];
+            table.appendChild(el('tr', {class: i === mySeat ? 'is-me' : ''}, [
+              el('td', {class: 'f7-name', text: p.name}),
+              el('td', {class: 'f7-summary-round' + (r.bust ? ' is-bust' : r.flip7 ? ' is-flip7' : ''),
+                        text: r.bust ? 'bust' : `+${r.score}`}),
+              el('td', {class: 'f7-total' + (p.total >= TARGET_SCORE ? ' is-winner' : ''), text: String(p.total)})
+            ]));
+          });
+        panel.appendChild(table);
+      }
+      return panel;
+    }
+
+    function turnButtons(pending){
+      const p = view.players[pending.player];
+      const hasCards = p.hand.numbers.length || p.hand.mods.length || p.hand.x2 || p.hand.chance;
+      const covering = pending.player === actingFor || (mode() === 'player' && pending.player !== mySeat);
+      return [
+        el('button', {
+          class: 'f7-btn f7-btn-ghost f7-btn-big f7-stay', type: 'button', disabled: busy || !hasCards,
+          onclick: () => send({type: 'stay', player: pending.player})
+        }, [icon('stay'), el('span', {text: covering ? `Stay for ${p.name}` : 'Stay'})]),
+        el('button', {
+          class: 'f7-btn f7-btn-gold f7-btn-big f7-hit', type: 'button', disabled: busy,
+          onclick: () => send({type: 'hit', player: pending.player})
+        }, [icon('hit'), el('span', {text: covering ? `Hit for ${p.name}` : 'Hit'})])
+      ];
+    }
+
+    function controls(){
+      const bar = el('div', {class: 'f7-controls'});
+      const pending = view.pending;
+      const m = mode();
+      const note = text => bar.appendChild(el('p', {class: 'f7-note', text}));
+
+      if (m === 'watch') {
+        note('Watching — moves are made at the table.');
+      } else if (view.phase === 'round_over') {
+        bar.appendChild(el('button', {
+          class: 'f7-btn f7-btn-gold f7-btn-big', type: 'button', disabled: busy,
+          onclick: () => send({type: 'next_round', player: mySeat !== null ? mySeat : undefined})
+        }, [el('span', {text: `Deal round ${view.round + 1}`}), icon('next')]));
+      } else if (view.phase === 'game_over') {
+        if (hostToken) {
+          bar.appendChild(el('button', {
+            class: 'f7-btn f7-btn-gold f7-btn-big', type: 'button', disabled: busy, onclick: rematch
+          }, [el('span', {text: 'New game, same players'})]));
+        } else {
+          note('If the dealer starts another game, this phone follows.');
+        }
+      } else if (pending && canAct(pending.player)) {
+        if (pending.kind === 'turn') bar.append(...turnButtons(pending));
+        else bar.appendChild(el('button', {
+          class: 'f7-btn f7-btn-gold f7-btn-big', type: 'button',
+          onclick: () => { try { giveDialog.showModal(); } catch (e) {} }
+        }, [el('span', {text: `Choose who gets the ${cardName(pending.card)}`})]));
+      } else if (pending) {
+        note(`Waiting for ${nameOf(pending.player)}…`);
+        // The dealer's device can always step in — a phone that's gone to
+        // sleep shouldn't hold up the table.
+        if (hostToken) bar.appendChild(el('button', {
+          class: 'f7-btn f7-btn-ghost f7-btn-small f7-cover', type: 'button',
+          onclick: () => { actingFor = pending.player; render(); }
+        }, [el('span', {text: `Play ${nameOf(pending.player)}’s turn`})]));
+      }
+      return bar;
+    }
+
+    function side(){
+      const pending = view.pending;
+      const canHit = !busy && view.phase === 'playing' && pending && pending.kind === 'turn' && canAct(pending.player);
+      const pile = el('button', {
+        class: 'f7-pile', type: 'button', disabled: !canHit,
+        'aria-label': `Draw pile, ${view.deck_count} cards — tap to hit`,
+        onclick: () => send({type: 'hit', player: pending.player})
+      }, [el('span', {class: 'f7-pile-mark', text: '7'}), el('span', {class: 'f7-pile-count', text: String(view.deck_count)})]);
+
+      const log = el('ol', {class: 'f7-log', 'aria-live': 'polite'});
+      view.log.slice(-6).reverse().forEach(e => {
+        const text = describe(e);
+        if (text) log.appendChild(el('li', {text}));
+      });
+
+      const seated = seats.filter(s => s.taken).length;
+      return el('div', {class: 'f7-side'}, [
+        pile,
+        el('div', {class: 'f7-info', text:
+          `Round ${view.round} · ${nameOf(view.dealer)} dealt · ${view.deck_count} in the deck · ${view.discard_count} discarded`}),
+        log,
+        hostToken ? el('button', {
+          class: 'f7-btn f7-btn-ghost f7-btn-small f7-invite-open', type: 'button',
+          onclick: () => { fillInvite(); try { inviteDialog.showModal(); } catch (e) {} }
+        }, [icon('phone'), el('span', {text: seated ? `Phones · ${seated} of ${seats.length} seated` : 'Play on your own phones'})]) : null
+      ]);
+    }
+
+    function fillGiveDialog(){
+      const pending = view.pending;
+      const body = document.getElementById('give-body');
+      body.textContent = '';
+      const chooser = pending.player === mySeat ? 'You' : nameOf(pending.player);
+      const explain = {
+        freeze: 'Whoever gets it banks what they have and is out for the round.',
+        flip3: 'Whoever gets it has to take the next three cards.',
+        chance: `${chooser} already ${chooser === 'You' ? 'have' : 'has'} one, so it goes to someone who doesn’t.`
+      }[pending.card];
+      body.append(
+        el('div', {class: 'f7-give-card'}, [cardEl(pending.card)]),
+        el('h2', {text: `${chooser} drew ${withArticle(pending.card)}`}),
+        el('p', {text: explain})
+      );
+      const options = el('div', {class: 'f7-give-options'});
+      pending.options.forEach(i => {
+        const p = view.players[i];
+        const label = i === pending.player ? `${i === mySeat ? 'Me' : p.name} (keep it)` : p.name;
+        options.appendChild(el('button', {
+          class: 'f7-btn f7-btn-ghost f7-give-option', type: 'button', disabled: busy,
+          onclick: () => { giveDialog.close(); send({type: 'give', player: pending.player, target: i}); }
+        }, [
+          el('span', {class: 'f7-give-name', text: label}),
+          el('span', {class: 'f7-give-detail', text: `${p.total} banked · ${p.hand.numbers.length}/7 · +${p.round_score}`})
+        ]));
+      });
+      body.appendChild(options);
+    }
+
+    // The dealer's view of who's on a phone: the QR to get them there, and
+    // a way to free a seat someone took by mistake.
+    function fillInvite(){
+      const body = document.getElementById('invite-body');
+      body.textContent = '';
+      const list = el('div', {class: 'f7-invite-seats'});
+      view.players.forEach((p, i) => {
+        const taken = seats[i] && seats[i].taken;
+        list.appendChild(el('div', {class: 'f7-invite-seat'}, [
+          el('span', {class: 'f7-name', text: p.name}),
+          el('span', {class: 'f7-note', text: i === mySeat ? 'this device' : taken ? 'on their phone' : 'at the table'}),
+          taken
+            ? el('button', {class: 'f7-btn f7-btn-ghost f7-btn-small', type: 'button', disabled: busy,
+                            onclick: () => freeSeat(i), text: i === mySeat ? 'Leave' : 'Free seat'})
+            : (mySeat === null
+                ? el('button', {class: 'f7-btn f7-btn-ghost f7-btn-small', type: 'button', disabled: busy,
+                                onclick: () => sitAt(i), text: 'That’s me'})
+                : null)
+        ]));
+      });
+      body.append(
+        el('img', {class: 'f7-invite-qr', src: `/qr.svg?path=${encodeURIComponent(tableUrl(CODE))}`,
+                   alt: `QR code for game ${CODE}`}),
+        el('div', {class: 'f7-share-code', text: CODE}),
+        el('p', {class: 'f7-note', text:
+          'Scan it, or enter the code at /join, then tap your name. Seats left at the table are played from here.'}),
+        list
+      );
+    }
+
+    let givenFor = null;   // the seq the give dialog was opened for
+    function render(){
+      app.textContent = '';
+      if (gone) {
+        app.appendChild(el('div', {class: 'f7-panel'}, [
+          el('p', {text: 'This game has ended or expired.'}),
+          el('a', {class: 'f7-btn f7-btn-gold f7-btn-wide', href: SETUP_URL, text: 'Start a new one'})
+        ]));
+        return;
+      }
+      if (!view) {
+        app.appendChild(el('p', {class: 'f7-note', text: 'Shuffling up…'}));
+        return;
+      }
+
+      const picker = seatPicker();
+      if (picker) app.appendChild(picker);
+
+      const [cols, rows] = gridShape(view.players.length);
+      const mats = el('div', {class: 'f7-mats', style: `--cols:${cols};--rows:${rows}`});
+      view.players.forEach((p, i) => mats.appendChild(mat(p, i, seenCards && seenCards[i])));
+      seenCards = view.players.map(p => tableCards(p.hand).map(c => c.id));
+
+      app.appendChild(el('div', {
+        class: `f7-table is-${mode()}`,
+        'data-phase': view.phase, 'data-players': String(view.players.length)
+      }, [statusPanel(), mats, side(), controls()]));
+
+      const pending = view.pending;
+      if (view.phase === 'playing' && pending && pending.kind === 'give' && canAct(pending.player)) {
+        fillGiveDialog();
+        if (givenFor !== view.seq && !giveDialog.open) {
+          givenFor = view.seq;
+          try { giveDialog.showModal(); } catch (e) {}
+        }
+      } else if (giveDialog.open) {
+        giveDialog.close();
+      }
+    }
+
+    render();
+    poll();
+  }
+</script>
+{% endblock %}

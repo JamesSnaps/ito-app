@@ -52,7 +52,7 @@ def test_flip7_pages_render_without_a_room():
     assert not FLIP7.starts_rooms
     assert c.get("/flip7/").status_code == 200
     assert c.get("/flip7/rules").status_code == 200
-    assert "Open scorekeeper" in c.get("/").get_data(as_text=True)
+    assert "Play or keep score" in c.get("/").get_data(as_text=True)
 
 
 def test_flip7_does_not_call_out_to_the_internet():
@@ -845,3 +845,27 @@ def test_side_pages_count_wrong_codes_against_the_throttle():
     # The right code still works, and clears the misses.
     assert f"/ito/host/{code}" in c.get(f"/ito/stats?code={code}").get_data(as_text=True)
     assert c.get("/ito/rules?code=ZZZZ").status_code == 200
+
+
+def test_the_site_is_installable():
+    """Add to Home Screen needs a manifest with real icons, and every page
+    has to point at it."""
+    c = client()
+    res = c.get("/manifest.webmanifest")
+    assert res.mimetype == "application/manifest+json"
+    manifest = res.get_json(force=True)
+    assert manifest["display"] == "standalone" and manifest["start_url"] == "/"
+    for icon in manifest["icons"]:
+        assert c.get(icon["src"]).status_code == 200, icon["src"]
+    assert any(i.get("purpose") == "maskable" for i in manifest["icons"])
+
+    for page in ("/", "/join", "/flip7/", "/flip7/play", "/ito/"):
+        body = c.get(page).get_data(as_text=True)
+        assert 'rel="manifest"' in body and "apple-touch-icon" in body, page
+
+
+def test_pages_an_installed_app_can_reach_have_a_way_back():
+    """Standalone mode has no browser back button."""
+    c = client()
+    assert 'href="/"' in c.get("/join").get_data(as_text=True)
+    assert 'href="/"' in c.get("/ito/").get_data(as_text=True)

@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 {% block title %}Flip 7 records — {{ app_name }}{% endblock %}
 {% block body_class %}flip7{% endblock %}
+{% block theme_color %}#0f2e24{% endblock %}
 {% block head %}<link rel="stylesheet" href="{{ asset('flip7.css') }}">{% endblock %}
 {% block body %}
 <div class="wrap">
   <header class="f7-bar">
-    <a class="f7-btn-icon" href="{{ url_for('flip7.landing') }}"
-       aria-label="Back to the scorekeeper" title="Back to the scorekeeper">←</a>
+    <a class="f7-btn-icon" href="{{ back }}" aria-label="Back" title="Back">←</a>
     <h1 class="f7-title">Flip <span>7</span></h1>
   </header>
   <div class="f7-subtitle">

@@ -28,6 +28,9 @@ def isolated_data(tmp_path, monkeypatch):
     stats_file.write_text(json.dumps({}))
     monkeypatch.setattr(paths, "STATS_PATH", stats_file)
     monkeypatch.setattr(stats, "STATS_PATH", stats_file)
+    # Saved Flip 7 games go under game_data_dir, which reads DATA_DIR at
+    # call time.
+    monkeypatch.setattr(paths, "DATA_DIR", tmp_path / "data")
 
     # The guess throttle is a module-level singleton: without this, failed
     # lookups in one test count against the next one.

@@ -1,15 +1,15 @@
 {% extends "base.html" %}
-{% block title %}Flip 7 scoring — {{ app_name }}{% endblock %}
+{% block title %}Flip 7 rules — {{ app_name }}{% endblock %}
 {% block body_class %}flip7{% endblock %}
+{% block theme_color %}#0f2e24{% endblock %}
 {% block head %}<link rel="stylesheet" href="{{ asset('flip7.css') }}">{% endblock %}
 {% block body %}
 <div class="wrap">
   <header class="f7-bar">
-    <a class="f7-btn-icon" href="{{ url_for('flip7.landing') }}"
-       aria-label="Back to the scorekeeper" title="Back to the scorekeeper">←</a>
+    <a class="f7-btn-icon" href="{{ back }}" aria-label="Back" title="Back">←</a>
     <h1 class="f7-title">Flip <span>7</span></h1>
   </header>
-  <div class="f7-subtitle">What this app adds up</div>
+  <div class="f7-subtitle">How the app scores, and how it plays</div>
 
   <div class="f7-panel f7-rules">
     <h2>Entering a round</h2>
@@ -46,8 +46,49 @@
     <p>The first player to reach <strong>{{ target }}</strong> wins, and the
       scoreboard calls it. Everyone finishes the round they're in, so enter
       the whole round before reading the banner.</p>
-    <p class="f7-note">This is a scoring reference for the app, not the full
-      rulebook — dealing, hitting and the action cards all stay on the table.</p>
+    <p class="f7-note">With a real deck, the scorekeeper only adds up — dealing,
+      hitting and the action cards all happen on the table.</p>
+  </div>
+
+  <div class="f7-panel f7-rules">
+    <h2>Playing on the app's deck</h2>
+    <p>Play mode is the whole game: the app shuffles the full 94-card deck,
+      deals, and keeps everyone's cards on the table for you.</p>
+    <ul>
+      <li><strong>The deal.</strong> Everyone gets one card face up, starting
+        on the dealer's left. An action card that turns up is dealt with on
+        the spot, then the deal carries on.</li>
+      <li><strong>Your turn.</strong> Hit to take one more card, or Stay to
+        bank what you have. With nothing in front of you, you have to hit.
+        Drawing an action card counts as your hit.</li>
+      <li><strong>Freeze.</strong> Whoever draws it picks a player still in
+        — themselves included — who banks their cards and is out of the
+        round.</li>
+      <li><strong>Flip Three.</strong> Whoever draws it picks a player still
+        in, who has to take the next three cards. A Freeze or Flip Three
+        drawn during those three waits until all three are out, then gets
+        handed on. A bust or a Flip 7 stops the three early.</li>
+      <li><strong>Second Chance.</strong> Keep it: the next time you'd bust,
+        the duplicate and the Second Chance are thrown away instead and you
+        play on. You can only hold one, so a second goes to someone who
+        doesn't have one.</li>
+      <li><strong>Who can be picked.</strong> Only players still in the
+        round — not anyone who has stayed, been frozen or bust. The last one
+        in takes the card themselves.</li>
+      <li><strong>The round ends</strong> when nobody is left in, or the
+        moment someone flips seven different numbers. Everyone who hasn't
+        bust scores what's in front of them.</li>
+      <li><strong>The deck carries over.</strong> Cards from a finished round
+        go to the discards; when the deck runs out, only the discards are
+        shuffled back in. The dealer moves one seat left each round.</li>
+    </ul>
+    <p><strong>On your own phones.</strong> The device that dealt shows a QR
+      code under <em>Phones</em>; scan it (or enter the room code), tap your
+      name, and your turns are played from your phone. Anyone who doesn't
+      join is played from the dealer's device, which can also step in for a
+      phone that's gone quiet, or free a seat taken by mistake. When a game
+      ends, <em>New game, same players</em> brings every phone along.</p>
+    <p class="f7-note">A finished game goes into the records on its own.</p>
   </div>
 
   <div class="version">{{ app_name }} v{{ app_version }}</div>

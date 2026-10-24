@@ -14,5 +14,8 @@
            autocapitalize="characters" autocomplete="off" autofocus placeholder="＿＿＿＿">
     <button class="btn-primary" type="submit" style="width:100%;">Join</button>
   </form>
+  {# Installed to a home screen there's no browser back button, so every
+     page carries its own way out. #}
+  <a class="btn btn-secondary" href="{{ url_for('hub') }}" style="width:100%; margin-top:12px;">Back to {{ app_name }}</a>
 </div>
 {% endblock %}

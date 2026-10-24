@@ -1,7 +1,9 @@
 {% extends "base.html" %}
 {% block title %}Flip 7 — watching {{ code }}{% endblock %}
 {% block body_class %}flip7{% endblock %}
-{% block head %}<link rel="stylesheet" href="{{ asset('flip7.css') }}">{% endblock %}
+{% block theme_color %}#0f2e24{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ asset('flip7.css') }}">
+<script src="{{ asset('flip7.js') }}"></script>{% endblock %}
 {% block body %}
 <div class="wrap">
   <header class="f7-bar">
@@ -25,20 +27,6 @@
   const CODE = {{ code|tojson }};
   const TARGET_SCORE = {{ target }};
   let board = null;
-
-  // Same helper as the scorekeeper's, and for the same reason: player names
-  // are typed at the table and go straight back on screen.
-  function el(tag, attrs, children){
-    const node = document.createElement(tag);
-    for (const [k, v] of Object.entries(attrs || {})) {
-      if (k === 'class') node.className = v;
-      else if (k === 'text') node.textContent = v;
-      else if (v === true) node.setAttribute(k, '');
-      else if (v !== false && v != null) node.setAttribute(k, v);
-    }
-    (children || []).forEach(c => c && node.appendChild(c));
-    return node;
-  }
 
   function render(){
     const app = document.getElementById('app');

@@ -41,7 +41,11 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-ui);
-  padding: 24px;
+  /* viewport-fit=cover (so an installed app can use the whole screen) lets
+     the page run under a notch or the home indicator; the insets keep the
+     content out from under them. They're 0 everywhere else. */
+  padding: 24px max(24px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom))
+           max(24px, env(safe-area-inset-left));
 }
 
 .wrap { max-width: 640px; margin: 0 auto; }
@@ -312,7 +316,7 @@ input, select {
    latecomer, ignored the rest of the time. */
 .display-footer {
   position: fixed;
-  bottom: 3vmin;
+  bottom: max(3vmin, env(safe-area-inset-bottom));
   font-size: clamp(0.7rem, 1.4vw, 1.1rem);
   letter-spacing: 0.2em;
   text-transform: uppercase;

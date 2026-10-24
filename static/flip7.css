@@ -24,7 +24,7 @@
               var(--felt-light) 0%, var(--felt) 45%, var(--felt-dark) 100%);
   background-attachment: fixed;
   color: var(--cream);
-  padding: 0 0 96px;
+  padding: 0 env(safe-area-inset-right) 96px env(safe-area-inset-left);
 }
 
 .flip7 .wrap { max-width: 640px; margin: 0 auto; padding: 16px 16px 24px; }
@@ -702,4 +702,459 @@
 @media (prefers-reduced-motion: reduce) {
   .f7-flash-card { animation: none; }
   .f7-flash { animation: f7-flash-out 1.5s linear forwards; }
+}
+
+/* --- play mode: setup ------------------------------------------------- */
+
+/* The scorekeeper's way in, shown only while nothing has been banked. */
+.f7-play-promo { display: block; color: inherit; text-decoration: none; }
+.f7-play-promo:hover { border-color: var(--gold); }
+.f7-play-promo .f7-panel-title { margin-bottom: 4px; }
+.f7-play-promo .f7-icon { width: 18px; height: 18px; margin: 0; opacity: 1; }
+
+/* The app's own deck. The setup screen is the scorekeeper's shell; the
+   table below is its own layout, built for an iPad lying flat in landscape
+   first and squeezed down from there. */
+
+.flip7 .f7-btn-wide {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  text-decoration: none;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.05rem;
+  padding: 14px 16px;
+}
+.f7-btn-wide:disabled { opacity: 0.45; }
+.f7-deal { margin-bottom: 12px; }
+.f7-play-note { text-align: center; line-height: 1.5; }
+.f7-error { color: #f3a08c; font-size: 0.85rem; margin: 10px 0 0; }
+.f7-resume .f7-note { margin: 0 0 12px; }
+
+.f7-room-code {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  font-size: 0.85rem;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  color: var(--gold-bright);
+}
+
+.f7-toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(96px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 70;
+  max-width: min(420px, calc(100% - 32px));
+  padding: 10px 16px;
+  border-radius: 12px;
+  background: var(--cream);
+  color: var(--ink);
+  font-weight: 700;
+  font-size: 0.9rem;
+  text-align: center;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+.f7-toast[hidden] { display: none; }
+
+/* --- play mode: the table --------------------------------------------- */
+
+/* Phones first in the cascade, but the layout that matters most is the
+   landscape one at the bottom of this section. */
+.flip7.f7-at-table { padding-bottom: 0; }
+.f7-at-table .wrap { max-width: 880px; padding-bottom: 0; }
+
+.f7-table { display: flex; flex-direction: column; gap: 12px; }
+
+.f7-status-head {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.5rem;
+  line-height: 1.15;
+  color: var(--gold-bright);
+}
+.f7-status-sub { font-size: 0.9rem; color: rgba(251, 246, 236, 0.75); margin-top: 2px; }
+
+.f7-summary { margin-top: 10px; }
+.f7-summary td { padding: 6px 4px; border-bottom: 1px solid var(--line); }
+.f7-summary tr:last-child td { border-bottom: none; }
+.f7-summary .f7-name { font-size: 0.95rem; }
+.f7-summary .f7-total { font-size: 1.05rem; }
+.f7-summary-round { font-family: var(--font-mono); font-weight: 700; color: var(--green); text-align: right; }
+.f7-summary-round.is-bust { color: #f3a08c; }
+.f7-summary-round.is-flip7 { color: var(--gold-bright); }
+
+.f7-mats { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+
+/* Each mat is a size container, so the cards on it scale with the space
+   the mat has been given rather than with the screen. */
+.f7-mat {
+  container-type: inline-size;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.16);
+  transition: border-color 0.2s ease, background 0.2s ease, opacity 0.2s ease;
+}
+/* Whoever the table is waiting on. On a narrow screen their mat comes to
+   the top, so the person holding the phone never scrolls for their turn. */
+.f7-mat.is-turn {
+  order: -1;
+  border-color: var(--gold);
+  background: rgba(217, 169, 78, 0.1);
+  box-shadow: 0 0 0 1px var(--gold), 0 10px 26px rgba(0, 0, 0, 0.3);
+}
+.f7-mat.is-busted { opacity: 0.55; border-color: rgba(179, 67, 43, 0.6); }
+.f7-mat.is-stayed, .f7-mat.is-frozen { border-color: rgba(127, 224, 168, 0.4); }
+.f7-mat.is-flip7 { opacity: 1; border-color: var(--gold-bright); }
+
+.f7-mat-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.f7-mat-name {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.1rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.f7-dealer {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 700;
+  border: 1px solid var(--line);
+  color: rgba(251, 246, 236, 0.7);
+}
+.f7-mat-status {
+  margin-left: auto;
+  flex: none;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: rgba(251, 246, 236, 0.1);
+}
+.is-turn .f7-mat-status { background: var(--gold); color: var(--ink); }
+.is-busted .f7-mat-status { background: var(--crimson); }
+.is-stayed .f7-mat-status, .is-frozen .f7-mat-status { background: rgba(127, 224, 168, 0.2); color: var(--green); }
+.is-flip7 .f7-mat-status { background: var(--gold-bright); color: var(--ink); }
+
+.f7-mat-score { display: flex; align-items: baseline; gap: 8px; }
+.f7-mat-total { font-family: var(--font-mono); font-weight: 700; font-size: 1.35rem; color: var(--gold-bright); }
+.f7-mat-round { font-family: var(--font-mono); font-weight: 700; font-size: 0.9rem; color: var(--green); }
+/* Seven slots: how close they are to the bonus, at a glance. */
+.f7-pips { margin-left: auto; display: flex; gap: 4px; align-self: center; }
+.f7-pips span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1px solid rgba(251, 246, 236, 0.35);
+}
+.f7-pips span.is-on { background: var(--gold-bright); border-color: var(--gold-bright); }
+
+.f7-mat-cards {
+  --card-w: clamp(34px, 11cqw, 64px);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: calc(var(--card-w) * 1.4);
+}
+
+/* --- the cards --- */
+
+/* Our own faces, not the published art: cream numbers, gold modifiers,
+   and a colour per action. Sized off --card-w, set by whatever holds them. */
+.f7-card {
+  --w: var(--card-w, 44px);
+  flex: none;
+  width: var(--w);
+  aspect-ratio: 5 / 7;
+  border-radius: calc(var(--w) * 0.14);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-family: var(--font-display);
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+}
+.f7-card-num { background: var(--cream); color: var(--ink); font-size: calc(var(--w) * 0.5); }
+.f7-card-mod {
+  background: linear-gradient(180deg, var(--gold-bright), var(--gold));
+  color: var(--ink);
+  font-size: calc(var(--w) * 0.34);
+}
+.f7-card-act { color: var(--cream); font-size: calc(var(--w) * 0.15); text-align: center; padding: 2px; }
+.f7-card-act .f7-icon { width: 48%; height: auto; margin: 0; opacity: 1; }
+.f7-card-freeze { background: #2f6f8f; }
+.f7-card-flip3 { background: var(--crimson); }
+.f7-card-chance { background: #3b7a5c; }
+/* Played on this player: shown, but it's done its job. */
+.f7-card.is-played { opacity: 0.7; }
+/* Drawn mid-Flip-Three and still to be handed out. */
+.f7-card.is-held { outline: 2px dashed var(--gold-bright); outline-offset: 2px; }
+/* The duplicate. `rotate` rather than transform, so the deal animation
+   can't override it. */
+.f7-card.is-bust-card { outline: 3px solid var(--crimson); outline-offset: 1px; rotate: 7deg; }
+
+.f7-card.is-new { animation: f7-deal 0.34s cubic-bezier(0.2, 0.9, 0.3, 1.2) both; }
+@keyframes f7-deal {
+  from { transform: translateY(-16px) rotateY(80deg); opacity: 0; }
+  to   { transform: none; opacity: 1; }
+}
+.f7-mat.is-shaking { animation: f7-shake 0.5s ease; }
+@keyframes f7-shake {
+  20%, 60% { transform: translateX(-6px); }
+  40%, 80% { transform: translateX(6px); }
+}
+
+/* --- beside the mats --- */
+
+.f7-side { display: flex; flex-direction: column; gap: 10px; }
+.f7-pile { display: none; }
+.f7-info { font-size: 0.75rem; color: rgba(251, 246, 236, 0.55); }
+.f7-log { list-style: none; margin: 0; padding: 0; font-size: 0.85rem; }
+.f7-log li { padding: 3px 0; color: rgba(251, 246, 236, 0.5); }
+.f7-log li:first-child { color: var(--cream); font-weight: 600; }
+.f7-log li:nth-child(n+4) { display: none; }
+
+/* Hit and Stay, pinned to the bottom of a narrow screen so they never
+   scroll away. Stay sits left and smaller; Hit is the gold one. */
+.f7-controls {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  gap: 12px;
+  margin: 0 -16px;
+  padding: 12px 16px calc(16px + env(safe-area-inset-bottom));
+  background: linear-gradient(180deg, rgba(15, 46, 36, 0) 0%, var(--felt-dark) 28%);
+}
+.f7-controls .f7-note { margin: 0; text-align: center; width: 100%; }
+.flip7 .f7-btn-big {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 16px 14px;
+  border-radius: 14px;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.15rem;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+.f7-btn-big:disabled { opacity: 0.45; }
+.f7-btn-big .f7-icon { width: 20px; height: 20px; margin: 0; opacity: 1; }
+.f7-controls .f7-hit { flex: 1.7; }
+.f7-controls .f7-stay { background: rgba(251, 246, 236, 0.1); border-color: rgba(251, 246, 236, 0.35); }
+
+/* --- handing out an action card --- */
+
+.f7-give { max-width: 560px; }
+.f7-give-card { display: flex; justify-content: center; --card-w: 64px; }
+.f7-give-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+.flip7 .f7-give-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 14px 10px;
+  border-radius: 12px;
+}
+.f7-give-name { font-family: var(--font-display); font-weight: 800; font-size: 1.1rem; }
+.f7-give-detail { font-family: var(--font-mono); font-size: 0.72rem; color: rgba(251, 246, 236, 0.6); }
+
+/* `.flip7 .f7-btn` drops every border, which left ghost buttons on the
+   table and in its dialogs as bare text. These are real buttons. */
+.flip7.f7-play .f7-btn-ghost, .flip7 .f7-dialog .f7-btn-ghost {
+  border: 1px solid rgba(251, 246, 236, 0.25);
+  background: rgba(251, 246, 236, 0.06);
+}
+
+/* --- a phone per player --- */
+
+/* Your own mat leads on a narrow screen, ahead even of whoever's turn it
+   is; on the iPad grid it stays in its seat and just says "You". */
+.f7-mat.is-me { order: -2; }
+.f7-mat.is-me:not(.is-turn) { border-color: rgba(240, 200, 117, 0.45); }
+.f7-you {
+  flex: none;
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: var(--cream);
+  color: var(--ink);
+}
+.f7-on-phone { flex: none; display: inline-flex; opacity: 0.55; }
+.f7-on-phone .f7-icon { width: 14px; height: 14px; margin: 0; opacity: 1; }
+.f7-summary tr.is-me .f7-name { color: var(--gold-bright); }
+
+.f7-seat-picker .f7-note { margin: 0 0 10px; }
+.f7-seat-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.flip7 .f7-seat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 12px 8px;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1rem;
+}
+.f7-seat:disabled { opacity: 0.4; }
+.f7-seat .f7-note { font-family: var(--font-ui); font-weight: 600; font-size: 0.7rem; }
+
+.flip7 .f7-invite-open, .flip7 .f7-cover {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.f7-invite-open .f7-icon { width: 16px; height: 16px; margin: 0; opacity: 1; }
+.f7-controls .f7-cover { flex: none; }
+
+.f7-invite { max-width: 420px; }
+.f7-invite-qr {
+  display: block;
+  width: 168px;
+  height: 168px;
+  margin: 4px auto 10px;
+  padding: 8px;
+  border-radius: 12px;
+  background: var(--cream);
+}
+.f7-invite .f7-share-code { text-align: center; }
+.f7-invite-seats { text-align: left; margin: 12px 0 16px; }
+.f7-invite-seat {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+.f7-invite-seat:last-child { border-bottom: none; }
+.flip7 .f7-invite-seat .f7-btn { width: auto; padding: 6px 10px; font-size: 0.75rem; }
+
+/* iPad portrait and other in-between widths: two columns of mats, with the
+   player whose turn it is across the top. */
+@media (min-width: 700px) {
+  .f7-mats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .f7-mat.is-turn { grid-column: 1 / -1; }
+  .f7-mat-cards { --card-w: clamp(34px, 9cqw, 64px); }
+}
+
+/* iPad landscape — the layout this was designed for. The whole table fits
+   the screen with nothing to scroll: mats in a grid sized to the player
+   count on the left, everything else in a rail on the right. Seats stay
+   where they are; only the highlight moves. */
+@media (min-width: 1000px) and (orientation: landscape) {
+  .flip7.f7-at-table { height: 100dvh; overflow: hidden; }
+  .f7-at-table .wrap {
+    max-width: none;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    padding: max(12px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right))
+             max(14px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
+  }
+  .f7-at-table .f7-bar { padding: 0 0 10px; }
+  .f7-at-table #app { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+  .f7-table {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) clamp(250px, 24vw, 320px);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-areas: "mats status" "mats side" "mats controls";
+    gap: 14px 22px;
+  }
+  .f7-status { grid-area: status; }
+  .f7-side { grid-area: side; min-height: 0; overflow: hidden; }
+  .f7-controls {
+    grid-area: controls;
+    position: static;
+    margin: 0;
+    padding: 0;
+    background: none;
+    flex-direction: column;
+  }
+  .f7-controls .f7-hit { order: -1; padding: 22px 14px; font-size: 1.4rem; }
+
+  .f7-mats {
+    grid-area: mats;
+    min-height: 0;
+    grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
+    grid-template-rows: repeat(var(--rows), minmax(0, 1fr));
+    gap: 12px;
+  }
+  .f7-mat { container-type: size; overflow: hidden; }
+  .f7-mat.is-turn, .f7-mat.is-me { order: 0; grid-column: auto; }
+  /* Bounded by height as well as width. Tuned so a big hand — seven
+     numbers and a few modifiers — wraps into rows that still fit the mat,
+     from two players up to a 4×3 grid of twelve. */
+  .f7-mat-cards { --card-w: clamp(30px, min(21cqw, 22cqh), 84px); }
+  .f7-mat-name { font-size: clamp(1rem, 7cqw, 1.5rem); }
+
+  .f7-pile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    align-self: center;
+    width: clamp(96px, 9vw, 130px);
+    aspect-ratio: 5 / 7;
+    border-radius: 14px;
+    border: 3px solid var(--cream);
+    background:
+      repeating-linear-gradient(45deg, rgba(217, 169, 78, 0.16) 0 6px, transparent 6px 12px),
+      var(--felt-dark);
+    color: var(--gold-bright);
+    box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.25), 8px 8px 0 rgba(0, 0, 0, 0.15);
+    cursor: pointer;
+  }
+  .f7-pile:disabled { cursor: default; opacity: 0.6; }
+  .f7-pile:not(:disabled):active { transform: translateY(2px); }
+  .f7-pile-mark { font-family: var(--font-display); font-weight: 800; font-size: 2.6rem; line-height: 1; }
+  .f7-pile-count { font-family: var(--font-mono); font-size: 0.75rem; color: rgba(251, 246, 236, 0.7); }
+  .f7-log li:nth-child(n+4) { display: list-item; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .f7-card.is-new, .f7-mat.is-shaking { animation: none; }
 }
