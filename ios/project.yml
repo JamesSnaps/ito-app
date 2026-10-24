@@ -42,6 +42,11 @@ targets:
       path: GameNight/Info.plist
       properties:
         CFBundleDisplayName: Game Night
+        # XcodeGen writes 1.0 / 1 here unless told otherwise, which ignores
+        # the settings above — the first upload went up as 1.0 (1), and the
+        # next one was refused as a duplicate build.
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen:
           UIColorName: LaunchBackground
         UISupportedInterfaceOrientations:
