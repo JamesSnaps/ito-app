@@ -18,7 +18,9 @@ settings:
     # rather than block, so the main actor is the right default.
     SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
     SWIFT_APPROACHABLE_CONCURRENCY: YES
-    MARKETING_VERSION: "0.2.0"
+    # Must stay above 1.0: the first TestFlight build went out as 1.0 (1)
+    # by accident, and a lower version reads as older on testers' phones.
+    MARKETING_VERSION: "1.1.0"
     # The build number: scripts/testflight.sh sets it to the UTC time.
     CURRENT_PROJECT_VERSION: "1"
     # James Collard's paid individual membership, as Dishes, Keepsake and
