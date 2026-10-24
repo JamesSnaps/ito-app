@@ -1,16 +1,25 @@
 import SwiftUI
 import CoreImage.CIFilterBuiltins
 
-/// A Flip 7 table. Laid out like the web page: on an iPad in landscape the
-/// whole table is one screen — a grid of mats sized to the player count and
-/// a rail with the status, the draw pile, the log and Hit/Stay. Anywhere
-/// narrower, your own mat and whoever's turn it is come first, and Hit/Stay
-/// sit at the bottom where a thumb reaches them.
+/// A Flip 7 table, played with a deck you can see. On an iPad in landscape
+/// the whole table is one screen: a grid of mats sized to the player count,
+/// and a rail with the status, the deck, Stay and the log. Anywhere
+/// narrower, your own mat and whoever's turn it is come first, and the deck
+/// and Stay sit at the bottom where a thumb reaches them.
+///
+/// Drawing is done on the deck — tap it, or peel the top card up — and the
+/// card flies to the player's mat, turning over on the way. The flying card
+/// is drawn over everything, between frames the deck and the mats report.
 struct TableScreen: View {
     @State var store: PlayStore
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.scenePhase) private var scenePhase
     @State private var showingInvite = false
+    @State private var deckFrame: CGRect = .zero
+    @State private var matFrames: [Int: CGRect] = [:]
+    @State private var deckWidth: CGFloat = 96
+    @State private var matCardWidths: [Int: CGFloat] = [:]
+    @State private var soundOn = Sound.enabled
 
     var body: some View {
         GeometryReader { geo in
@@ -21,12 +30,18 @@ struct TableScreen: View {
                     GoneView()
                 } else if let game = store.game {
                     if wide {
-                        WideTable(store: store, game: game, showingInvite: $showingInvite)
+                        WideTable(store: store, game: game, showingInvite: $showingInvite, size: geo.size)
                     } else {
                         CompactTable(store: store, game: game, showingInvite: $showingInvite)
                     }
                 } else {
                     ProgressView("Shuffling up…").tint(Theme.cream).foregroundStyle(Theme.cream)
+                }
+                if let flight = store.flight {
+                    FlyingCard(flight: flight, from: deckFrame,
+                               to: matFrames[flight.player] ?? CGRect(x: geo.size.width / 2, y: geo.size.height / 2, width: 1, height: 1),
+                               startWidth: deckWidth, endWidth: matCardWidths[flight.player] ?? 46)
+                        .id(flight.id)
                 }
                 if let name = store.flip7Flash {
                     Flip7Flash(name: name)
@@ -36,12 +51,27 @@ struct TableScreen: View {
                         }
                 }
             }
+            .coordinateSpace(.named(TableSpace.name))
+            .onPreferenceChange(DeckFrameKey.self) { deckFrame = $0.frame; deckWidth = $0.width }
+            .onPreferenceChange(MatFramesKey.self) { frames in
+                matFrames = frames.mapValues(\.frame)
+                matCardWidths = frames.mapValues(\.width)
+            }
         }
         .navigationTitle("Flip 7")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Theme.feltDark, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    soundOn.toggle()
+                    Sound.enabled = soundOn
+                } label: {
+                    Image(systemName: soundOn ? "speaker.wave.2.fill" : "speaker.slash.fill")
+                }
+                .accessibilityLabel(soundOn ? "Sounds on" : "Sounds off")
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Text(store.code)
                     .font(Theme.mono(14)).kerning(2.5)
@@ -79,29 +109,65 @@ struct TableScreen: View {
     }
 }
 
+// MARK: - where things are, for the flying card
+
+enum TableSpace { static let name = "flip7-table" }
+
+struct PlacedFrame: Equatable { var frame: CGRect; var width: CGFloat }
+
+struct DeckFrameKey: PreferenceKey {
+    static let defaultValue = PlacedFrame(frame: .zero, width: 96)
+    static func reduce(value: inout PlacedFrame, nextValue: () -> PlacedFrame) {
+        let next = nextValue()
+        if next.frame != .zero { value = next }
+    }
+}
+
+struct MatFramesKey: PreferenceKey {
+    static let defaultValue: [Int: PlacedFrame] = [:]
+    static func reduce(value: inout [Int: PlacedFrame], nextValue: () -> [Int: PlacedFrame]) {
+        value.merge(nextValue()) { $1 }
+    }
+}
+
+extension View {
+    /// Reports this view's frame in the table's coordinate space.
+    func reportsFrame<K: PreferenceKey>(_ key: K.Type, _ make: @escaping (CGRect) -> K.Value) -> some View {
+        background(GeometryReader { proxy in
+            Color.clear.preference(key: key, value: make(proxy.frame(in: .named(TableSpace.name))))
+        })
+    }
+}
+
 // MARK: - layouts
 
 private struct WideTable: View {
     let store: PlayStore
     let game: Game
     @Binding var showingInvite: Bool
+    let size: CGSize
 
     var body: some View {
-        HStack(alignment: .top, spacing: 22) {
+        let railWidth = min(360, max(300, size.width * 0.27))
+        HStack(alignment: .top, spacing: 24) {
             MatGrid(store: store, game: game)
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 18) {
                 if store.offersSeat { SeatPicker(store: store) }
                 StatusPanel(store: store, game: game)
-                DrawPile(store: store, game: game)
-                Text(infoLine(game)).font(.caption).foregroundStyle(Theme.cream.opacity(0.55))
-                EventLog(game: game, limit: 6)
-                if store.hostToken != nil { InviteButton(store: store, showing: $showingInvite) }
                 Spacer(minLength: 0)
+                TableDeck(store: store, game: game, width: min(150, railWidth * 0.42))
+                    .frame(maxWidth: .infinity)
                 Controls(store: store, game: game, vertical: true)
+                Spacer(minLength: 0)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(infoLine(game)).font(.caption).foregroundStyle(Theme.cream.opacity(0.55))
+                    EventLog(game: game, limit: 5)
+                }
+                if store.hostToken != nil { InviteButton(store: store, showing: $showingInvite) }
             }
-            .frame(width: 300)
+            .frame(width: railWidth)
         }
-        .padding(20)
+        .padding(.horizontal, 24).padding(.vertical, 18)
     }
 }
 
@@ -109,6 +175,7 @@ private struct CompactTable: View {
     let store: PlayStore
     let game: Game
     @Binding var showingInvite: Bool
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     /// You first, then whoever the table's waiting on, then everyone else in
     /// seat order.
@@ -120,25 +187,65 @@ private struct CompactTable: View {
     }
 
     var body: some View {
+        // iPad portrait: two columns of mats, the acting one across the top.
+        let columns = sizeClass == .regular ? 2 : 1
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 if store.offersSeat { SeatPicker(store: store) }
                 StatusPanel(store: store, game: game)
-                ForEach(order, id: \.self) { i in
-                    MatView(player: game.players[i], index: i, store: store, cardWidth: 46)
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: columns), spacing: 12) {
+                    ForEach(order, id: \.self) { i in
+                        MatView(player: game.players[i], index: i, store: store, cardWidth: sizeClass == .regular ? 56 : 46)
+                            .frame(minHeight: sizeClass == .regular ? 190 : 150)
+                    }
                 }
                 Text(infoLine(game)).font(.caption).foregroundStyle(Theme.cream.opacity(0.55))
                 EventLog(game: game, limit: 3)
                 if store.hostToken != nil { InviteButton(store: store, showing: $showingInvite) }
             }
             .padding(16)
+            .frame(maxWidth: 900)
+            .frame(maxWidth: .infinity)
             .animation(.default, value: order)
         }
         .safeAreaInset(edge: .bottom) {
-            Controls(store: store, game: game, vertical: false)
-                .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 4)
-                .background(LinearGradient(colors: [Theme.feltDark.opacity(0), Theme.feltDark],
-                                           startPoint: .top, endPoint: .center))
+            HStack(alignment: .center, spacing: 14) {
+                Controls(store: store, game: game, vertical: false)
+                if game.phase == .playing {
+                    TableDeck(store: store, game: game, width: sizeClass == .regular ? 72 : 56, compact: true)
+                }
+            }
+            .frame(maxWidth: 900)
+            .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 4)
+            .frame(maxWidth: .infinity)
+            .background(LinearGradient(colors: [Theme.feltDark.opacity(0), Theme.feltDark.opacity(0.96), Theme.feltDark],
+                                       startPoint: .top, endPoint: UnitPoint(x: 0.5, y: 0.35)))
+        }
+    }
+}
+
+/// The deck, wired to the table: its count includes cards still waiting to
+/// be dealt, it riffles on a shuffle, and it's the way to hit when this
+/// device may play the turn.
+private struct TableDeck: View {
+    let store: PlayStore
+    let game: Game
+    let width: CGFloat
+    var compact = false
+
+    var body: some View {
+        let pending = game.pending
+        let canDraw = !store.busy && !store.animating && game.phase == .playing
+            && pending?.kind == .turn && pending.map { store.canAct($0.player) } == true
+        VStack(spacing: compact ? 6 : 10) {
+            DeckView(count: store.deckShown, shuffles: store.shuffles, canDraw: canDraw, width: width) {
+                if let p = pending?.player { Task { await store.send(.hit, player: p) } }
+            }
+            .reportsFrame(DeckFrameKey.self) { PlacedFrame(frame: $0, width: width) }
+            Text(canDraw ? (compact ? "Draw" : "Tap the deck, or drag a card up") : "\(store.deckShown) cards")
+                .font(compact ? .caption2.weight(.bold) : .footnote.weight(.semibold))
+                .foregroundStyle(canDraw ? Theme.goldBright : Theme.cream.opacity(0.5))
+                .multilineTextAlignment(.center)
         }
     }
 }
@@ -162,13 +269,17 @@ private struct MatGrid: View {
 
     var body: some View {
         GeometryReader { geo in
-            let gap: CGFloat = 12
+            let gap: CGFloat = 14
             let (cols, rows) = shape
             let w = (geo.size.width - gap * CGFloat(cols - 1)) / CGFloat(cols)
-            let h = (geo.size.height - gap * CGFloat(rows - 1)) / CGFloat(rows)
-            // As in the CSS: bounded by width and height, so a big hand
-            // wraps into rows that still fit the mat.
-            let card = min(max(min(w * 0.19, h * 0.22), 30), 84)
+            let room = (geo.size.height - gap * CGFloat(rows - 1)) / CGFloat(rows)
+            // Bounded by width and height, so a big hand wraps into rows that
+            // still fit the mat — and as big as that allows, because these are
+            // the cards everyone round the table is reading.
+            let card = min(max(min(w * 0.2, (room - 90) / 2.9), 34), 112)
+            // No taller than two rows of those cards need: with two or three
+            // players a full-height mat was mostly empty felt.
+            let h = min(room, 100 + card * 3.1)
             let columns = Array(repeating: GridItem(.fixed(w), spacing: gap), count: cols)
             LazyVGrid(columns: columns, spacing: gap) {
                 ForEach(game.players.indices, id: \.self) { i in
@@ -176,6 +287,7 @@ private struct MatGrid: View {
                         .frame(width: w, height: h)
                 }
             }
+            .frame(maxHeight: .infinity, alignment: .center)
         }
     }
 }
@@ -266,34 +378,6 @@ private struct RoundSummary: View {
     }
 }
 
-private struct DrawPile: View {
-    let store: PlayStore
-    let game: Game
-
-    var body: some View {
-        let pending = game.pending
-        let canHit = !store.busy && game.phase == .playing && pending?.kind == .turn
-            && pending.map { store.canAct($0.player) } == true
-        Button {
-            if let p = pending?.player { Task { await store.send(.hit, player: p) } }
-        } label: {
-            VStack(spacing: 6) {
-                Text("7").font(Theme.display(42)).foregroundStyle(Theme.goldBright)
-                Text("\(game.deckCount)").font(Theme.mono(12)).foregroundStyle(Theme.cream.opacity(0.7))
-            }
-            .frame(width: 110, height: 154)
-            .background(Theme.feltDark, in: RoundedRectangle(cornerRadius: 14))
-            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Theme.cream, lineWidth: 3))
-            .shadow(color: .black.opacity(0.25), radius: 0, x: 4, y: 4)
-        }
-        .buttonStyle(.plain)
-        .disabled(!canHit)
-        .opacity(canHit ? 1 : 0.6)
-        .frame(maxWidth: .infinity)
-        .accessibilityLabel("Draw pile, \(game.deckCount) cards. Tap to hit.")
-    }
-}
-
 private struct EventLog: View {
     let game: Game
     let limit: Int
@@ -313,6 +397,7 @@ private struct EventLog: View {
     }
 }
 
+/// Stay, and the between-rounds buttons. Hitting is done on the deck.
 private struct Controls: View {
     let store: PlayStore
     let game: Game
@@ -323,6 +408,8 @@ private struct Controls: View {
         Group {
             if store.mode == .watch {
                 note("Watching — moves are made at the table.")
+            } else if store.animating {
+                note(" ")
             } else if game.phase == .roundOver {
                 Button {
                     Task { await store.send(.nextRound, player: store.mySeat) }
@@ -339,7 +426,7 @@ private struct Controls: View {
                 }
             } else if let pending, store.canAct(pending.player) {
                 if pending.kind == .turn {
-                    turnButtons(pending.player)
+                    stayButton(pending.player)
                 } else {
                     note("Choose who gets the \(pending.card.flatMap(Card.init)?.name ?? "card").")
                 }
@@ -358,33 +445,19 @@ private struct Controls: View {
             }
         }
         .disabled(store.busy)
+        .frame(maxWidth: vertical ? .infinity : nil)
     }
 
-    @ViewBuilder private func turnButtons(_ p: Int) -> some View {
+    private func stayButton(_ p: Int) -> some View {
         let player = game.players[p]
         let covering = p == store.actingFor || (store.mode == .player && p != store.mySeat)
-        let stay = Button {
+        return Button {
             Task { await store.send(.stay, player: p) }
         } label: {
-            Label(covering ? "Stay for \(player.name)" : "Stay", systemImage: "lock")
+            Label(covering ? "Stay for \(player.name)" : "Stay on \(player.roundScore)", systemImage: "hand.raised.fill")
         }
         .buttonStyle(FeltButtonStyle(kind: .ghost, big: true))
         .disabled(player.hand.isEmpty)
-
-        let hit = Button {
-            Task { await store.send(.hit, player: p) }
-        } label: {
-            Label(covering ? "Hit for \(player.name)" : "Hit", systemImage: "plus")
-        }
-        .buttonStyle(FeltButtonStyle(big: true))
-
-        // Hit is the gold one; Stay sits apart from it, so a mis-tap is
-        // harder — on the iPad above/below, on a phone to its left.
-        if vertical {
-            VStack(spacing: 12) { hit; stay }
-        } else {
-            HStack(spacing: 12) { stay.frame(maxWidth: 140); hit }
-        }
     }
 
     private func note(_ text: String) -> some View {

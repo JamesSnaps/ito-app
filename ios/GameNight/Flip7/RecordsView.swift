@@ -5,6 +5,7 @@ import SwiftUI
 struct RecordsView: View {
     @State private var stats: Flip7Stats?
     @State private var error: String?
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     var body: some View {
         ZStack {
@@ -16,6 +17,11 @@ struct RecordsView: View {
                             bigStat("\(stats.gamesPlayed)", "games recorded")
                             bigStat("\(stats.bestRound.score)", stats.bestRound.player.map { "best round · \($0)" } ?? "best round")
                         }
+                        // Leaderboard and recent games side by side on an iPad.
+                        let columns = sizeClass == .regular
+                            ? AnyLayout(HStackLayout(alignment: .top, spacing: 16))
+                            : AnyLayout(VStackLayout(spacing: 16))
+                        columns {
                         Panel(title: "Leaderboard") {
                             if stats.leaderboard.isEmpty {
                                 Text("No finished games yet. A game is recorded once someone reaches 200.")
@@ -51,6 +57,8 @@ struct RecordsView: View {
                                     }
                                 }
                             }
+                            .frame(maxWidth: sizeClass == .regular ? 340 : .infinity)
+                        }
                         }
                     } else if let error {
                         Panel { Text(error) }
@@ -58,8 +66,8 @@ struct RecordsView: View {
                         ProgressView().tint(Theme.cream).frame(maxWidth: .infinity)
                     }
                 }
-                .padding(20)
-                .frame(maxWidth: 640)
+                .padding(sizeClass == .regular ? 32 : 20)
+                .frame(maxWidth: sizeClass == .regular ? 980 : 640)
                 .frame(maxWidth: .infinity)
                 .foregroundStyle(Theme.cream)
             }

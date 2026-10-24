@@ -537,6 +537,43 @@ in-app Safari sheet rather than being rebuilt.
   version with the app's endpoints (v1.6.1+) before a build goes out.
 - **`.dockerignore` keeps `ios/` out of the server image.**
 
+### The table as a real deck (iOS)
+
+- **The deck is the hit control.** A stack of card backs (`DeckView`) you
+  tap, or peel the top card up off; there's no separate Hit button. The face
+  comes from the server's answer, so a peel can't reveal anything early.
+  Stay stays a button.
+- **The log is played out, not just shown.** `PlayStore` queues every new
+  log entry and performs them one at a time: a card flies from the deck to
+  the player's mat and turns over on the way (`FlyingCard`), the deal goes
+  round one card at a time, a shuffle riffles the deck, a bust shakes the
+  mat. Cards still in the air are held back from the mats (`inFlight`,
+  `cards(for:)`) so they appear where the flight lands; the newest copy of
+  a card is the one held back, so a bust's duplicate is what arrives.
+  Controls, the give sheet and the winner alert wait until the table has
+  settled (`animating`). Only a game dealt on this device is played from the
+  top (shuffle, then the deal); opening a game already under way doesn't
+  replay it.
+- **The deck and mats report their frames** (`DeckFrameKey`, `MatFramesKey`
+  in a named coordinate space) so the flying card knows where to go.
+- **Sounds are synthesised, not shipped** (`Sound.swift`): filtered noise
+  for paper (flick, land, riffle), decaying sines for thuds and chimes.
+  Nothing to license or download. `.ambient` session: follows the silent
+  switch and mixes with music. Toggle in Settings and in the table toolbar.
+- **iPad layouts are their own, not a stretched phone.** Hub: game tiles
+  side by side, Join beside the title, one gold button at a time. New game
+  and Join: a centred column. Records: two columns. Table: mats capped at
+  the height two rows of cards need and centred, cards up to 112pt, so two
+  players don't sit in a sea of empty felt.
+- **The New game name field sits above the list.** Below it, each added name
+  moved the field mid-typing and letters went missing; focus also comes back
+  a beat after return, because setting it inside the submit doesn't stick.
+- **Turn order is the official rule**: an initial deal of one card each,
+  then one Hit or Stay per turn round the table (checked against the
+  publisher's FAQ). "Draw until you stop, then the next player" is a house
+  rule, not how the engine plays — and offered as an option, it was turned
+  down. Don't add it.
+
 ## Hub artwork
 
 - Each game's menu tile has an SVG in `templates/art/<id>.html` and an

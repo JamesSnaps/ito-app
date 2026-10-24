@@ -18,7 +18,7 @@ settings:
     # rather than block, so the main actor is the right default.
     SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
     SWIFT_APPROACHABLE_CONCURRENCY: YES
-    MARKETING_VERSION: "0.1.0"
+    MARKETING_VERSION: "0.2.0"
     # The build number: scripts/testflight.sh sets it to the UTC time.
     CURRENT_PROJECT_VERSION: "1"
     # James Collard's paid individual membership, as Dishes, Keepsake and
