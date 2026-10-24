@@ -16,7 +16,7 @@ struct MatView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Text(player.name)
-                    .font(Theme.display(18))
+                    .font(Theme.display(max(18, cardWidth * 0.3)))
                     .lineLimit(1)
                 if isMe {
                     Text("YOU").font(.system(size: 10, weight: .heavy)).kerning(0.8)
@@ -47,7 +47,7 @@ struct MatView: View {
             }
 
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text("\(player.total)").font(Theme.mono(22)).foregroundStyle(Theme.goldBright)
+                Text("\(player.total)").font(Theme.mono(max(22, cardWidth * 0.32))).foregroundStyle(Theme.goldBright)
                 if game?.phase == .playing, player.status != .busted, player.roundScore > 0 {
                     Text("+\(player.roundScore)").font(Theme.mono(15)).foregroundStyle(Theme.green)
                 }
@@ -56,16 +56,24 @@ struct MatView: View {
             }
 
             FlowLayout(spacing: 6) {
-                ForEach(player.hand.tableCards) { card in
+                // Cards still in the air are held back until they land.
+                ForEach(store.cards(for: index)) { card in
                     CardView(card: card.card, role: card.role, width: cardWidth)
-                        .transition(.asymmetric(insertion: .scale(scale: 0.6).combined(with: .opacity), removal: .opacity))
+                        // It arrives by air (FlyingCard), so it only has to appear
+                        // where the flight ended.
+                        .transition(.opacity)
                 }
             }
             .frame(minHeight: cardWidth * 1.4, alignment: .topLeading)
-            .animation(.spring(response: 0.34, dampingFraction: 0.7), value: player.hand)
+            .animation(.spring(response: 0.3, dampingFraction: 0.75), value: store.cards(for: index))
         }
         .padding(.horizontal, 12).padding(.vertical, 10)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        // Where the flying card lands: the card row, near its start.
+        .reportsFrame(MatFramesKey.self) { frame in
+            [index: PlacedFrame(frame: CGRect(x: frame.minX + 12 + cardWidth / 2, y: frame.minY + 70 + cardWidth * 0.7,
+                                              width: 1, height: 1), width: cardWidth)]
+        }
         .background(background, in: RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(border, lineWidth: acting ? 2 : 1))
         .opacity(player.status == .busted && !player.hasFlip7 ? 0.55 : 1)

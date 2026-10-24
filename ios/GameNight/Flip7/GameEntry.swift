@@ -89,13 +89,24 @@ struct NewGameView: View {
     private static let maxName = 20
 
     var body: some View {
+        // A column, not the full width of an iPad: a list of names stretched
+        // across 1,000 points reads as empty space with a word at each end.
+        ZStack {
+            Theme.background
+            list.frame(maxWidth: 620)
+        }
+        .navigationTitle("New game")
+        .toolbarBackground(Theme.feltDark, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+        .preferredColorScheme(.dark)
+    }
+
+    private var list: some View {
         List {
+            // The name field has a section of its own, above the names. When
+            // it sat below them, every name added pushed it down a row while
+            // the next one was being typed, and letters went missing.
             Section {
-                ForEach(names, id: \.self) { name in
-                    Text(name).font(Theme.display(18, weight: .bold))
-                }
-                .onDelete { names.remove(atOffsets: $0) }
-                .onMove { names.move(fromOffsets: $0, toOffset: $1) }
                 HStack {
                     TextField("Player name", text: $newName)
                         .focused($nameFocused)
@@ -106,10 +117,32 @@ struct NewGameView: View {
             } header: {
                 Text("Who’s playing? \(names.count) / \(Self.maxPlayers)")
             } footer: {
-                Text(error ?? "In the order you’re sitting — drag to reorder. The first name is dealt to first.")
-                    .foregroundStyle(error == nil ? Color.secondary : Color(hex: 0xF3A08C))
+                if let error {
+                    Text(error).foregroundStyle(Color(hex: 0xF3A08C))
+                }
             }
             .listRowBackground(Theme.cream.opacity(0.06))
+
+            if !names.isEmpty {
+                Section {
+                    ForEach(Array(names.enumerated()), id: \.element) { seat, name in
+                        HStack(spacing: 12) {
+                            Text("\(seat + 1)").font(Theme.mono(13)).foregroundStyle(Theme.cream.opacity(0.45))
+                                .frame(width: 22, alignment: .trailing)
+                            Text(name).font(Theme.display(18, weight: .bold))
+                            Spacer()
+                            if seat == 0 {
+                                Text("dealt to first").font(.caption).foregroundStyle(Theme.cream.opacity(0.45))
+                            }
+                        }
+                    }
+                    .onDelete { names.remove(atOffsets: $0) }
+                    .onMove { names.move(fromOffsets: $0, toOffset: $1) }
+                } footer: {
+                    Text("In the order you’re sitting — drag to reorder. The first name is dealt to first.")
+                }
+                .listRowBackground(Theme.cream.opacity(0.06))
+            }
 
             Section {
                 Button(working ? "Shuffling…" : names.count < 2 ? "Add at least two players" : "Shuffle & deal") {
@@ -124,12 +157,7 @@ struct NewGameView: View {
             }
         }
         .scrollContentBackground(.hidden)
-        .background(Theme.background)
         .environment(\.editMode, .constant(names.count > 1 ? .active : .inactive))
-        .navigationTitle("New game")
-        .toolbarBackground(Theme.feltDark, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
-        .preferredColorScheme(.dark)
     }
 
     private func add() {
@@ -144,7 +172,14 @@ struct NewGameView: View {
             error = nil
             newName = ""
         }
-        nameFocused = true
+        // Return ends editing, and setting focus back inside the same submit
+        // doesn't stick — the next name's first letters went nowhere. So the
+        // field takes focus back a beat later, and a table of five can be
+        // typed in one go.
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(60))
+            nameFocused = true
+        }
     }
 
     private func deal() async {
