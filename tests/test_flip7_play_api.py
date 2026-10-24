@@ -307,3 +307,35 @@ def test_a_damaged_stats_file_holds_the_record_not_the_game():
     after = c.get(f"/flip7/api/play/{game['code']}").get_json()
     assert after["game"]["recorded"] is True
     assert c.get("/flip7/api/stats").get_json()["games_played"] == 1
+
+
+def test_the_ios_app_fixtures_still_match_the_api():
+    """ios/GameNightTests/Fixtures are real responses the Swift models are
+    tested against. iOS tests don't run in CI, so this is where a change to
+    the API's shape gets caught: every key the server sends now must be in
+    the fixture, and the other way round."""
+    import json
+
+    fixtures = ROOT / "ios" / "GameNightTests" / "Fixtures"
+    c = client()
+    fresh = new_game(c)
+    saved = json.loads((fixtures / "play_created.json").read_text())
+
+    def keys(payload):
+        game = payload["game"]
+        player = game["players"][0]
+        return {
+            "payload": set(payload),
+            "game": set(game),
+            "player": set(player),
+            "hand": set(player["hand"]),
+            "seat": set(payload["seats"][0]),
+            "you": set(payload["you"]),
+        }
+
+    assert keys(fresh) == keys(saved)
+    # `pending` has two shapes, and a fresh deal can land on either; the
+    # Swift model takes the larger one with the extras optional.
+    given = json.loads((fixtures / "play_give.json").read_text())["game"]["pending"]
+    shapes = {"turn": {"kind", "player"}, "give": set(given)}
+    assert set(fresh["game"]["pending"]) == shapes[fresh["game"]["pending"]["kind"]]

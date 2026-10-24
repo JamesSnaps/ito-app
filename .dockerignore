@@ -1,0 +1,7 @@
+# The server image needs none of these. ios/ especially: the app is built
+# in Xcode, not in the container.
+ios/
+.git/
+.venv/
+**/__pycache__/
+data/

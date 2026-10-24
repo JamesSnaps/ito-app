@@ -697,7 +697,10 @@ def api_play_move(code):
 
 @bp.route("/api/stats")
 def api_stats():
-    return jsonify(load_stats())
+    """The record, plus the leaderboard in the order the records page shows
+    it — so a client (the iOS app) doesn't re-implement the ranking."""
+    record = load_stats()
+    return jsonify({**record, "leaderboard": leaderboard(record)})
 
 
 @bp.route("/api/stats/games", methods=["POST"])

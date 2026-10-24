@@ -869,3 +869,51 @@ def test_pages_an_installed_app_can_reach_have_a_way_back():
     c = client()
     assert 'href="/"' in c.get("/join").get_data(as_text=True)
     assert 'href="/"' in c.get("/ito/").get_data(as_text=True)
+
+
+def test_an_app_can_ask_which_game_a_code_is():
+    """/join's JSON twin, for the iOS app: same answer, same throttle."""
+    c = client()
+    ito = new_room(c)
+    res = c.get(f"/api/join/{ito.lower()}").get_json()
+    assert res == {"code": ito, "game": "ito", "path": f"/ito/play/{ito}"}
+
+    board = c.post("/flip7/rooms").get_json()["code"]
+    assert c.get(f"/api/join/{board}").get_json()["game"] == "flip7"
+
+    assert c.get("/api/join/ZZZZ").status_code == 404
+    for _ in range(20):
+        last = c.get("/api/join/ZZZZ")
+    assert last.status_code == 429
+
+
+def test_flip7_stats_api_carries_the_leaderboard_order():
+    c = client()
+    c.post("/flip7/api/stats/games", json=finished_game())
+    stats = c.get("/flip7/api/stats").get_json()
+    assert [row["name"] for row in stats["leaderboard"]][0] == max(
+        stats["players"].values(), key=lambda p: (p["wins"], p["points"] / max(p["rounds"], 1)))["name"]
+    assert "average" in stats["leaderboard"][0]
+
+
+def test_room_links_open_the_ios_app():
+    """The file Apple checks names the app, and claims only the pages a
+    player is sent to — never the host's, which sit behind Authelia."""
+    res = client().get("/.well-known/apple-app-site-association")
+    assert res.status_code == 200 and res.mimetype == "application/json"
+    details = res.get_json()["applinks"]["details"][0]
+    assert details["appIDs"] == ["C729B84RYG.uk.collco.gamenight"]
+    paths = {c["/"] for c in details["components"]}
+    assert "/flip7/play/*" in paths and "/ito/play/*" in paths
+    assert not any(p.startswith("/ito/host") or p.startswith("/ito/settings") for p in paths)
+
+
+def test_the_ios_app_and_the_server_agree_on_its_id():
+    """The bundle ID lives in ios/project.yml and in app.py; if they drift,
+    links quietly stop opening the app."""
+    import app
+    spec = (Path(__file__).resolve().parent.parent / "ios" / "project.yml").read_text()
+    team, bundle = app.IOS_APP_ID.split(".", 1)
+    assert f"PRODUCT_BUNDLE_IDENTIFIER: {bundle}" in spec
+    assert f"DEVELOPMENT_TEAM: {team}" in spec
+    assert "applinks:gamenight.collardserver.co.uk" in spec
