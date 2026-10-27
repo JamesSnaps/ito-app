@@ -137,7 +137,9 @@ final class FugitiveStore {
         let asked = askingToken
         do {
             let fresh = try await client.fugitiveState(code: code, token: asked)
-            if !busy { take(fresh, askedAs: asked) }
+            // Asked as someone the screen no longer shows (the folder opened,
+            // a seat was taken): that answer is the wrong view of the game.
+            if !busy, asked == askingToken { take(fresh, askedAs: asked) }
         } catch let failure as GameNightClient.Failure where failure.status == 404 {
             gone = true
         } catch {

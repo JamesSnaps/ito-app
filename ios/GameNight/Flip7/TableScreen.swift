@@ -101,6 +101,8 @@ struct TableScreen: View {
         }
         .onAppear { store.start() }
         .onDisappear { store.stop() }
+        // Faces for the mats: a table opened from a link never passed the hub.
+        .task { await Faces.shared.load() }
         .keepsScreenAwake()
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { store.start() } else { store.stop() }
