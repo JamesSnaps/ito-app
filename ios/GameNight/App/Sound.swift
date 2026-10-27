@@ -32,6 +32,18 @@ final class Sound {
         case stay
         /// It's your turn (on your own phone).
         case turn
+        /// Fugitive: a hideout slid face down onto the trail.
+        case slide
+        /// Fugitive: a rubber stamp — FOUND, NOT HERE.
+        case stamp
+        /// Fugitive: a guess that found nothing.
+        case miss
+        /// Fugitive: a Manhunt, two tones like a siren.
+        case siren
+        /// Fugitive: the plane out at 42.
+        case escape
+        /// Fugitive: the cell door, when the Marshal finds them all.
+        case caught
     }
 
     static var enabled: Bool {
@@ -117,6 +129,33 @@ private enum Synth {
         case .turn:
             out = chime(freq: 659.25, duration: 0.3, gain: 0.22)
             mix(&out, chime(freq: 987.77, duration: 0.4, gain: 0.2), at: Int(0.12 * rate))
+        case .slide:
+            // A card pushed across the table, then set down.
+            out = noiseBurst(duration: 0.26, decay: 0.09, highpass: 0.3, lowpass: 0.18, gain: 0.4)
+            mix(&out, thump(freq: 150, to: 100, duration: 0.07, gain: 0.25), at: Int(0.2 * rate))
+        case .stamp:
+            out = thump(freq: 95, to: 58, duration: 0.24, gain: 0.95)
+            mix(&out, noiseBurst(duration: 0.06, decay: 0.015, highpass: 0, lowpass: 0.35, gain: 0.45), at: 0)
+        case .miss:
+            out = thump(freq: 240, to: 150, duration: 0.18, gain: 0.35)
+            mix(&out, thump(freq: 180, to: 110, duration: 0.2, gain: 0.3), at: Int(0.12 * rate))
+        case .siren:
+            out = []
+            for i in 0..<4 {
+                let high = i % 2 == 0
+                mix(&out, sweep(from: high ? 880 : 660, to: high ? 660 : 880, duration: 0.42, gain: 0.16),
+                    at: Int(Double(i) * 0.42 * rate))
+            }
+        case .escape:
+            out = noiseBurst(duration: 1.1, decay: 0.45, highpass: 0, lowpass: 0.08, gain: 0.3)
+            mix(&out, sweep(from: 220, to: 880, duration: 1.1, gain: 0.12), at: 0)
+            mix(&out, chime(freq: 1318.5, duration: 0.6, gain: 0.16), at: Int(0.95 * rate))
+        case .caught:
+            // A barred door: a heavy thud and a metallic ring.
+            out = thump(freq: 80, to: 48, duration: 0.32, gain: 0.8)
+            for (f, g) in [(420.0, Float(0.18)), (1260.0, Float(0.1)), (2390.0, Float(0.06))] {
+                mix(&out, chime(freq: f, duration: 0.6, gain: g), at: Int(0.01 * rate))
+            }
         }
 
         let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(max(out.count, 1)))!
@@ -170,6 +209,20 @@ private enum Synth {
             let trem = shimmer ? 0.7 + 0.3 * sin(2 * .pi * 18 * t) : 1
             let tone = sin(2 * .pi * freq * t) + 0.25 * sin(2 * .pi * freq * 2 * t)
             return Float(tone * env * trem) * gain
+        }
+    }
+
+    /// A steady tone gliding from one pitch to another, for the siren and
+    /// the plane: short fades so it neither clicks nor rings on.
+    static func sweep(from start: Double, to end: Double, duration: Double, gain: Float) -> [Float] {
+        let n = Int(duration * rate)
+        var phase = 0.0
+        return (0..<n).map { i in
+            let t = Double(i) / rate
+            let f = start + (end - start) * t / duration
+            phase += 2 * .pi * f / rate
+            let env = min(1, t / 0.02) * min(1, (duration - t) / 0.03)
+            return Float(sin(phase) * env) * gain
         }
     }
 

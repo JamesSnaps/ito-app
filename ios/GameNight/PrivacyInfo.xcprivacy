@@ -2,10 +2,13 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
   Apple's privacy manifest, required for any upload to App Store Connect.
-  Game Night collects nothing and tracks nobody. The one "required reason"
-  API it uses is UserDefaults: the server address and the per-game tokens
-  that let this device keep its seat (TokenStore) — read and written by the
-  app itself only (reason CA92.1).
+  Game Night tracks nobody. Since 1.2.0 it collects one thing, and only if
+  the player chooses to: a profile on "You" — the name they claim and an
+  optional photo, sent to the Game Night server and shown to the other
+  players (core/profiles.py). Both are for the app's own function. The one
+  "required reason" API it uses is UserDefaults: the server address, the
+  per-game tokens that let this device keep its seat, and the profile token
+  — read and written by the app itself only (reason CA92.1).
 -->
 <plist version="1.0">
 <dict>
@@ -14,7 +17,32 @@
 	<key>NSPrivacyTrackingDomains</key>
 	<array/>
 	<key>NSPrivacyCollectedDataTypes</key>
-	<array/>
+	<array>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeName</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypePhotosorVideos</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+	</array>
 	<key>NSPrivacyAccessedAPITypes</key>
 	<array>
 		<dict>

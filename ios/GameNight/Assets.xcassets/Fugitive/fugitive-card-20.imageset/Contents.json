@@ -1,0 +1,13 @@
+{
+  "images": [
+    {
+      "filename": "fugitive-card-20.png",
+      "idiom": "universal",
+      "scale": "3x"
+    }
+  ],
+  "info": {
+    "author": "render_fugitive_cards.js",
+    "version": 1
+  }
+}

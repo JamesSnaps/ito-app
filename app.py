@@ -25,7 +25,7 @@ APP_NAME = "Game Night"
 # Bump this in the same commit as any user-visible change, before pushing.
 # Watchtower deploys `latest`, so this is the only way to tell from a phone
 # which build the server is actually running. See CLAUDE.md.
-APP_VERSION = "1.8.0"
+APP_VERSION = "1.8.1"
 
 # The iOS app (ios/project.yml): team C729B84RYG, the paid personal
 # membership Dishes, Keepsake and Brief use. Named in the file Apple checks
@@ -160,7 +160,10 @@ def create_app():
                     "components": [
                         {"/": "/flip7/play/*"},
                         {"/": "/flip7/watch/*"},
+                        {"/": "/fugitive/play/*"},
                         {"/": "/ito/play/*"},
+                        # "Sign another device in" — the QR on /me.
+                        {"/": "/me/link/*"},
                         {"/": "/join", "?": {"code": "?*"}},
                     ],
                 }],

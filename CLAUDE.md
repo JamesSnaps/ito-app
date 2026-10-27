@@ -469,7 +469,8 @@ why everything here is shaped around a JSON API.
 ## iOS app (`ios/`, started alongside v1.6.0)
 
 A native SwiftUI front end to the same server: Flip 7 Play (dealer or
-seat), Flip 7 records, and ito's topic display. Rules pages, ito hosting
+seat), Fugitive (since app 1.2.0), both games' records, ito's topic display
+and player profiles. Rules pages, ito hosting
 and a scorekeeper's spectator board open the server's own pages in an
 in-app Safari sheet rather than being rebuilt.
 
@@ -528,8 +529,9 @@ in-app Safari sheet rather than being rebuilt.
 - **`ios/scripts/testflight.sh`** is Brief's script adapted: archive and
   upload with the Xcode-signed-in account, build number = UTC time,
   archives outside the repo.
-- **Required for any upload**: `PrivacyInfo.xcprivacy` (no tracking, no
-  data collected; UserDefaults declared with reason CA92.1) and
+- **Required for any upload**: `PrivacyInfo.xcprivacy` (no tracking;
+  since 1.2.0 a profile's name and photo declared as collected for app
+  functionality; UserDefaults declared with reason CA92.1) and
   `ITSAppUsesNonExemptEncryption: false` (HTTPS only). Add to the manifest
   if the app ever touches another required-reason API.
 - **Room links open the app**: `/.well-known/apple-app-site-association`
@@ -538,8 +540,52 @@ in-app Safari sheet rather than being rebuilt.
   `applinks:gamenight.collardserver.co.uk` entitlement. The file must stay
   on the public Traefik router — Apple fetches it with no sign-in.
 - **The app talks to production by default**, so the server must be on a
-  version with the app's endpoints (v1.6.1+) before a build goes out.
+  version with the app's endpoints (v1.6.1+; v1.8.1+ for app 1.2.0) before
+  a build goes out.
 - **`.dockerignore` keeps `ios/` out of the server image.**
+- **QR codes are scanned in the app** (`ScanSheet`, VisionKit's
+  `DataScannerViewController`, QR only), from the hub's toolbar and the Join
+  screen. What it reads goes through `Joining.destination(for:)` — the same
+  path as a link opened from outside — so a room QR and a profile sign-in QR
+  both work. `NSCameraUsageDescription` covers this and the selfie.
+- **App links claim what the app shows**: `/flip7/play|watch`, `/fugitive/play`,
+  `/ito/play`, `/join?code=` and `/me/link`. Claiming a path sends it to every
+  installed version of the app, so claim a new one only once a build that
+  handles it is on TestFlight.
+
+### Fugitive on iOS (app 1.2.0)
+
+- **Same server, same secrecy.** `FugitiveStore` is play.html in Swift: it
+  asks with the token the device holds and draws only what comes back; a
+  hand that isn't yours arrives as nil. `FugitiveDevice` mirrors the web's
+  `fugitive:game:<code>` (dealer token, a token per seat, pass-and-play),
+  kept per code in UserDefaults (`FugitiveTokens`); a rematch swaps the seat
+  tokens as the web does.
+- **Pass-and-play's folder** covers the desk whenever it's someone's turn
+  and the screen isn't theirs yet, and only once the table has settled; the
+  device polls as the table (the dealer's token) until it's opened.
+- **The desk is the web's desk**: the other hand fanned across, the trail on
+  the code-seeded city map, the three decks, your hand nearest you; the
+  Marshal's notepad, seats (with the invite QR) and case notes beside it on
+  an iPad in landscape, below it elsewhere. Status lines and case notes use
+  play.html's wording (`StatusTag.words`, `fugitiveNote`).
+- **Played out like the web**: new log entries are queued and performed one
+  at a time — a drawn card is held out of the hand until it lands
+  (`incomingCards` / `incomingBacks`), a new hideout slides onto the trail
+  (`landing`), a find stamps FOUND, a miss stamps and shakes the trail, a
+  Manhunt washes the screen red and blue, an escape flies a plane off. Only a
+  fresh deal is dealt out.
+- **The art is the web's, not a copy of it.** Card faces are PNGs rendered
+  from `fugitive.js` by `ios/scripts/render_fugitive_cards.js` (into
+  `Assets.xcassets/Fugitive`); mugshots and the city map are `Canvas` ports
+  of `mugshotSVG` / `cityMap`, seeded by the same mulberry32 and FNV hash
+  (`Seeded`) — a Swift test pins its output to values from the JS. The
+  three fonts are bundled TrueType conversions of `static/fonts`.
+- **Fixtures**: `fugitive_*.json` and `profile*.json` come from one scripted
+  game (`ios_fixtures` in tests/test_fugitive_play_api.py), which also fails
+  the Python suite if the API's shape drifts.
+  `WRITE_IOS_FIXTURES=1 pytest tests -q -k fugitive_fixtures` rewrites them.
+- **Offline play** is still the plan from the Fugitive section: not in 1.2.0.
 
 ### The table as a real deck (iOS)
 
@@ -620,9 +666,8 @@ read in full; not in the repo).
   Manhunt catches). A game resigned before the Fugitive's first hideout
   isn't recorded — nobody played it.
 - **No admin routes**, so nothing new for the Authelia rule in the docker repo.
-- **iOS: web for now.** The app's `Joining.resolve` opens a `fugitive`
-  code's web `path` (its `default:` case), and the AASA file doesn't claim
-  `/fugitive/play/*` yet — claim it when native screens exist.
+- **iOS is native since app 1.2.0** (see "Fugitive on iOS" below), and the
+  AASA file claims `/fugitive/play/*`.
 - **Offline (plane) play is planned for the iOS app only**: one device
   hosts over MultipeerConnectivity. That needs the rules in Swift too — the
   one deliberate exception to "rules live in engine.py" — so the Swift
@@ -736,8 +781,15 @@ one thing besides the games that `app.py` registers), `templates/me.html`
   there, a photo replaces the drawn mugshot (faded a touch for the
   Fugitive, with the booking number on big ones). No photo: initials, or
   the drawn mugshot in Fugitive.
-- **iOS doesn't show profiles yet.** The app shows names as before; the
-  native "You" screen and faces come with the next app build.
+- **iOS (app 1.2.0)** has a native "You" (`YouScreen`: camera selfie,
+  library photo, sign-in QR for another device, sign out, delete) and the
+  same faces — `AvatarView` (photo or initials in the web's hue) and
+  `RegularsPicker` in Flip 7's setup, mats and records; `Mugshot` in
+  Fugitive. `Faces.shared` holds the public profile list, refreshed when the
+  hub appears; this device's profile is `gamenight.me` in UserDefaults. The
+  photo is cropped to a square on the phone and the server redraws it as
+  always. `/me/link/*` is claimed by the AASA file, so a sign-in QR scanned
+  with the Camera opens the app.
 
 ## Hub artwork
 

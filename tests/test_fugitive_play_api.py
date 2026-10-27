@@ -239,3 +239,83 @@ def test_the_rules_page_quotes_the_engine():
     assert f"at most {engine.MAX_STEP} higher" in body
     assert f"above {engine.MANHUNT_MAX_REVEALED}" in body
     assert "1, 2, 3, 42" in body
+
+
+# --- the iOS app's fixtures ------------------------------------------------
+
+IOS_FIXTURES = ROOT / "ios" / "GameNightTests" / "Fixtures"
+# Every key a log entry may carry; the Swift `FugitiveEvent` has each one,
+# optional. A new key here needs adding there too.
+EVENT_KEYS = {"id", "kind", "role", "deck", "card", "index", "sprints", "numbers",
+              "hit", "revealed", "winner", "reason"}
+
+
+def ios_fixtures(c):
+    """One scripted game, captured the way the app sees it: the deal (the
+    dealer's view), the Fugitive choosing a hideout, the Marshal guessing
+    with the notepad's help, the end, the records — plus profiles."""
+    rng = random.Random(7)
+    game, seats = seated_game(c)
+    code = game["code"]
+    out = {"fugitive_created": game}
+    for _ in range(400):
+        live = room_state(code)["game"]
+        if live["phase"] == "game_over":
+            break
+        if live["phase"] == "fugitive_hide" and len(live["hideouts"]) > 2 and "fugitive_hide" not in out:
+            out["fugitive_hide"] = state(c, code, seats["fugitive"])
+        if live["phase"] == "marshal_guess" and len(live["hideouts"]) > 2 and "fugitive_marshal_guess" not in out:
+            out["fugitive_marshal_guess"] = state(c, code, seats["marshal"])
+        role, move = random_move(live, rng)
+        assert send(c, code, seats[role], move).status_code == 200
+    out["fugitive_game_over"] = state(c, code)
+    out["fugitive_stats"] = c.get("/fugitive/api/stats").get_json()
+    made = c.post("/api/profiles", json={"name": "Ana"}).get_json()
+    out["profile_created"] = made
+    out["profile_link"] = c.post("/api/profiles/me/link", headers={"X-Profile-Token": made["token"]}).get_json()
+    out["profiles"] = c.get("/api/profiles").get_json()
+    return out
+
+
+def shape(value):
+    """A response's keys, nested; lists by the union of their items."""
+    if isinstance(value, dict):
+        return {k: shape(v) for k, v in value.items()}
+    if isinstance(value, list):
+        merged = None
+        for item in value:
+            merged = merge(merged, shape(item))
+        return [merged]
+    return "*"
+
+
+def merge(a, b):
+    if isinstance(a, dict) and isinstance(b, dict):
+        return {k: merge(a.get(k), b.get(k)) for k in a.keys() | b.keys()}
+    if isinstance(a, list) and isinstance(b, list):
+        return [merge(a[0], b[0])]
+    return b if a is None or a == "*" else a
+
+
+def test_the_ios_app_fugitive_fixtures_still_match_the_api():
+    """ios/GameNightTests/Fixtures/fugitive_*.json and profile*.json are
+    real responses the Swift models are tested against, captured by
+    `ios_fixtures`. iOS tests don't run in CI, so a change to the API's
+    shape is caught here. To capture them again after a deliberate change:
+    WRITE_IOS_FIXTURES=1 pytest tests -q -k fugitive_fixtures."""
+    import json
+    import os
+
+    fresh = ios_fixtures(client())
+    if os.environ.get("WRITE_IOS_FIXTURES"):
+        for name, body in fresh.items():
+            (IOS_FIXTURES / f"{name}.json").write_text(json.dumps(body, indent=1, ensure_ascii=False) + "\n")
+    for name, body in fresh.items():
+        saved = json.loads((IOS_FIXTURES / f"{name}.json").read_text())
+        if name.startswith("fugitive_") and "game" in body:
+            # Log entries differ by kind and by game; their keys are pinned
+            # to the Swift model's instead.
+            for payload in (body, saved):
+                assert {k for e in payload["game"]["log"] for k in e} <= EVENT_KEYS, name
+                payload["game"]["log"] = []
+        assert shape(body) == shape(saved), name

@@ -15,6 +15,7 @@ struct MatView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
+                AvatarView(name: player.name, size: max(26, cardWidth * 0.5))
                 Text(player.name)
                     .font(Theme.display(max(18, cardWidth * 0.3)))
                     .lineLimit(1)

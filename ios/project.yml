@@ -20,7 +20,7 @@ settings:
     SWIFT_APPROACHABLE_CONCURRENCY: YES
     # Must stay above 1.0: the first TestFlight build went out as 1.0 (1)
     # by accident, and a lower version reads as older on testers' phones.
-    MARKETING_VERSION: "1.1.0"
+    MARKETING_VERSION: "1.2.0"
     # The build number: scripts/testflight.sh sets it to the UTC time.
     CURRENT_PROJECT_VERSION: "1"
     # James Collard's paid individual membership, as Dishes, Keepsake and
@@ -69,6 +69,13 @@ targets:
         # Only standard HTTPS — no encryption of our own — so App Store
         # Connect needn't ask about export compliance on every upload.
         ITSAppUsesNonExemptEncryption: false
+        # The camera: scanning a room's QR (VisionKit) and the selfie on "You".
+        NSCameraUsageDescription: Game Night uses the camera to scan room codes and to take your profile photo.
+        # Fugitive's three faces, the web's own (static/fonts), bundled.
+        UIAppFonts:
+          - BebasNeue-Regular.ttf
+          - SpecialElite-Regular.ttf
+          - Caveat-Variable.ttf
         # The production server is https. This only lets a dev build talk to
         # a server on the LAN or the Mac running the simulator.
         NSAppTransportSecurity:
