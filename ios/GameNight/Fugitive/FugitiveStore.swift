@@ -114,10 +114,12 @@ final class FugitiveStore {
 
     func start() {
         guard pollTask == nil else { return }
+        defer { nudgeIfMyTurn() }
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
-                await self?.refresh()
-                let live = self?.game.map { !$0.isOver } ?? true
+                guard let self else { return }
+                await self.refresh()
+                let live = self.game.map { !$0.isOver } ?? true
                 try? await Task.sleep(for: .milliseconds(live ? 1000 : 2500))
             }
         }
@@ -277,6 +279,11 @@ final class FugitiveStore {
     // MARK: - taking a new game
 
     private func take(_ fresh: FugitivePayload, askedAs token: String?) {
+        // A poll answered after a move, or for the game before a rematch, is
+        // older than what's on screen: putting it back would undo the move
+        // (and in pass-and-play, show the last mover's view again).
+        guard fresh.code == code else { return }
+        if let current = payload?.game.seq, fresh.game.seq < current { return }
         // A seat freed by the dealing device: that token sits nowhere now.
         for role in device.seats where token == device.seat(role) && fresh.you.seat != role && fresh.code == code {
             device.setSeat(role, nil)
@@ -352,6 +359,9 @@ final class FugitiveStore {
             self.animating = false
             self.animator = nil
             self.nudgeIfMyTurn()
+            // Pass-and-play: the folder is up for the next player, so stop
+            // holding the last mover's view and read the game as the table.
+            if self.folderFor != nil { Task { await self.refresh() } }
         }
     }
 
@@ -425,7 +435,9 @@ final class FugitiveStore {
 
     /// Your turn, on your own device, is worth a buzz — once per turn.
     private func nudgeIfMyTurn() {
-        guard !animating, folderFor == nil, let game, game.myTurn, lastNudge != game.seq else { return }
+        // Only once the table is on screen: a store SwiftUI builds and
+        // throws away mustn't buzz.
+        guard pollTask != nil, !animating, folderFor == nil, let game, game.myTurn, lastNudge != game.seq else { return }
         lastNudge = game.seq
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         Sound.shared.play(.turn)

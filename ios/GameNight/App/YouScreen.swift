@@ -17,6 +17,7 @@ struct YouScreen: View {
     @State private var message: String?
     @State private var confirmingDelete = false
     @State private var confirmingSignOut = false
+    @State private var started = false
 
     var body: some View {
         ZStack {
@@ -170,6 +171,10 @@ struct YouScreen: View {
     private var client: GameNightClient { AppSettings.client }
 
     private func start() async {
+        // Once per visit: closing the camera re-runs `.task`, and a sign-in
+        // link redeemed a second time reads as expired.
+        guard !started else { return }
+        started = true
         await faces.load(force: true)
         if let linkCode {
             do {

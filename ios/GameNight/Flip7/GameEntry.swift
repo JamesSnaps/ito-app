@@ -145,7 +145,7 @@ struct NewGameView: View {
                     Button("Add", action: add).disabled(newName.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
                 // The regulars, with their faces: tap instead of typing.
-                RegularsPicker(skip: names) { add(name: $0) }
+                RegularsPicker(skip: names) { add(name: $0, typed: false) }
             } header: {
                 Text("Who’s playing? \(names.count) / \(Self.maxPlayers)")
             } footer: {
@@ -194,10 +194,12 @@ struct NewGameView: View {
     }
 
     private func add() {
-        add(name: newName)
+        add(name: newName, typed: true)
     }
 
-    private func add(name raw: String) {
+    /// `typed`: from the field, which is then cleared and keeps the cursor.
+    /// A regular tapped in leaves a half-typed name alone.
+    private func add(name raw: String, typed: Bool) {
         let name = String(raw.trimmingCharacters(in: .whitespacesAndNewlines).prefix(Self.maxName))
         guard !name.isEmpty else { return }
         if names.contains(where: { $0.caseInsensitiveCompare(name) == .orderedSame }) {
@@ -207,8 +209,9 @@ struct NewGameView: View {
         } else {
             names.append(name)
             error = nil
-            newName = ""
+            if typed { newName = "" }
         }
+        guard typed else { return }
         // Return ends editing, and setting focus back inside the same submit
         // doesn't stick — the next name's first letters went nowhere. So the
         // field takes focus back a beat later, and a table of five can be

@@ -68,8 +68,7 @@ struct FugitiveRecordsView: View {
             Mugshot(name: row.name, role: row.marshalWins > row.fugitiveWins ? .marshal : .fugitive, size: 38)
             VStack(alignment: .leading, spacing: 2) {
                 Text(row.name).font(.body.weight(.bold))
-                Text("Fugitive \(row.fugitiveWins)/\(row.fugitiveGames) · Marshal \(row.marshalWins)/\(row.marshalGames)"
-                     + (row.manhuntCatches > 0 ? " · \(row.manhuntCatches) Manhunt catch\(row.manhuntCatches == 1 ? "" : "es")" : ""))
+                Text(Self.roles(row))
                     .font(.caption).foregroundStyle(Noir.card.opacity(0.6))
             }
             Spacer()
@@ -80,6 +79,14 @@ struct FugitiveRecordsView: View {
         }
         .padding(.vertical, 3)
         .accessibilityElement(children: .combine)
+    }
+
+    private static func roles(_ row: FugitiveStats.Row) -> String {
+        var text = "Fugitive \(row.fugitiveWins)/\(row.fugitiveGames) · Marshal \(row.marshalWins)/\(row.marshalGames)"
+        if row.manhuntCatches > 0 {
+            text += " · \(row.manhuntCatches) Manhunt catch\(row.manhuntCatches == 1 ? "" : "es")"
+        }
+        return text
     }
 
     private func recentRow(_ game: FugitiveStats.Recent) -> some View {

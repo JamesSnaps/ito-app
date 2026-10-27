@@ -341,11 +341,16 @@ private struct Fan: View {
             }
             .buttonStyle(PaperPress())
             .disabled(store.busy || store.animating)
-            .accessibilityLabel("\(number)" + (store.pick == nil ? "" : picked ? ", hiding here" : ", sprint with it"))
+            .accessibilityLabel(cardLabel(number, picked: picked))
             .accessibilityAddTraits(picked || sprinting ? .isSelected : [])
         } else {
             FugitiveCard(number: item.number, width: cardWidth)
         }
+    }
+
+    private func cardLabel(_ number: Int, picked: Bool) -> String {
+        guard store.pick != nil else { return "\(number)" }
+        return picked ? "\(number), hiding here" : "\(number), sprint with it"
     }
 }
 
@@ -708,8 +713,15 @@ private struct Notepad: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(PaperPress())
-        .accessibilityLabel("\(n)" + (found ? ", found" : struck ? ", ruled out" : missed ? ", guessed wrong" : ""))
+        .accessibilityLabel(Self.label(n, found: found, struck: struck, missed: missed))
         .accessibilityAddTraits(picked ? .isSelected : [])
+    }
+
+    private static func label(_ n: Int, found: Bool, struck: Bool, missed: Bool) -> String {
+        if found { return "\(n), found" }
+        if struck { return "\(n), ruled out" }
+        if missed { return "\(n), guessed wrong" }
+        return "\(n)"
     }
 
     @ViewBuilder private func guessButtons(_ g: FugitiveGame) -> some View {
@@ -886,7 +898,9 @@ private struct FolderCurtain: View {
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.85).ignoresSafeArea()
+            // Opaque: behind it may still be the last mover's hand.
+            DeskBackground().ignoresSafeArea()
+            Color.black.opacity(0.55).ignoresSafeArea()
             VStack(spacing: 14) {
                 Mugshot(name: name, role: role, size: 112)
                 Text("For \(name)’s eyes only").font(Noir.poster(34)).multilineTextAlignment(.center)

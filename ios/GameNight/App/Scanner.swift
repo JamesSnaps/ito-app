@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftUI
 import VisionKit
 
@@ -9,12 +10,17 @@ struct ScanSheet: View {
     let onScanned: (URL) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var problem: String?
+    /// Nil until camera access has been asked for: VisionKit reports the
+    /// scanner unavailable until it's granted, and never asks by itself.
+    @State private var canScan: Bool?
 
     var body: some View {
         NavigationStack {
             ZStack {
                 Color.black.ignoresSafeArea()
-                if Self.canScan {
+                if canScan == nil {
+                    ProgressView().tint(.white)
+                } else if canScan == true {
                     QRScanner { text in
                         if let url = URL(string: text), Joining.isOurs(url) {
                             UINotificationFeedbackGenerator().notificationOccurred(.success)
@@ -47,11 +53,13 @@ struct ScanSheet: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
             }
         }
+        .task {
+            if AVCaptureDevice.authorizationStatus(for: .video) == .notDetermined {
+                _ = await AVCaptureDevice.requestAccess(for: .video)
+            }
+            canScan = DataScannerViewController.isSupported && DataScannerViewController.isAvailable
+        }
         .preferredColorScheme(.dark)
-    }
-
-    static var canScan: Bool {
-        DataScannerViewController.isSupported && DataScannerViewController.isAvailable
     }
 }
 
