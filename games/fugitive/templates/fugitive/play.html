@@ -67,10 +67,17 @@
     toastTimer = setTimeout(() => { node.hidden = true; }, 3500);
   }
 
+  // Never throws: a dropped connection comes back as a failed answer, so
+  // whoever called can clear its `busy` guard and say so.
   async function post(url, body, token){
     const headers = {'Content-Type': 'application/json'};
     if (token) headers['X-Fugitive-Token'] = token;
-    const res = await fetch(url, {method: 'POST', headers, body: JSON.stringify(body || {})});
+    let res;
+    try {
+      res = await fetch(url, {method: 'POST', headers, body: JSON.stringify(body || {})});
+    } catch (e) {
+      return {ok: false, status: 0, data: {error: 'Can’t reach the table — try again.'}};
+    }
     let data = null;
     try { data = await res.json(); } catch (e) {}
     return {ok: res.ok, status: res.status, data: data || {}};
@@ -256,6 +263,9 @@
 
     function take(payload, askedWith){
       if (!payload || !payload.game) return;
+      // A poll that left before a move and lands after it is older than
+      // what's on screen: painting it would roll the table back.
+      if (data && payload.code === data.code && payload.game.seq < data.game.seq) return;
       // A seat freed by the dealing device: this token no longer sits anywhere.
       for (const role of held()) {
         if (askedWith === device.seats[role] && payload.you.seat !== role) {

@@ -852,6 +852,9 @@
 
     render();
     poll();
+    // Faces arrive once the profile list does; a poll only redraws when the
+    // game changes, so the mats are drawn again here.
+    GN.profiles.load().then(() => { if (!busy) render(); });
   }
 </script>
 {% endblock %}

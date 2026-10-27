@@ -184,6 +184,19 @@ def test_a_damaged_profiles_file_is_never_written_over():
     assert paths.DATA_DIR in profiles.profiles_path().parents
 
 
+def test_a_wrongly_shaped_profiles_file_counts_as_damaged():
+    """Valid JSON that isn't a profile list falls back to the backup and
+    refuses writes, like broken JSON — not a 500."""
+    from core import profiles
+
+    c = client()
+    make(c, "Ana")
+    make(c, "Ben")
+    profiles.profiles_path().write_text('["not", "profiles"]')
+    assert c.post("/api/profiles", json={"name": "Cat"}).status_code == 503
+    assert [p["name"] for p in c.get("/api/profiles").get_json()["profiles"]] == ["Ana"]
+
+
 def test_the_profile_page_renders_and_explains_photos_are_shared():
     body = client().get("/me").get_data(as_text=True)
     assert "selfie" in body.lower() and "anyone" in body.lower()

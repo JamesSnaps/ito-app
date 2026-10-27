@@ -50,7 +50,12 @@
     const headers = {...GN.me.headers()};
     if (body && !isBlob) headers['Content-Type'] = 'application/json';
     if (isBlob) headers['Content-Type'] = body.type || 'image/jpeg';
-    const res = await fetch(url, {method, headers, body: isBlob ? body : body ? JSON.stringify(body) : undefined});
+    let res;
+    try {
+      res = await fetch(url, {method, headers, body: isBlob ? body : body ? JSON.stringify(body) : undefined});
+    } catch (e) {
+      return {ok: false, status: 0, data: {error: 'Can’t reach Game Night — check the connection.'}};
+    }
     let data = {};
     try { data = await res.json(); } catch (e) {}
     return {ok: res.ok, status: res.status, data};
@@ -150,13 +155,19 @@
 
   async function forget(){
     if (!confirm('Sign this device out? The profile stays, for your other devices.')) return;
-    await api('POST', '/api/profiles/me/forget');
+    const res = await api('POST', '/api/profiles/me/forget');
+    // 403: the server no longer knows this device's token, so there's
+    // nothing to keep. Anything else failed, and the token still matters.
+    if (!res.ok && res.status !== 403) { message = res.data.error || 'Couldn’t sign out — try again.'; return render(); }
     GN.me.clear(); profile = null; render();
   }
 
   async function destroy(){
     if (!confirm(`Delete ${profile.name}’s profile and photo on every device? Past games keep the name.`)) return;
-    await api('DELETE', '/api/profiles/me');
+    const res = await api('DELETE', '/api/profiles/me');
+    // Dropping the token after a failed delete would leave the name claimed
+    // with no device able to remove it.
+    if (!res.ok && res.status !== 403) { message = res.data.error || 'Couldn’t delete it — try again.'; return render(); }
     GN.profiles.list = GN.profiles.list.filter(x => x.id !== profile.id);
     GN.me.clear(); profile = null; render();
   }
