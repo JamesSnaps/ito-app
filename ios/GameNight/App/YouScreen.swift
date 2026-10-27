@@ -76,7 +76,7 @@ struct YouScreen: View {
         .confirmationDialog("Sign this device out?", isPresented: $confirmingSignOut, titleVisibility: .visible) {
             Button("Sign out") { Task { await signOut() } }
         } message: {
-            Text("The profile stays, for your other devices.")
+            Text("The profile stays for your other devices — if this is the only one, it’s deleted along with its photo.")
         }
         .confirmationDialog("Delete your profile?", isPresented: $confirmingDelete, titleVisibility: .visible) {
             Button("Delete profile and photo", role: .destructive) { Task { await delete() } }
@@ -247,17 +247,31 @@ struct YouScreen: View {
         }
     }
 
+    // Both keep the token unless the server took the request, as the web page
+    // does: dropping it after a failure would leave the name claimed with no
+    // device able to change or delete it. A 403 means the server no longer
+    // knows the token, so there's nothing left to keep.
+
     private func signOut() async {
         guard let me = faces.me else { return }
-        try? await client.forgetThisDevice(token: me.token)
-        faces.forget(deleted: false)
-        message = nil
+        do {
+            faces.forget(deleted: try await client.forgetThisDevice(token: me.token))
+            message = nil
+        } catch let failure as GameNightClient.Failure where failure.status == 403 {
+            faces.forget(deleted: false)
+            message = nil
+        } catch {
+            message = error.localizedDescription
+        }
     }
 
     private func delete() async {
         guard let me = faces.me else { return }
         do {
             try await client.deleteProfile(token: me.token)
+            faces.forget(deleted: true)
+            message = nil
+        } catch let failure as GameNightClient.Failure where failure.status == 403 {
             faces.forget(deleted: true)
             message = nil
         } catch {

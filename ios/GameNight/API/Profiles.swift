@@ -35,6 +35,12 @@ nonisolated struct ProfileLink: Decodable, Equatable {
 
 nonisolated struct Done: Decodable, Equatable {}
 
+/// Signing out: the last device out deletes the profile (server 1.8.1+;
+/// older servers leave `deleted` out).
+nonisolated struct Forgotten: Decodable, Equatable {
+    let deleted: Bool?
+}
+
 extension GameNightClient {
     static let profileHeader = "X-Profile-Token"
 
@@ -72,8 +78,10 @@ extension GameNightClient {
         try await send("POST", "api/profiles/link/\(code)")
     }
 
-    func forgetThisDevice(token: String) async throws {
-        let _: Done = try await send("POST", "api/profiles/me/forget", token: token, tokenHeader: Self.profileHeader)
+    /// True if this was the last device, so the profile is gone too.
+    func forgetThisDevice(token: String) async throws -> Bool {
+        let forgotten: Forgotten = try await send("POST", "api/profiles/me/forget", token: token, tokenHeader: Self.profileHeader)
+        return forgotten.deleted ?? false
     }
 
     func deleteProfile(token: String) async throws {

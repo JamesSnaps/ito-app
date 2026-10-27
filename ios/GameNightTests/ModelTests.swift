@@ -138,4 +138,14 @@ private final class BundleToken {}
         """
         #expect(try GameNightClient.decoder.decode(ItoState.self, from: Data(ito.utf8)).drawId == 0)
     }
+
+    @Test func signingOutSaysWhetherTheProfileWentWithIt() throws {
+        func decode(_ json: String) throws -> Bool? {
+            try GameNightClient.decoder.decode(Forgotten.self, from: Data(json.utf8)).deleted
+        }
+        #expect(try decode(#"{"forgotten": true, "deleted": true}"#) == true)
+        #expect(try decode(#"{"forgotten": true, "deleted": false}"#) == false)
+        // A server before 1.8.1 doesn't say.
+        #expect(try decode(#"{"forgotten": true}"#) == nil)
+    }
 }
