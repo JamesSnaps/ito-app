@@ -1,8 +1,13 @@
 {% extends "base.html" %}
 {% block title %}{{ app_name }}{% endblock %}
+{% block head %}<script src="{{ asset('profiles.js') }}"></script>{% endblock %}
 {% block body %}
 <div class="wrap hub">
-  <div class="eyebrow">{{ app_name }}</div>
+  <div class="hub-top">
+    <div class="eyebrow">{{ app_name }}</div>
+    {# Who this device is. Filled in by profiles.js; a stranger sees "Add yourself". #}
+    <a class="hub-me" id="hub-me" href="{{ url_for('profiles.me_page') }}">Add yourself</a>
+  </div>
   <h1>Pick a game</h1>
   <div class="sub">Companion apps for the board games on the shelf.</div>
 
@@ -30,4 +35,15 @@
 
   <div class="version">v{{ app_version }}</div>
 </div>
+<script>
+  (async () => {
+    const mine = GN.me.get();
+    if (!mine) return;
+    await GN.profiles.load();
+    const chip = document.getElementById('hub-me');
+    chip.textContent = '';
+    chip.appendChild(GN.avatar(mine.name, 30));
+    chip.appendChild(document.createTextNode(mine.name));
+  })();
+</script>
 {% endblock %}

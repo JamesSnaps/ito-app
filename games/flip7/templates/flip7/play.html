@@ -3,6 +3,7 @@
 {% block body_class %}flip7 f7-play{% if code %} f7-at-table{% endif %}{% endblock %}
 {% block theme_color %}#0f2e24{% endblock %}
 {% block head %}<link rel="stylesheet" href="{{ asset('flip7.css') }}">
+<script src="{{ asset('profiles.js') }}"></script>
 <script src="{{ asset('flip7.js') }}"></script>{% endblock %}
 {% block body %}
 <div class="wrap">
@@ -60,6 +61,7 @@
 
 <script>
   const CODE = {{ code|tojson }};
+  GN.profiles.load();
   const TARGET_SCORE = {{ target }};
   const CREATE_URL = '{{ url_for("flip7.api_play_create") }}';
   const TABLE_URL = '{{ url_for("flip7.play_view", code="CODE") }}';
@@ -204,6 +206,7 @@
       names.forEach((name, i) => {
         const chip = el('span', {class: 'f7-chip', 'data-index': String(i)}, [
           names.length > 1 ? icon('grip') : null,
+          GN.avatar(name, 22),
           el('span', {text: name}),
           el('button', {
             type: 'button', 'aria-label': `Remove ${name}`,
@@ -229,6 +232,8 @@
           el('span', {class: 'f7-note', text: `${names.length} / ${MAX_PLAYERS}`})
         ]),
         names.length ? chips : el('p', {class: 'f7-note', text: 'Add everyone at the table, in the order you’re sitting.'}),
+        // The regulars, with their faces: tap instead of typing.
+        GN.picker(addName, names, 'Regulars — tap to add'),
         names.length > 1
           ? el('p', {class: 'f7-note f7-reorder-hint', text: 'Drag to match where people are sitting — the first name is dealt to first.'})
           : null,
@@ -273,6 +278,7 @@
 
     renderSetup();
     checkResume();
+    GN.profiles.load().then(renderSetup);
   }
 
   // --- the table ------------------------------------------------------------
@@ -574,6 +580,7 @@
                 i === mySeat ? 'is-me' : '', shaking.has(i) ? 'is-shaking' : ''].filter(Boolean).join(' ')
       }, [
         el('div', {class: 'f7-mat-head'}, [
+          GN.avatar(p.name, 28),
           el('span', {class: 'f7-mat-name', text: p.name}),
           i === mySeat ? el('span', {class: 'f7-you', text: 'You'}) : null,
           onPhone ? el('span', {class: 'f7-on-phone', title: 'Playing on their own phone'}, [icon('phone')]) : null,

@@ -51,6 +51,14 @@ numbers to turn them over.
 - The Marshal's notepad can show what each hideout could still be.
 - Finished games are recorded at `/fugitive/stats`; a rematch swaps roles.
 
+## Player profiles
+
+Tap **Add yourself** on the hub (or go to `/me`) to claim your name and take
+a selfie. Your face then shows up in every game — the setup pickers, the
+tables and the records. Add your other devices by scanning the QR on the
+"You" page. Photos are re-drawn by the server as small square JPEGs with
+nothing else from the file kept, and are visible to anyone using the site.
+
 ## Running it
 
 ```bash
@@ -77,6 +85,7 @@ app.py                 hub: routing, /join, QR endpoint, APP_VERSION
 core/rooms.py          room codes, expiry (in-memory, all games)
 core/ratelimit.py      throttles wrong-code guessing
 core/stats.py          win/loss history on disk, keyed by game
+core/profiles.py       player profiles and selfies, shared by every game
 core/jsonfile.py       atomic JSON writes, keeps <file>.bak of the last good copy
 games/registry.py      the list of games
 games/ito/game.py      ito's blueprint and topic logic
