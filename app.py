@@ -2,7 +2,8 @@
 
 Each game is a self-contained blueprint under games/, and the hub provides
 what they all need: room codes, joining, persisted stats and QR links.
-/ is the menu: ito (a topic randomiser) and Flip 7 (a scorekeeper).
+/ is the menu: ito (a topic randomiser), Flip 7 (a scorekeeper, or the
+deck itself) and Fugitive (a two-player game played entirely on the app).
 """
 
 import json
@@ -23,7 +24,7 @@ APP_NAME = "Game Night"
 # Bump this in the same commit as any user-visible change, before pushing.
 # Watchtower deploys `latest`, so this is the only way to tell from a phone
 # which build the server is actually running. See CLAUDE.md.
-APP_VERSION = "1.6.1"
+APP_VERSION = "1.7.0"
 
 # The iOS app (ios/project.yml): team C729B84RYG, the paid personal
 # membership Dishes, Keepsake and Brief use. Named in the file Apple checks
@@ -100,8 +101,8 @@ def create_app():
 
     @app.route("/")
     def hub():
-        """The menu. There are two games now, so / is a real choice again —
-        it used to short-circuit straight to ito."""
+        """The menu. / used to short-circuit straight to ito, back when it
+        was the only game."""
         return render_template("hub.html", games=playable_games())
 
     @app.route("/games")

@@ -4,7 +4,7 @@ A small hub for companion web apps to the physical board games on the
 shelf. Each game is self-contained; the hub provides what they all need —
 room codes, joining, persisted stats, QR links.
 
-Two games so far: **ito** and **Flip 7**. `/` is the menu.
+Three games so far: **ito**, **Flip 7** and **Fugitive**. `/` is the menu.
 
 ## ito
 
@@ -37,6 +37,20 @@ ten games. Only games somebody actually won are recorded. Names must be
 unique (ignoring case) and a game takes at most 12 players; if a game can't
 be recorded the scorekeeper says why and offers to try again.
 
+## Fugitive
+
+The whole game, not a companion to it: one player is the Fugitive, laying a
+trail of face-down hideouts from 0 to 42; the other is the Marshal, guessing
+numbers to turn them over.
+
+- Type the two names and deal. Either pass one device between you (hands
+  are hidden while it changes hands), or use this screen as the table and
+  scan its QR on each phone to sit down.
+- Each phone sees only its own player's cards; the table sees what both
+  could see across a real table.
+- The Marshal's notepad can show what each hideout could still be.
+- Finished games are recorded at `/fugitive/stats`; a rematch swaps roles.
+
 ## Running it
 
 ```bash
@@ -68,6 +82,8 @@ games/registry.py      the list of games
 games/ito/game.py      ito's blueprint and topic logic
 games/ito/default_topics.json  shipped topics, tracked in git
 games/flip7/game.py    Flip 7's blueprint (no rooms) and its records
+games/fugitive/engine.py  Fugitive's rules, per-player views, deduction
+games/fugitive/game.py    Fugitive's blueprint, seats, records
 data/ito/topics.json   live topics, seeded on first run, gitignored
 data/stats.json        win/loss history — runtime state, gitignored
 data/**/*.bak          last good copy of each file, written on every save

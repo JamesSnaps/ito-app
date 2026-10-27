@@ -15,6 +15,9 @@ data/ito/topics.json
 # restart doesn't end them. Runtime state, like stats.json.
 data/flip7/
 
+# Fugitive games, saved the same way.
+data/fugitive/
+
 # Last-good copies and in-flight temp files from core/jsonfile.py.
 data/**/*.bak
 data/**/.*.tmp

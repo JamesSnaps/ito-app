@@ -1,0 +1,642 @@
+{% extends "base.html" %}
+{% block title %}Fugitive — {% if code %}game {{ code }}{% else %}new game{% endif %} — {{ app_name }}{% endblock %}
+{% block body_class %}fugitive{% endblock %}
+{% block theme_color %}#0e1726{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ asset('fugitive.css') }}">{% endblock %}
+{% block body %}
+<div class="wrap">
+  <header class="fg-bar">
+    {% if code %}
+    <a class="fg-icon-btn" href="{{ url_for('fugitive.landing') }}"
+       aria-label="Leave the table" title="Leave the table — the game keeps">←</a>
+    {% else %}
+    <a class="fg-icon-btn" href="/" aria-label="Back to the games" title="Back to the games">←</a>
+    {% endif %}
+    <h1 class="fg-title">Fugi<span>tive</span></h1>
+    {% if code %}<span class="fg-code" title="Room code — /join with it">{{ code }}</span>{% endif %}
+    {% set here = request.path %}
+    <a class="fg-icon-btn" href="{{ url_for('fugitive.stats_view', back=here) }}"
+       aria-label="Records" title="Records">★</a>
+    <a class="fg-icon-btn" href="{{ url_for('fugitive.rules_view', back=here) }}"
+       aria-label="Rules" title="Rules">?</a>
+  </header>
+
+  <div id="app"></div>
+
+  {% if not code %}<div class="version">{{ app_name }} v{{ app_version }}</div>{% endif %}
+</div>
+
+<div class="fg-toast" id="toast" role="status" hidden></div>
+
+<script>
+  const CODE = {{ code|tojson }};
+  const MAX_NAME = {{ max_name }};
+  const CREATE_URL = '{{ url_for("fugitive.api_create") }}';
+  const TABLE_URL = '{{ url_for("fugitive.play_view", code="CODE") }}';
+  const API = code => `/fugitive/api/play/${code}`;
+  const DECK_LABELS = ['4–14', '15–28', '29–41'];
+  const ROLE_NAMES = {fugitive: 'Fugitive', marshal: 'Marshal'};
+  // Last game's two names, so the same pair isn't typed in every time.
+  const NAMES_KEY = 'fugitive:names';
+  const ASSIST_KEY = 'fugitive:assist';
+  // What this device holds in a game: {host, seats: {fugitive, marshal},
+  // pass, at}. Pass-and-play is a device holding both seats.
+  const GAME_PREFIX = 'fugitive:game:';
+
+  function readJSON(key){
+    try { return JSON.parse(localStorage.getItem(key)); } catch (e) { return null; }
+  }
+  function writeJSON(key, value){
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {}
+  }
+  function forget(key){
+    try { localStorage.removeItem(key); } catch (e) {}
+  }
+  function tableUrl(code){ return TABLE_URL.replace('CODE', code); }
+
+  // Names are typed at the table and go straight back on screen, so
+  // everything is built as DOM nodes: textContent can't be got wrong.
+  function el(tag, attrs, children){
+    const node = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs || {})) {
+      if (k === 'class') node.className = v;
+      else if (k === 'text') node.textContent = v;
+      else if (k.startsWith('on')) node.addEventListener(k.slice(2), v);
+      else if (v === true) node.setAttribute(k, '');
+      else if (v !== false && v != null) node.setAttribute(k, v);
+    }
+    (children || []).forEach(c => c && node.appendChild(typeof c === 'string' ? document.createTextNode(c) : c));
+    return node;
+  }
+
+  let toastTimer;
+  function showToast(text){
+    const node = document.getElementById('toast');
+    node.textContent = text;
+    node.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { node.hidden = true; }, 3500);
+  }
+
+  async function post(url, body, token){
+    const headers = {'Content-Type': 'application/json'};
+    if (token) headers['X-Fugitive-Token'] = token;
+    const res = await fetch(url, {method: 'POST', headers, body: JSON.stringify(body || {})});
+    let data = null;
+    try { data = await res.json(); } catch (e) {}
+    return {ok: res.ok, status: res.status, data: data || {}};
+  }
+
+  const app = document.getElementById('app');
+
+  // ---------------------------------------------------------------- setup
+
+  if (!CODE) {
+    const saved = readJSON(NAMES_KEY) || {};
+    const form = {fugitive: saved.fugitive || '', marshal: saved.marshal || '', mode: 'phones', error: null};
+    let busy = false;
+
+    async function deal(){
+      if (busy) return;
+      const fugitive = form.fugitive.trim(), marshal = form.marshal.trim();
+      if (!fugitive || !marshal) { form.error = 'Both players need a name.'; return renderSetup(); }
+      busy = true;
+      const made = await post(CREATE_URL, {fugitive, marshal});
+      if (!made.ok) { busy = false; form.error = made.data.error || 'Couldn’t deal — try again.'; return renderSetup(); }
+      writeJSON(NAMES_KEY, {fugitive, marshal});
+      const device = {host: made.data.host_token, seats: {}, pass: form.mode === 'pass', at: Date.now()};
+      if (device.pass) {
+        for (const role of ['fugitive', 'marshal']) {
+          const sat = await post(`${API(made.data.code)}/seats/${role}/claim`);
+          if (sat.ok) device.seats[role] = sat.data.seat_token;
+        }
+      }
+      writeJSON(GAME_PREFIX + made.data.code, device);
+      location.href = tableUrl(made.data.code);
+    }
+
+    function nameRow(role){
+      const input = el('input', {
+        type: 'text', maxlength: MAX_NAME, value: form[role], placeholder: 'Name',
+        autocomplete: 'off', 'aria-label': `${ROLE_NAMES[role]}'s name`,
+        oninput: e => { form[role] = e.target.value; },
+        onkeydown: e => { if (e.key === 'Enter') deal(); }
+      });
+      return el('div', {class: 'fg-name-row'}, [
+        el('span', {class: `fg-role-tag fg-role-${role}`, text: ROLE_NAMES[role]}), input
+      ]);
+    }
+
+    function choice(value, title, detail){
+      return el('label', {}, [
+        el('input', {type: 'radio', name: 'mode', value, checked: form.mode === value,
+                     onchange: () => { form.mode = value; }}),
+        el('span', {}, [el('strong', {text: title}), el('span', {class: 'fg-muted', text: detail})])
+      ]);
+    }
+
+    function renderSetup(){
+      app.replaceChildren(el('div', {class: 'fg-setup'}, [
+        el('p', {class: 'fg-muted', text: 'One runs, one hunts. The Fugitive lays a trail of face-down hideouts from 0 to 42; the Marshal guesses numbers to turn them over.'}),
+        el('div', {id: 'resume'}),
+        el('div', {class: 'fg-panel'}, [
+          el('h2', {text: 'Who’s playing?'}),
+          nameRow('fugitive'),
+          nameRow('marshal'),
+          el('button', {class: 'fg-btn fg-btn-quiet', type: 'button', text: '⇅ Swap roles', onclick: () => {
+            [form.fugitive, form.marshal] = [form.marshal, form.fugitive];
+            renderSetup();
+          }}),
+          el('div', {class: 'fg-choice'}, [
+            choice('phones', 'On our own phones', 'This screen is the table. Scan its code on each phone and sit down.'),
+            choice('pass', 'Pass this device between us', 'Hands are hidden while it changes hands.')
+          ]),
+          el('button', {class: 'fg-btn fg-btn-fugitive fg-btn-wide', type: 'button', text: 'Deal', onclick: deal}),
+          form.error ? el('div', {class: 'fg-error', text: form.error}) : null
+        ])
+      ]));
+      offerResume();
+    }
+
+    // Games this device was in that are still going. Checked before being
+    // offered: a dead code offered up is worse than no offer.
+    async function offerResume(){
+      const keys = [];
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith(GAME_PREFIX)) keys.push(key);
+        }
+      } catch (e) { return; }
+      const entries = keys.map(k => ({key: k, code: k.slice(GAME_PREFIX.length), device: readJSON(k) || {}}))
+        .sort((a, b) => (b.device.at || 0) - (a.device.at || 0));
+      const live = [];
+      for (const entry of entries.slice(0, 5)) {
+        try {
+          const res = await fetch(API(entry.code));
+          if (res.status === 404) { forget(entry.key); continue; }
+          const data = await res.json();
+          if (data.game.phase !== 'game_over') live.push({...entry, data});
+        } catch (e) {}
+      }
+      const slot = document.getElementById('resume');
+      if (!slot || !live.length) return;
+      slot.replaceChildren(el('div', {class: 'fg-panel'}, [
+        el('h2', {text: 'Carry on'}),
+        ...live.slice(0, 3).map(g => el('a', {class: 'fg-btn fg-btn-quiet fg-btn-wide', href: tableUrl(g.code),
+          text: `${g.data.players.fugitive} v ${g.data.players.marshal} · ${g.code}`}))
+      ]));
+    }
+
+    renderSetup();
+  }
+
+  // ---------------------------------------------------------------- table
+
+  if (CODE) {
+    const KEY = GAME_PREFIX + CODE;
+    let device = readJSON(KEY) || {seats: {}};
+    device.seats = device.seats || {};
+    let data = null;           // the latest payload
+    let shownAs = null;        // pass-and-play: whose hand the screen is showing
+    let pick = {card: null, sprints: new Set()};
+    let guess = new Set();
+    let lastSeq = null;
+    let busy = false;
+    let invite = null;
+    let assist = readJSON(ASSIST_KEY) !== false;
+
+    function save(){ device.at = Date.now(); writeJSON(KEY, device); }
+    function held(){ return ['fugitive', 'marshal'].filter(r => device.seats[r]); }
+    function passAndPlay(){ return held().length === 2; }
+
+    // Which token to ask with. A device with both seats only shows a hand
+    // once it's been handed over and the curtain tapped away.
+    function askingAs(){
+      const seats = held();
+      if (seats.length === 1) return device.seats[seats[0]];
+      if (seats.length === 2 && data && data.game.turn && shownAs === data.game.turn) {
+        return device.seats[shownAs];
+      }
+      return device.host || '';
+    }
+
+    function curtainRole(){
+      if (!passAndPlay() || !data || !data.game.turn) return null;
+      return shownAs === data.game.turn ? null : data.game.turn;
+    }
+
+    function take(payload, askedWith){
+      if (!payload || !payload.game) return;
+      // A seat freed by the dealing device: this token no longer sits anywhere.
+      for (const role of held()) {
+        if (askedWith === device.seats[role] && payload.you.seat !== role) {
+          delete device.seats[role];
+          save();
+          showToast(`You’re no longer the ${ROLE_NAMES[role]} in this game.`);
+        }
+      }
+      if (payload.next && (device.host || held().length)) return follow(payload.next);
+      if (payload.game.seq !== lastSeq) {
+        pick = {card: null, sprints: new Set()};
+        guess = new Set();
+        lastSeq = payload.game.seq;
+      }
+      data = payload;
+      render();
+    }
+
+    // A rematch swaps roles, and each player's token goes with them.
+    function follow(code){
+      writeJSON(GAME_PREFIX + code, {
+        host: device.host,
+        seats: {fugitive: device.seats.marshal, marshal: device.seats.fugitive},
+        pass: device.pass,
+        at: Date.now()
+      });
+      location.href = tableUrl(code);
+    }
+
+    let pollTimer;
+    async function poll(){
+      clearTimeout(pollTimer);
+      const token = askingAs();
+      try {
+        const res = await fetch(API(CODE), {headers: {'X-Fugitive-Token': token}});
+        if (res.status === 404) {
+          app.replaceChildren(el('div', {class: 'fg-panel'}, [
+            el('p', {text: 'This game has ended or expired.'}),
+            el('a', {class: 'fg-btn', href: '{{ url_for("fugitive.landing") }}', text: 'New game'})
+          ]));
+          forget(KEY);
+          return;
+        }
+        take(await res.json(), token);
+      } catch (e) {
+        showToast('Can’t reach the table — trying again.');
+      }
+      const live = data && data.game.phase !== 'game_over';
+      pollTimer = setTimeout(poll, live ? 1000 : 2500);
+    }
+
+    async function send(move){
+      if (busy || !data) return;
+      const role = data.game.viewer;
+      const token = device.seats[role];
+      if (!token) return;
+      busy = true;
+      const res = await post(`${API(CODE)}/move`, {...move, seq: data.game.seq}, token);
+      busy = false;
+      if (!res.ok) showToast(res.data.error || 'That didn’t work — try again.');
+      take(res.data, token);
+    }
+
+    async function sitAt(role){
+      const res = await post(`${API(CODE)}/seats/${role}/claim`);
+      if (!res.ok) { showToast(res.data.error || 'Couldn’t sit down.'); return poll(); }
+      device.seats[role] = res.data.seat_token;
+      save();
+      if (passAndPlay()) shownAs = null;
+      poll();
+    }
+
+    async function freeSeat(role){
+      if (!confirm(`Free the ${ROLE_NAMES[role]}’s seat? Whoever’s in it goes back to watching.`)) return;
+      const res = await post(`${API(CODE)}/seats/${role}/release`, {}, device.host);
+      if (!res.ok) showToast(res.data.error || 'Couldn’t free the seat.');
+      if (device.seats[role]) { delete device.seats[role]; save(); }
+      poll();
+    }
+
+    async function rematch(){
+      const res = await post(`${API(CODE)}/rematch`, {}, device.host);
+      if (!res.ok) return showToast(res.data.error || 'Couldn’t start a rematch.');
+      follow(res.data.code);
+    }
+
+    async function resign(){
+      const role = data.game.viewer;
+      if (!confirm(`Give up? ${role === 'fugitive' ? data.players.marshal : data.players.fugitive} wins.`)) return;
+      send({type: 'resign'});
+    }
+
+    async function loadInvite(){
+      if (invite || !device.host) return;
+      try {
+        invite = await (await fetch(`${API(CODE)}/invite`)).json();
+        render();
+      } catch (e) {}
+    }
+
+    // ------------------------------------------------------------ words
+
+    function status(){
+      const g = data.game, f = data.players.fugitive, m = data.players.marshal;
+      const mine = g.turn && g.turn === g.viewer;
+      if (g.phase === 'game_over') {
+        const lines = {
+          caught: [`${m} caught ${f}!`, 'Every hideout found.'],
+          escaped: [`${f} escaped!`, 'Made it to 42.'],
+          manhunt_failed: [`${f} escaped!`, `${m} missed in the Manhunt.`],
+          let_go: [`${f} escaped!`, `${m} let them go.`],
+          resigned: [`${g.winner === 'fugitive' ? f : m} wins`, `${g.winner === 'fugitive' ? m : f} gave up.`]
+        }[g.reason] || ['Game over', ''];
+        return el('div', {class: 'fg-status', 'data-winner': g.winner}, [lines[0], el('small', {text: lines[1]})]);
+      }
+      let line, small = '';
+      if (g.phase === 'fugitive_draw') {
+        line = mine ? 'Your move: draw a card' : `${f} is drawing`;
+        small = 'From any deck — the Marshal sees which one.';
+      } else if (g.phase === 'fugitive_hide') {
+        line = mine ? 'Your move: hide' : `${f} is on the run`;
+        small = g.first_turn ? (g.hides_left === 2 ? 'First turn: one or two hideouts.' : 'One more, or stop there.') : 'Lay a hideout, or draw an extra card instead.';
+      } else if (g.phase === 'marshal_draw') {
+        line = mine ? `Your move: draw ${g.draws_left === 2 ? 'two cards' : 'a card'}` : `${m} is drawing`;
+        small = 'Cards you draw can’t be hideouts.';
+      } else if (g.phase === 'marshal_guess') {
+        line = mine ? 'Your move: guess' : `${m} is guessing`;
+        small = 'One number, or several — but then every one must be right.';
+      } else if (g.phase === 'manhunt') {
+        line = 'Manhunt!';
+        small = `${f} played 42. ${m} must find every hideout left, one guess at a time — one miss and they’re gone.`;
+      }
+      return el('div', {class: 'fg-status', 'data-turn': g.turn}, [line, el('small', {text: small})]);
+    }
+
+    function describe(e){
+      const g = data.game, f = data.players.fugitive, m = data.players.marshal;
+      const name = e.role === 'fugitive' ? f : m;
+      if (e.kind === 'drew') return `${name} drew from ${DECK_LABELS[e.deck]}${e.card != null ? ` — ${e.card}` : ''}`;
+      if (e.kind === 'hid') {
+        const count = g.hideouts[e.index] ? g.hideouts[e.index].sprint_count : 0;
+        return `${f} hid${e.card != null ? ` at ${e.card}` : ''}${count ? `, sprinting with ${count} card${count > 1 ? 's' : ''}` : ''}`;
+      }
+      if (e.kind === 'passed') return `${f} didn’t hide, and drew an extra card`;
+      if (e.kind === 'guessed') {
+        const nums = e.numbers.join(', ');
+        if (e.hit) return `${m} guessed ${nums} — found!`;
+        return e.numbers.length > 1 ? `${m} guessed ${nums} — not all right, nothing turned over` : `${m} guessed ${nums} — nothing there`;
+      }
+      if (e.kind === 'manhunt') return `${f} reached 42 — Manhunt!`;
+      return null;
+    }
+
+    // ------------------------------------------------------------ cards
+
+    function steps(card){
+      const n = data.game.footprints[String(card)] || 0;
+      return n ? '•'.repeat(n) : '';
+    }
+
+    function cardFace(card, extra, attrs){
+      return el('div', {class: `fg-card ${extra || ''}`, ...(attrs || {})}, [
+        String(card), el('span', {class: 'fg-steps', text: steps(card)})
+      ]);
+    }
+    function cardBack(label, extra){
+      return el('div', {class: `fg-card fg-card-back ${extra || ''}`, text: label || '?'});
+    }
+
+    function trail(){
+      const g = data.game;
+      const sets = g.candidates && assist ? g.candidates : null;
+      const row = el('div', {class: 'fg-trail', id: 'trail'}, g.hideouts.map((h, i) => {
+        let card;
+        if (h.card == null) card = cardBack('?');
+        else {
+          const cls = [h.card === 42 ? 'fg-card-escape' : '',
+                       !h.revealed ? 'fg-card-secret' : '',
+                       h.revealed && i > 0 && h.card !== 42 ? 'fg-card-found' : ''].join(' ');
+          card = cardFace(h.card, cls, {title: !h.revealed ? 'Still hidden from the Marshal' : ''});
+        }
+        const sprints = h.sprints
+          ? h.sprints.map(c => el('span', {class: 'fg-chip', text: String(c), title: `Sprinted with ${c}`}))
+          : Array.from({length: h.sprint_count}, () => el('span', {class: 'fg-chip fg-chip-back', title: 'A sprint card, face down'}));
+        let range = null;
+        if (sets && h.card == null && sets[i]) {
+          const s = sets[i];
+          range = el('div', {class: 'fg-range', text: s.length <= 4 ? s.join(' · ') : `${s[0]}–${s[s.length - 1]} · ${s.length} left`});
+        }
+        return el('div', {class: 'fg-stop'}, [card, el('div', {class: 'fg-stop-sprints'}, sprints), range]);
+      }));
+      return el('div', {class: 'fg-panel'}, [el('h2', {text: 'The trail'}), row]);
+    }
+
+    function decks(){
+      const g = data.game;
+      const canDraw = g.turn === g.viewer && (g.phase === 'fugitive_draw' || g.phase === 'marshal_draw');
+      return el('div', {class: 'fg-panel'}, [
+        el('h2', {text: 'Decks'}),
+        el('div', {class: 'fg-decks'}, g.deck_counts.map((n, i) => {
+          const body = [cardBack(String(n)), el('span', {text: DECK_LABELS[i]})];
+          return canDraw
+            ? el('button', {class: 'fg-deck', type: 'button', disabled: n === 0, 'aria-label': `Draw from ${DECK_LABELS[i]}`,
+                            onclick: () => send({type: 'draw', deck: i})}, body)
+            : el('div', {class: 'fg-deck'}, body);
+        }))
+      ]);
+    }
+
+    // ------------------------------------------------------------ the Fugitive
+
+    function fugitivePanel(){
+      const g = data.game;
+      const hand = g.hand || [];
+      const hiding = g.turn === 'fugitive' && g.phase === 'fugitive_hide';
+      const last = g.hideouts[g.hideouts.length - 1].card;
+      const fp = c => g.footprints[String(c)] || 0;
+      const power = [...pick.sprints].reduce((a, c) => a + fp(c), 0);
+      const reach = last + g.max_step + power;
+
+      function canReach(card){
+        const spare = hand.filter(c => c !== card).reduce((a, c) => a + fp(c), 0);
+        return card > last && card - last - g.max_step <= spare;
+      }
+
+      function tap(card){
+        if (pick.card === null || pick.card === card) {
+          pick.card = pick.card === card ? null : card;
+          pick.sprints.delete(card);
+        } else if (fp(card) > 0) {
+          pick.sprints.has(card) ? pick.sprints.delete(card) : pick.sprints.add(card);
+        }
+        render();
+      }
+
+      const cards = hand.map(c => {
+        const classes = [pick.sprints.has(c) ? 'fg-sprinting' : '', hiding && !canReach(c) ? 'fg-unreachable' : ''].join(' ');
+        const attrs = hiding
+          ? {role: 'button', tabindex: 0, 'aria-pressed': pick.card === c ? 'true' : 'false', onclick: () => tap(c),
+             onkeydown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tap(c); } }}
+          : {};
+        return cardFace(c, classes, attrs);
+      });
+
+      const children = [el('h2', {text: `Your hand · ${data.players.fugitive}, the Fugitive`}),
+                        el('div', {class: `fg-hand ${hiding ? '' : 'fg-hand-static'}`}, cards)];
+
+      if (hiding) {
+        let hint;
+        if (pick.card === null) hint = `Your last hideout is ${last}. Tap a card to hide there — up to ${last + g.max_step}, or further with sprint cards.`;
+        else if (pick.card <= last) hint = `Hideouts go up — pick something above ${last}.`;
+        else if (pick.card > reach) hint = `${pick.card} needs ${pick.card - reach} more footprint${pick.card - reach > 1 ? 's' : ''}: tap cards to sprint with them.`;
+        else hint = `Hide at ${pick.card}${pick.sprints.size ? `, sprinting with ${[...pick.sprints].sort((a, b) => a - b).join(', ')}` : ''}.`;
+        children.push(el('p', {class: 'fg-muted fg-reach', text: hint}));
+
+        const ok = pick.card !== null && pick.card > last && pick.card <= reach;
+        const actions = [el('button', {class: 'fg-btn fg-btn-fugitive', type: 'button', disabled: !ok,
+          text: ok ? `Hide at ${pick.card}` : 'Hide',
+          onclick: () => send({type: 'hide', card: pick.card, sprints: [...pick.sprints]})})];
+        if (g.first_turn && g.hides_left === 1) {
+          actions.push(el('button', {class: 'fg-btn fg-btn-quiet', type: 'button', text: 'Done — one is enough', onclick: () => send({type: 'pass'})}));
+        } else if (!g.first_turn) {
+          const any = g.deck_counts.some(n => n > 0);
+          actions.push(el('button', {class: 'fg-btn fg-btn-quiet', type: 'button',
+            text: any ? 'Don’t hide — draw an extra card' : 'Don’t hide', onclick: () => send({type: 'pass'})}));
+        }
+        children.push(el('div', {class: 'fg-actions'}, actions));
+      } else if (g.turn === 'fugitive' && g.phase === 'fugitive_draw') {
+        children.push(el('p', {class: 'fg-muted fg-reach', text: 'Tap a deck to draw.'}));
+      }
+      return el('div', {class: 'fg-panel'}, children);
+    }
+
+    // ------------------------------------------------------------ the Marshal
+
+    function marshalPanel(){
+      const g = data.game;
+      const hand = g.hand || [];
+      const guessing = g.turn === 'marshal' && (g.phase === 'marshal_guess' || g.phase === 'manhunt');
+      const children = [el('h2', {text: `Your cards · ${data.players.marshal}, the Marshal`}),
+        hand.length ? el('div', {class: 'fg-hand fg-hand-static'}, hand.map(c => cardFace(c)))
+                    : el('p', {class: 'fg-muted', text: 'None yet. Every card you draw is a number the Fugitive can’t be hiding at.'})];
+
+      if (g.turn === 'marshal' && g.phase === 'marshal_draw') {
+        children.push(el('p', {class: 'fg-muted fg-reach', text: `Tap a deck to draw${g.draws_left === 2 ? ' — two this turn' : ''}.`}));
+      }
+      if (!guessing) return el('div', {class: 'fg-panel'}, children);
+
+      const found = new Set(g.hideouts.filter(h => h.revealed).map(h => h.card));
+      const known = new Set(hand);
+      g.hideouts.forEach(h => (h.sprints || []).forEach(c => known.add(c)));
+      const possible = assist && g.candidates
+        ? new Set(g.candidates.filter((s, i) => !g.hideouts[i].revealed).flat()) : null;
+      const manhunt = g.phase === 'manhunt';
+
+      const pad = el('div', {class: 'fg-pad'}, Array.from({length: 41}, (_, k) => {
+        const n = k + 1;
+        if (found.has(n)) return el('button', {class: 'fg-num fg-found', type: 'button', disabled: true, text: String(n)});
+        const out = known.has(n);
+        const cls = ['fg-num', out ? 'fg-out' : '', !out && possible && !possible.has(n) ? 'fg-unlikely' : ''].join(' ');
+        return el('button', {class: cls, type: 'button', 'aria-pressed': guess.has(n) ? 'true' : 'false', text: String(n),
+          onclick: () => {
+            if (manhunt) guess = guess.has(n) ? new Set() : new Set([n]);
+            else guess.has(n) ? guess.delete(n) : guess.add(n);
+            render();
+          }});
+      }));
+      children.push(pad);
+      if (g.candidates) {
+        children.push(el('label', {class: 'fg-toggle'}, [
+          el('input', {type: 'checkbox', checked: assist, onchange: e => { assist = e.target.checked; writeJSON(ASSIST_KEY, assist); render(); }}),
+          'Notepad help: show what each hideout could still be'
+        ]));
+      }
+
+      const nums = [...guess].sort((a, b) => a - b);
+      const label = nums.length === 0 ? 'Pick a number'
+        : nums.length === 1 ? `Guess ${nums[0]}` : `Guess all ${nums.length} — every one must be right`;
+      const actions = [el('button', {class: 'fg-btn fg-btn-marshal', type: 'button', disabled: !nums.length, text: label,
+        onclick: () => send({type: 'guess', numbers: nums})})];
+      if (manhunt) {
+        actions.push(el('button', {class: 'fg-btn fg-btn-quiet', type: 'button', text: 'Let them go',
+          onclick: () => { if (confirm(`Let ${data.players.fugitive} escape?`)) send({type: 'let_go'}); }}));
+      }
+      children.push(el('div', {class: 'fg-actions'}, actions));
+      return el('div', {class: 'fg-panel'}, children);
+    }
+
+    // ------------------------------------------------------------ the rail
+
+    function log(){
+      const lines = data.game.log.map(describe).filter(Boolean).reverse().slice(0, 12);
+      return el('div', {class: 'fg-panel'}, [
+        el('h2', {text: 'What’s happened'}),
+        lines.length ? el('ul', {class: 'fg-log'}, lines.map(t => el('li', {text: t})))
+                     : el('p', {class: 'fg-muted', text: 'Nothing yet — the Fugitive moves first.'})
+      ]);
+    }
+
+    function seats(){
+      const children = [el('h2', {text: 'Players'})];
+      for (const role of ['fugitive', 'marshal']) {
+        const mine = !!device.seats[role];
+        const taken = data.seats[role].taken;
+        let right;
+        if (mine) right = el('span', {class: 'fg-muted', text: 'This device'});
+        else if (taken) {
+          right = device.host
+            ? el('button', {class: 'fg-btn fg-btn-quiet', type: 'button', text: 'Free seat', onclick: () => freeSeat(role)})
+            : el('span', {class: 'fg-muted', text: 'Seated'});
+        } else {
+          right = el('button', {class: `fg-btn fg-btn-${role}`, type: 'button', text: 'Sit here', onclick: () => sitAt(role)});
+        }
+        children.push(el('div', {class: 'fg-seat'}, [
+          el('span', {class: `fg-role-tag fg-role-${role}`, text: ROLE_NAMES[role]}),
+          el('span', {class: 'fg-seat-name', text: data.players[role]}),
+          right
+        ]));
+      }
+      const open = ['fugitive', 'marshal'].some(r => !data.seats[r].taken);
+      if (device.host && open && data.game.phase !== 'game_over') {
+        loadInvite();
+        if (invite) {
+          const qr = el('div', {class: 'fg-qr'});
+          qr.innerHTML = invite.qr_svg;   // our own server's SVG, not user input
+          children.push(qr, el('p', {class: 'fg-muted', style: 'text-align:center',
+            text: `Scan to sit down, or enter ${CODE} at /join.`}));
+        }
+      }
+      const g = data.game;
+      if (g.phase === 'game_over') {
+        children.push(device.host
+          ? el('button', {class: 'fg-btn fg-btn-wide', type: 'button', text: 'Rematch — swap roles', onclick: rematch})
+          : el('p', {class: 'fg-muted', text: 'The device that dealt can start a rematch.'}));
+      } else if (g.viewer !== 'table') {
+        children.push(el('button', {class: 'fg-btn fg-btn-quiet fg-btn-wide', type: 'button', text: 'Give up', onclick: resign}));
+      }
+      return el('div', {class: 'fg-panel'}, children);
+    }
+
+    function curtain(role){
+      const name = data.players[role];
+      return el('div', {class: 'fg-curtain'}, [el('div', {}, [
+        el('h2', {text: `Pass to ${name}`}),
+        el('p', {text: `${ROLE_NAMES[role]}’s turn. Tap when only ${name} can see the screen.`}),
+        el('button', {class: `fg-btn fg-btn-${role}`, type: 'button', text: `I’m ${name}`,
+          onclick: () => { shownAs = role; poll(); }})
+      ])]);
+    }
+
+    function render(){
+      if (!data) return;
+      const g = data.game;
+      const main = [status(), trail()];
+      if (g.viewer === 'fugitive') main.push(fugitivePanel());
+      if (g.viewer === 'marshal') main.push(marshalPanel());
+      if (g.viewer === 'table' && !held().length && g.phase !== 'game_over') {
+        main.push(el('p', {class: 'fg-muted', text: 'You’re watching. Take a free seat to play.'}));
+      }
+      const rail = [decks(), seats(), log()];
+      const hidden = curtainRole();
+      app.replaceChildren(el('div', {class: 'fg-table'}, [el('div', {}, main), el('div', {}, rail)]),
+                          ...(hidden ? [curtain(hidden)] : []));
+      const row = document.getElementById('trail');
+      if (row) row.scrollLeft = row.scrollWidth;
+      document.title = `${g.turn && g.turn === g.viewer ? '● Your turn — ' : ''}Fugitive — ${CODE}`;
+    }
+
+    poll();
+  }
+</script>
+{% endblock %}

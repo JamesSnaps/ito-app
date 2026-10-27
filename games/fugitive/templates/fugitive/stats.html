@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Fugitive — records — {{ app_name }}{% endblock %}
+{% block body_class %}fugitive{% endblock %}
+{% block theme_color %}#0e1726{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ asset('fugitive.css') }}">{% endblock %}
+{% block body %}
+<div class="wrap fg-page">
+  <header class="fg-bar">
+    <a class="fg-icon-btn" href="{{ back }}" aria-label="Back" title="Back">←</a>
+    <h1 class="fg-title">Records</h1>
+  </header>
+
+  {% if not rows %}
+  <p class="fg-muted">No games yet. Finished games are recorded here automatically.</p>
+  {% else %}
+  <p class="fg-muted">{{ record.games_played }} game{{ "" if record.games_played == 1 else "s" }} played.</p>
+  <table>
+    <thead>
+      <tr><th>Player</th><th class="fg-num-cell">Wins</th><th class="fg-num-cell">Win %</th>
+          <th class="fg-num-cell">As Fugitive</th><th class="fg-num-cell">As Marshal</th></tr>
+    </thead>
+    <tbody>
+      {% for p in rows %}
+      <tr>
+        <td>{{ p.name }}</td>
+        <td class="fg-num-cell">{{ p.wins }}/{{ p.games }}</td>
+        <td class="fg-num-cell">{{ p.win_rate }}%</td>
+        <td class="fg-num-cell">{{ p.fugitive_wins }}/{{ p.fugitive_games }}</td>
+        <td class="fg-num-cell">{{ p.marshal_wins }}/{{ p.marshal_games }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h2>Recent games</h2>
+  {% set how = {"caught": "caught", "escaped": "escaped", "manhunt_failed": "escaped a Manhunt",
+                "let_go": "was let go", "resigned": "resigned"} %}
+  <table>
+    <tbody>
+      {% for g in record.recent %}
+      <tr>
+        <td>{{ g.at[:10] }}</td>
+        <td>
+          {% if g.winner == "marshal" and g.reason == "caught" %}{{ g.marshal }} caught {{ g.fugitive }}
+          {% elif g.reason == "resigned" %}{{ g.fugitive if g.winner == "marshal" else g.marshal }} gave up to {{ g.marshal if g.winner == "marshal" else g.fugitive }}
+          {% else %}{{ g.fugitive }} {{ how[g.reason] }} from {{ g.marshal }}{% endif %}
+        </td>
+        <td class="fg-num-cell">{{ g.hideouts }} hideout{{ "" if g.hideouts == 1 else "s" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+{% endblock %}

@@ -45,9 +45,10 @@ class GameSpec:
 
 def all_games():
     from games.flip7.game import GAME as FLIP7
+    from games.fugitive.game import GAME as FUGITIVE
     from games.ito.game import GAME as ITO
 
-    return [ITO, FLIP7]
+    return [ITO, FLIP7, FUGITIVE]
 
 
 def playable_games():
