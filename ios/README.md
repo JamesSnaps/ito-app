@@ -94,7 +94,7 @@ Then in App Store Connect → TestFlight:
   > room QR codes and, optionally, for a profile photo on "You" (top left).
 
 The server has to be running a version with the app's API before a build
-goes out — the app talks to production by default: v1.6.1 for Flip 7, v1.8.1
+goes out — the app talks to production by default: v1.6.1 for Flip 7, v1.8.2
 for 1.2.0 (Fugitive, profiles and the `/fugitive/play` and `/me/link` app
 links).
 

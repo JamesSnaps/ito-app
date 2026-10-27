@@ -154,12 +154,13 @@
   }
 
   async function forget(){
-    if (!confirm('Sign this device out? The profile stays for your other devices — if this is the only one, it’s deleted along with its photo.')) return;
+    if (!confirm(`Sign this device out? The profile stays for your other devices — if this is the only one, ${profile.name}’s profile and photo are deleted.`)) return;
     const res = await api('POST', '/api/profiles/me/forget');
     // 403: the server no longer knows this device's token, so there's
     // nothing to keep. Anything else failed, and the token still matters.
     if (!res.ok && res.status !== 403) { message = res.data.error || 'Couldn’t sign out — try again.'; return render(); }
-    if (res.data.deleted) GN.profiles.list = GN.profiles.list.filter(x => x.id !== profile.id);
+    // The last device out deletes the profile (the name would be stuck otherwise).
+    if (res.ok && res.data.deleted) GN.profiles.list = GN.profiles.list.filter(x => x.id !== profile.id);
     GN.me.clear(); profile = null; render();
   }
 

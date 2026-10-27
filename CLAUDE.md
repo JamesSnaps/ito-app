@@ -540,7 +540,7 @@ in-app Safari sheet rather than being rebuilt.
   `applinks:gamenight.collardserver.co.uk` entitlement. The file must stay
   on the public Traefik router — Apple fetches it with no sign-in.
 - **The app talks to production by default**, so the server must be on a
-  version with the app's endpoints (v1.6.1+; v1.8.1+ for app 1.2.0) before
+  version with the app's endpoints (v1.6.1+; v1.8.2+ for app 1.2.0) before
   a build goes out.
 - **`.dockerignore` keeps `ios/` out of the server image.**
 - **QR codes are scanned in the app** (`ScanSheet`, VisionKit's
@@ -757,11 +757,7 @@ one thing besides the games that `app.py` registers), `templates/me.html`
   delete it. Another device joins by scanning a one-time link code from the
   first (`/me/link/<code>`, ten minutes, in memory, redeemed by a POST from
   the page so a link preview can't spend it; wrong codes count against the
-  room-code throttle). Up to `MAX_DEVICES` tokens per profile. Signing
-  out leaves the profile for its other devices, but the last device out
-  deletes it (and its photo) — a profile no device holds could never be
-  changed or removed. `/forget` answers `deleted` so the page and the app
-  can say so.
+  room-code throttle). Up to `MAX_DEVICES` tokens per profile.
 - **Photos are redrawn, never stored as sent.** The page crops a square on
   a canvas first (which already drops the file's metadata); the server then
   decodes with Pillow (`MAX_IMAGE_PIXELS` as a bomb guard), applies EXIF
@@ -775,6 +771,14 @@ one thing besides the games that `app.py` registers), `templates/me.html`
   There is no admin UI: to take a photo down, delete its file and clear
   `photo` in `data/profiles.json` on vm-core (or add an Authelia-protected
   route — remember the docker repo's Traefik rule).
+- **The last device out deletes the profile.** Signing out leaves the
+  profile for your other devices, but a profile no device holds could never
+  be changed or deleted, and its name would stay claimed for good — so the
+  last sign-out removes it and its photo. `/forget` answers `deleted` so
+  the page and the app can say so.
+- **A photo upload needs a length.** `Content-Length` is what caps the read
+  (Werkzeug stops there), so a chunked body — no length, read to the end
+  whatever its size — is a 411 before anything is read.
 - **`profiles.json` follows the stats rules**: atomic writes with a `.bak`,
   a damaged file is never written over (503 via `DataUnavailable`) and reads
   fall back to the backup.
