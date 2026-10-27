@@ -757,7 +757,11 @@ one thing besides the games that `app.py` registers), `templates/me.html`
   delete it. Another device joins by scanning a one-time link code from the
   first (`/me/link/<code>`, ten minutes, in memory, redeemed by a POST from
   the page so a link preview can't spend it; wrong codes count against the
-  room-code throttle). Up to `MAX_DEVICES` tokens per profile.
+  room-code throttle). Up to `MAX_DEVICES` tokens per profile. Signing
+  out leaves the profile for its other devices, but the last device out
+  deletes it (and its photo) — a profile no device holds could never be
+  changed or removed. `/forget` answers `deleted` so the page and the app
+  can say so.
 - **Photos are redrawn, never stored as sent.** The page crops a square on
   a canvas first (which already drops the file's metadata); the server then
   decodes with Pillow (`MAX_IMAGE_PIXELS` as a bomb guard), applies EXIF

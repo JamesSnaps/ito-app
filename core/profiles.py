@@ -228,13 +228,27 @@ def remove_photo(pid):
 
 
 def forget_device(pid, token):
-    """This device lets go of the profile. The profile stays."""
+    """This device lets go of the profile. The profile stays for its other
+    devices; the last one out deletes it, photo and all — nothing could
+    change or remove it afterwards. Returns True if it was deleted."""
     digest = _hash(token)
+    gone = {}
 
-    def change(data, profile):
+    def mutate(data):
+        profile = data["profiles"].get(pid)
+        if profile is None:
+            raise LookupError("That profile has gone.")
         profile["tokens"] = [h for h in profile.get("tokens", []) if not secrets.compare_digest(h, digest)]
+        if profile["tokens"]:
+            profile["updated"] = _now()
+            return False
+        data["profiles"].pop(pid)
+        gone["photo"] = profile.get("photo")
+        return True
 
-    return _change(pid, change)
+    deleted = _update(mutate)
+    _remove_file(gone.get("photo"))
+    return deleted
 
 
 def delete(pid):
@@ -390,10 +404,11 @@ def api_delete_me():
 
 @bp.route("/api/profiles/me/forget", methods=["POST"])
 def api_forget():
-    """Sign this device out of the profile, leaving the profile be."""
+    """Sign this device out of the profile. `deleted` says whether it was
+    the last device, which takes the profile with it."""
     profile = _me_or_403()
-    forget_device(profile["id"], request.headers.get(TOKEN_HEADER, ""))
-    return jsonify({"forgotten": True})
+    deleted = forget_device(profile["id"], request.headers.get(TOKEN_HEADER, ""))
+    return jsonify({"forgotten": True, "deleted": deleted})
 
 
 @bp.route("/api/profiles/me/photo", methods=["POST"])

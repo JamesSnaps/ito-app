@@ -144,7 +144,8 @@ def test_forgetting_a_device_keeps_the_profile_and_deleting_removes_it():
     link = c.post("/api/profiles/me/link", headers=headers).get_json()["code"]
     second = {"X-Profile-Token": c.post(f"/api/profiles/link/{link}").get_json()["token"]}
 
-    assert c.post("/api/profiles/me/forget", headers=headers).status_code == 200
+    res = c.post("/api/profiles/me/forget", headers=headers)
+    assert res.status_code == 200 and res.get_json()["deleted"] is False
     assert c.get("/api/profiles/me", headers=headers).status_code == 403
     assert c.get("/api/profiles/me", headers=second).status_code == 200
 
@@ -153,6 +154,19 @@ def test_forgetting_a_device_keeps_the_profile_and_deleting_removes_it():
     assert c.get("/api/profiles").get_json()["profiles"] == []
     assert c.get(photo).status_code == 404
     # The name is free again.
+    make(c, "Ana")
+
+
+def test_the_last_device_to_sign_out_takes_the_profile_with_it():
+    """Nothing could change or delete a profile with no devices left, so
+    signing out the last one deletes it, photo and all."""
+    c = client()
+    _, headers = make(c)
+    photo = upload(c, headers, jpeg()).get_json()["profile"]["photo"]
+    res = c.post("/api/profiles/me/forget", headers=headers)
+    assert res.status_code == 200 and res.get_json() == {"forgotten": True, "deleted": True}
+    assert c.get("/api/profiles").get_json()["profiles"] == []
+    assert c.get(photo).status_code == 404
     make(c, "Ana")
 
 
