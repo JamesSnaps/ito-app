@@ -31,6 +31,8 @@ struct RecordsView: View {
                                 HStack(alignment: .firstTextBaseline) {
                                     Text("\(rank + 1)").font(Theme.mono(12)).foregroundStyle(Theme.cream.opacity(0.5))
                                         .frame(width: 20, alignment: .leading)
+                                    AvatarView(name: row.name, size: 32)
+                                        .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 5 }
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(row.name).font(.body.weight(.bold))
                                         Text("\(row.games) game\(row.games == 1 ? "" : "s") · avg \(row.average, specifier: "%.1f") a round · best \(row.bestGame)")
@@ -76,7 +78,10 @@ struct RecordsView: View {
         .navigationTitle("Records")
         .toolbarBackground(Theme.feltDark, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
-        .task { await load() }
+        .task {
+            await Faces.shared.load()
+            await load()
+        }
         .preferredColorScheme(.dark)
     }
 

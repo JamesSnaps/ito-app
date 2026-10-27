@@ -1,20 +1,27 @@
 import SwiftUI
 
-/// The app's front page, like the web hub: a way into any game by code, then
-/// one panel per game. ito's host screen sits behind Authelia on the server,
-/// which a native app can't get through yet, so hosting ito opens the
-/// browser; watching the topic is native.
+/// The app's front page, like the web hub: a way into any game by code (or
+/// by scanning its QR), then one panel per game, and "You" in the corner.
+/// ito's host screen sits behind Authelia on the server, which a native app
+/// can't get through yet, so hosting ito opens the browser; watching the
+/// topic is native.
 struct HubView: View {
     enum Route: Hashable {
         case join, newGame, settings, records
         case table(String)
         case ito(String)
+        case fugitiveNew, fugitiveRecords
+        case fugitiveTable(String)
+        /// "You", with a sign-in code when a link or QR brought it.
+        case you(String?)
     }
 
     @State private var path: [Route] = []
     /// Games handed over in full by Join / New game, so the table opens with
     /// cards on it rather than a spinner.
     @State private var handedOver: [String: PlayPayload] = [:]
+    @State private var handedOverFugitive: [String: FugitivePayload] = [:]
+    @State private var scanning = false
     /// Games dealt on this device, which open with the shuffle and the deal.
     @State private var dealtHere: Set<String> = []
     @State private var resumable: PlayPayload?
@@ -64,6 +71,21 @@ struct HubView: View {
                                 }
                                 .buttonStyle(FeltButtonStyle(kind: .ghost))
                             }
+                            GameTile(title: "Fugitive", accent: Noir.fugitive,
+                                     blurb: "One runs, one hunts — a trail of hideouts from the cell to the plane out at 42. Two players, on two phones or one passed across.") {
+                                FugitiveArt()
+                            } actions: {
+                                Button { path.append(.fugitiveNew) } label: {
+                                    Label("Start a game", systemImage: "figure.run")
+                                }
+                                // Flip 7's Start keeps the gold: one gold button at a time.
+                                .buttonStyle(FeltButtonStyle(kind: .ghost))
+                                HStack(spacing: 10) {
+                                    Button { path.append(.fugitiveRecords) } label: { Label("Records", systemImage: "star") }
+                                    Button { open("/fugitive/rules") } label: { Label("Rules", systemImage: "questionmark.circle") }
+                                }
+                                .buttonStyle(FeltButtonStyle(kind: .ghost))
+                            }
                             GameTile(title: "ito", accent: Color(hex: 0x8F7BFF),
                                      blurb: "Get the numbers in order without saying them. Join with the host’s code to see the topic on this screen.") {
                                 ItoArt()
@@ -85,6 +107,23 @@ struct HubView: View {
                 }
             }
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { path.append(.you(nil)) } label: {
+                        if let me = Faces.shared.me {
+                            HStack(spacing: 6) {
+                                AvatarView(name: me.name, size: 28)
+                                Text(me.name).font(.subheadline.weight(.semibold)).lineLimit(1)
+                            }
+                        } else {
+                            Label("You", systemImage: "person.crop.circle")
+                        }
+                    }
+                    .accessibilityLabel(Faces.shared.me.map { "You: \($0.name)" } ?? "You")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { scanning = true } label: { Image(systemName: "qrcode.viewfinder") }
+                        .accessibilityLabel("Scan a code")
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { path.append(.settings) } label: { Image(systemName: "gearshape") }
                         .accessibilityLabel("Settings")
@@ -94,10 +133,16 @@ struct HubView: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
             .navigationDestination(for: Route.self, destination: destination)
             .task(id: path.isEmpty) {
-                if path.isEmpty { await checkResume() }
+                if path.isEmpty {
+                    await Faces.shared.load()
+                    await checkResume()
+                }
             }
         }
         .sheet(item: $webPage) { page in SafariView(url: page.url).ignoresSafeArea() }
+        .sheet(isPresented: $scanning) {
+            ScanSheet { url in Task { await openLink(url) } }
+        }
         .alert("Couldn’t open that link", isPresented: Binding(get: { linkError != nil }, set: { if !$0 { linkError = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -131,6 +176,20 @@ struct HubView: View {
             } else {
                 TableScreen(store: PlayStore(code: code))
             }
+        case .fugitiveNew:
+            FugitiveSetupView(onDealt: { go(.fugitive($0)) },
+                              onResume: { path = [.fugitiveTable($0)] },
+                              onRecords: { path.append(.fugitiveRecords) })
+        case .fugitiveRecords:
+            FugitiveRecordsView()
+        case .fugitiveTable(let code):
+            if let payload = handedOverFugitive[code] {
+                FugitiveTableScreen(store: FugitiveStore(payload: payload))
+            } else {
+                FugitiveTableScreen(store: FugitiveStore(code: code))
+            }
+        case .you(let code):
+            YouScreen(linkCode: code)
         }
     }
 
@@ -170,8 +229,13 @@ struct HubView: View {
         case .flip7(let payload):
             handedOver[payload.code] = payload
             path = [.table(payload.code)]
+        case .fugitive(let payload):
+            handedOverFugitive[payload.code] = payload
+            path = [.fugitiveTable(payload.code)]
         case .ito(let code):
             path = [.ito(code)]
+        case .profileLink(let code):
+            path = [.you(code)]
         case .web(let url):
             webPage = WebPage(url: url)
         }
@@ -181,15 +245,17 @@ struct HubView: View {
         webPage = WebPage(url: AppSettings.client.webURL(serverPath))
     }
 
+    /// A link from outside, or a QR scanned here: a room, or a code for
+    /// signing this device in to a profile.
     private func openLink(_ url: URL) async {
-        guard let code = Joining.code(in: url) else {
-            linkError = "That link isn’t to a Game Night room."
-            return
-        }
         do {
-            go(try await Joining.resolve(code: code))
+            guard let destination = try await Joining.destination(for: url) else {
+                linkError = "That link isn’t to a Game Night room."
+                return
+            }
+            go(destination)
         } catch let failure as GameNightClient.Failure where failure.status == 404 {
-            linkError = "Room \(code) has ended or expired."
+            linkError = "Room \(Joining.code(in: url) ?? "") has ended or expired."
         } catch {
             linkError = error.localizedDescription
         }
@@ -298,6 +364,23 @@ private struct Flip7Art: View {
             CardView(card: .number(12), width: 58).rotationEffect(.degrees(-16), anchor: .bottom).offset(x: -46, y: 10)
             CardView(card: .times2, width: 58).rotationEffect(.degrees(16), anchor: .bottom).offset(x: 46, y: 10)
             CardView(card: .number(7), width: 70).offset(y: -2)
+        }
+        .accessibilityHidden(true)
+    }
+}
+
+/// The trail, as on the web hub: two face-down hideouts, footprints between,
+/// and 42 turned up — the plane out.
+private struct FugitiveArt: View {
+    var body: some View {
+        HStack(spacing: 6) {
+            FugitiveCard(number: nil, width: 54).rotationEffect(.degrees(-6))
+            Image(systemName: "shoeprints.fill").font(.system(size: 16)).foregroundStyle(Noir.card.opacity(0.55))
+                .rotationEffect(.degrees(90))
+            FugitiveCard(number: nil, width: 54).rotationEffect(.degrees(3))
+            Image(systemName: "shoeprints.fill").font(.system(size: 16)).foregroundStyle(Noir.card.opacity(0.55))
+                .rotationEffect(.degrees(90))
+            FugitiveCard(number: 42, width: 66).rotationEffect(.degrees(8))
         }
         .accessibilityHidden(true)
     }

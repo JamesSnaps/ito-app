@@ -1,9 +1,12 @@
 # Game Night for iOS
 
 A SwiftUI front end to the Game Night server: Flip 7 played on the app's
-deck (as the dealer or from your own seat), Flip 7 records, and ito's topic
-display. The rules and the game state live on the server; the app shows the
-table and sends moves. See `../CLAUDE.md` → "iOS app" for the design notes.
+deck (as the dealer or from your own seat), Fugitive (dealt here, played on
+two phones or passed across one), both games' records, ito's topic display,
+and "You" — a profile name and selfie shared with the web. Room QR codes can
+be scanned inside the app. The rules and the game state live on the server;
+the app shows the table and sends moves. See `../CLAUDE.md` → "iOS app" for
+the design notes.
 
 ## Develop
 
@@ -12,6 +15,19 @@ brew install xcodegen          # once
 cd ios && xcodegen             # after any change to project.yml or new files
 open GameNight.xcodeproj
 ```
+
+Fugitive's card faces are PNGs rendered from the web's own drawing code
+(`static/fugitive.js`), so the two can't drift by hand. After changing the
+card art or `TWO_FOOTPRINTS`, render them again (needs Node and the
+Playwright package):
+
+```bash
+node ios/scripts/render_fugitive_cards.js
+```
+
+Fugitive's fonts (`GameNight/Fonts`) are the web's three, converted from the
+woff2 files in `static/fonts` to TrueType and listed in `project.yml` under
+`UIAppFonts`; licences alongside.
 
 Point a dev build at the Flask server on your Mac, either in the app
 (Settings → server) or by ticking the `-serverURL http://localhost:5001`
@@ -73,7 +89,16 @@ Then in App Store Connect → TestFlight:
   > in a browser, start a game there, and enter its four-letter code under
   > "Join with a code". ito: "Host a room" opens the web host page, which
   > needs a sign-in reviewers won't have — the in-app part of ito is the
-  > topic display reached by a room code.
+  > topic display reached by a room code. Fugitive: "Start a game", two
+  > names, "Pass this device between us", Deal. The camera is used to scan
+  > room QR codes and, optionally, for a profile photo on "You" (top left).
 
-The server has to be running a version with the app's API (v1.6.1 or later)
-before a build goes out — the app talks to production by default.
+The server has to be running a version with the app's API before a build
+goes out — the app talks to production by default: v1.6.1 for Flip 7, v1.8.2
+for 1.2.0 (Fugitive, profiles and the `/fugitive/play` and `/me/link` app
+links).
+
+Since 1.2.0 the app collects a name and an optional photo when a player makes
+a profile, so App Store Connect's App Privacy answers need **Name** and
+**Photos** under "Data linked to you", for app functionality, not tracking —
+matching `PrivacyInfo.xcprivacy`.

@@ -1,12 +1,14 @@
 import SwiftUI
 
-/// Typing in a room code — any game's, like the web's /join. The server
-/// says which game it is; Flip 7 opens the table, ito the topic display.
+/// Typing in a room code — any game's, like the web's /join — or scanning
+/// the QR on the table's screen. The server says which game it is; Flip 7
+/// and Fugitive open their tables, ito the topic display.
 struct JoinView: View {
     var onResolved: (JoinDestination) -> Void
     @State private var code = ""
     @State private var error: String?
     @State private var working = false
+    @State private var scanning = false
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -49,6 +51,14 @@ struct JoinView: View {
                 }
                 .buttonStyle(FeltButtonStyle(big: true))
                 .disabled(code.count != 4 || working)
+                Button {
+                    focused = false
+                    scanning = true
+                } label: {
+                    Label("Scan the QR code instead", systemImage: "qrcode.viewfinder")
+                }
+                .buttonStyle(FeltButtonStyle(kind: .ghost))
+                .disabled(working)
                 Spacer()
             }
             .padding(24)
@@ -59,6 +69,25 @@ struct JoinView: View {
         .toolbarBackground(Theme.feltDark, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .onAppear { focused = true }
+        .sheet(isPresented: $scanning) {
+            ScanSheet { url in Task { await join(url) } }
+        }
+    }
+
+    private func join(_ url: URL) async {
+        working = true
+        defer { working = false }
+        do {
+            if let destination = try await Joining.destination(for: url) {
+                onResolved(destination)
+            } else {
+                error = "That QR code isn’t a Game Night one."
+            }
+        } catch let failure as GameNightClient.Failure where failure.status == 404 {
+            error = "That game has ended or expired."
+        } catch {
+            self.error = error.localizedDescription
+        }
     }
 
     private func join() async {
@@ -96,6 +125,7 @@ struct NewGameView: View {
             list.frame(maxWidth: 620)
         }
         .navigationTitle("New game")
+        .task { await Faces.shared.load() }
         .toolbarBackground(Theme.feltDark, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .preferredColorScheme(.dark)
@@ -114,6 +144,8 @@ struct NewGameView: View {
                         .onSubmit(add)
                     Button("Add", action: add).disabled(newName.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
+                // The regulars, with their faces: tap instead of typing.
+                RegularsPicker(skip: names) { add(name: $0, typed: false) }
             } header: {
                 Text("Who’s playing? \(names.count) / \(Self.maxPlayers)")
             } footer: {
@@ -129,6 +161,7 @@ struct NewGameView: View {
                         HStack(spacing: 12) {
                             Text("\(seat + 1)").font(Theme.mono(13)).foregroundStyle(Theme.cream.opacity(0.45))
                                 .frame(width: 22, alignment: .trailing)
+                            AvatarView(name: name, size: 30)
                             Text(name).font(Theme.display(18, weight: .bold))
                             Spacer()
                             if seat == 0 {
@@ -161,7 +194,13 @@ struct NewGameView: View {
     }
 
     private func add() {
-        let name = String(newName.trimmingCharacters(in: .whitespacesAndNewlines).prefix(Self.maxName))
+        add(name: newName, typed: true)
+    }
+
+    /// `typed`: from the field, which is then cleared and keeps the cursor.
+    /// A regular tapped in leaves a half-typed name alone.
+    private func add(name raw: String, typed: Bool) {
+        let name = String(raw.trimmingCharacters(in: .whitespacesAndNewlines).prefix(Self.maxName))
         guard !name.isEmpty else { return }
         if names.contains(where: { $0.caseInsensitiveCompare(name) == .orderedSame }) {
             error = "\(name) is already at the table."
@@ -170,8 +209,9 @@ struct NewGameView: View {
         } else {
             names.append(name)
             error = nil
-            newName = ""
+            if typed { newName = "" }
         }
+        guard typed else { return }
         // Return ends editing, and setting focus back inside the same submit
         // doesn't stick — the next name's first letters went nowhere. So the
         // field takes focus back a beat later, and a table of five can be

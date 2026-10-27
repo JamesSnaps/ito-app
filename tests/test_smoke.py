@@ -905,6 +905,7 @@ def test_room_links_open_the_ios_app():
     assert details["appIDs"] == ["C729B84RYG.uk.collco.gamenight"]
     paths = {c["/"] for c in details["components"]}
     assert "/flip7/play/*" in paths and "/ito/play/*" in paths
+    assert "/fugitive/play/*" in paths and "/me/link/*" in paths
     assert not any(p.startswith("/ito/host") or p.startswith("/ito/settings") for p in paths)
 
 

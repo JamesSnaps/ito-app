@@ -1,0 +1,59 @@
+{
+ "games_played": 1,
+ "leaderboard": [
+  {
+   "fugitive_games": 0,
+   "fugitive_wins": 0,
+   "games": 1,
+   "manhunt_catches": 0,
+   "marshal_games": 1,
+   "marshal_wins": 1,
+   "name": "Ben",
+   "win_rate": 100,
+   "wins": 1
+  },
+  {
+   "fugitive_games": 1,
+   "fugitive_wins": 0,
+   "games": 1,
+   "manhunt_catches": 0,
+   "marshal_games": 0,
+   "marshal_wins": 0,
+   "name": "Ana",
+   "win_rate": 0,
+   "wins": 0
+  }
+ ],
+ "players": {
+  "ana": {
+   "fugitive_games": 1,
+   "fugitive_wins": 0,
+   "games": 1,
+   "manhunt_catches": 0,
+   "marshal_games": 0,
+   "marshal_wins": 0,
+   "name": "Ana",
+   "wins": 0
+  },
+  "ben": {
+   "fugitive_games": 0,
+   "fugitive_wins": 0,
+   "games": 1,
+   "manhunt_catches": 0,
+   "marshal_games": 1,
+   "marshal_wins": 1,
+   "name": "Ben",
+   "wins": 1
+  }
+ },
+ "recent": [
+  {
+   "at": "2026-10-27T22:20:56+00:00",
+   "fugitive": "Ana",
+   "hideouts": 2,
+   "marshal": "Ben",
+   "reason": "caught",
+   "winner": "marshal"
+  }
+ ]
+}
