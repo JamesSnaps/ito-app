@@ -73,7 +73,8 @@ def _read():
     written over — the backup is used for reading, and writes refuse."""
     path = profiles_path()
     try:
-        data = jsonfile.read(path)
+        # Valid JSON of the wrong shape is as damaged as invalid JSON.
+        return _shape(jsonfile.read(path)), True
     except FileNotFoundError:
         return {"profiles": {}}, True
     except jsonfile.Unreadable:
@@ -81,7 +82,6 @@ def _read():
             return _shape(jsonfile.read(jsonfile.backup_path(path))), False
         except (FileNotFoundError, jsonfile.Unreadable):
             return {"profiles": {}}, False
-    return _shape(data), True
 
 
 def _shape(data):
