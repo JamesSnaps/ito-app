@@ -18,6 +18,10 @@ data/flip7/
 # Fugitive games, saved the same way.
 data/fugitive/
 
+# Player profiles and their photos — people, not content.
+data/profiles.json
+data/profiles/
+
 # Last-good copies and in-flight temp files from core/jsonfile.py.
 data/**/*.bak
 data/**/.*.tmp

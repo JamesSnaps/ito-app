@@ -3,6 +3,7 @@
 {% block body_class %}fugitive{% endblock %}
 {% block theme_color %}#0e1726{% endblock %}
 {% block head %}<link rel="stylesheet" href="{{ asset('fugitive.css') }}">
+<script src="{{ asset('profiles.js') }}"></script>
 <script src="{{ asset('fugitive.js') }}"></script>{% endblock %}
 {% block body %}
 <div class="wrap">
@@ -160,6 +161,14 @@
         el('div', {id: 'resume'}),
         el('div', {class: 'fg-panel fg-paper'}, [
           el('h2', {text: 'Who’s playing?'}),
+          // The regulars, with their faces: the first tap fills the
+          // Fugitive, the next the Marshal.
+          GN.picker(name => {
+            if (!form.fugitive.trim()) form.fugitive = name;
+            else if (!form.marshal.trim() && GN.fold(form.fugitive) !== GN.fold(name)) form.marshal = name;
+            else form.fugitive = name;
+            renderSetup();
+          }, [form.fugitive, form.marshal], 'Regulars — tap to fill in'),
           nameRow('fugitive'),
           nameRow('marshal'),
           el('button', {class: 'fg-btn fg-btn-quiet', type: 'button', text: '⇅ Swap roles', onclick: () => {
@@ -208,6 +217,7 @@
     }
 
     renderSetup();
+    GN.profiles.load().then(renderSetup);
   }
 
   // ---------------------------------------------------------------- table
@@ -797,7 +807,11 @@
             ? el('button', {class: 'fg-btn fg-btn-quiet fg-btn-small', type: 'button', text: 'Free seat', onclick: () => freeSeat(role)})
             : el('span', {class: 'fg-muted', text: 'Seated'});
         } else {
-          right = el('button', {class: `fg-btn fg-btn-small fg-btn-${role}`, type: 'button', text: 'Sit here', onclick: () => sitAt(role)});
+          // A device signed in as this player says so.
+          const me = GN.me.get();
+          const isMe = me && GN.fold(me.name) === GN.fold(data.players[role]);
+          right = el('button', {class: `fg-btn fg-btn-small fg-btn-${role}`, type: 'button',
+            text: isMe ? 'That’s me — sit' : 'Sit here', onclick: () => sitAt(role)});
         }
         children.push(el('div', {class: 'fg-seat'}, [
           mugshot(data.players[role], role, 34),
@@ -856,6 +870,8 @@
     }
 
     poll();
+    // Faces arrive once the profile list does.
+    GN.profiles.load().then(() => { drawn = null; if (data) rerender(); });
   }
 </script>
 {% endblock %}

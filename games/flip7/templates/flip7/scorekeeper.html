@@ -3,6 +3,7 @@
 {% block body_class %}flip7{% endblock %}
 {% block theme_color %}#0f2e24{% endblock %}
 {% block head %}<link rel="stylesheet" href="{{ asset('flip7.css') }}">
+<script src="{{ asset('profiles.js') }}"></script>
 <script src="{{ asset('flip7.js') }}"></script>{% endblock %}
 {% block body %}
 <div class="wrap">
@@ -576,6 +577,7 @@
         // be changeable — people don't sit down in the order they're typed in.
         const chip = el('span', {class: 'f7-chip', 'data-index': String(i)}, [
           state.players.length > 1 ? icon('grip') : null,
+          GN.avatar(p.name, 22),
           el('span', {text: p.name}),
           el('button', {'aria-label': `Remove ${p.name}`, text: '✕', onclick: () => removePlayer(i)})
         ]);
@@ -586,6 +588,9 @@
       chips.appendChild(el('span', {class: 'f7-note', text: 'Add players to start the game.'}));
     }
     players.appendChild(chips);
+    // The regulars, with their faces: tap instead of typing.
+    const regulars = GN.picker(addPlayer, state.players.map(p => p.name), 'Regulars — tap to add');
+    if (regulars) players.appendChild(regulars);
     if (state.players.length > 1) {
       players.appendChild(el('div', {
         class: 'f7-note f7-reorder-hint', text: 'Drag a name to change the playing order.'
@@ -838,5 +843,6 @@
   restoreShare();
   let announcedWinner = winnersOf(state.players.map(playerTotal)).length > 0;
   render();
+  GN.profiles.load().then(render);
 </script>
 {% endblock %}

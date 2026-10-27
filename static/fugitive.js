@@ -444,7 +444,23 @@ function mugshotSVG(name, role){
   return s + `</g></svg>`;
 }
 
-// A mugshot as an element, ringed in the role's colour.
+// A mugshot as an element, ringed in the role's colour: the player's own
+// photo if they have a profile with one (static/profiles.js), the drawn
+// silhouette if not.
 function mugshot(name, role, size){
-  return el('span', {class: `fg-mugshot fg-mugshot-${role}`, style: {'--m': `${size || 36}px`}, html: mugshotSVG(name, role)});
+  size = size || 36;
+  const photo = typeof GN !== 'undefined' && GN.profiles.photo(name);
+  if (!photo) {
+    return el('span', {class: `fg-mugshot fg-mugshot-${role}`, style: {'--m': `${size}px`}, html: mugshotSVG(name, role)});
+  }
+  const img = document.createElement('img');
+  img.className = 'fg-mug';
+  img.src = photo;
+  img.alt = '';
+  img.decoding = 'async';
+  return el('span', {class: `fg-mugshot fg-mugshot-${role} fg-mugshot-photo`, style: {'--m': `${size}px`}}, [
+    img,
+    // Booked: the same number the drawn mugshot holds, where there's room.
+    role === 'fugitive' && size >= 80 ? el('span', {class: 'fg-mug-tag', text: String(nameSeed(name) % 90000 + 10000)}) : null
+  ]);
 }

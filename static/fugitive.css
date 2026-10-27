@@ -397,6 +397,22 @@
 .fg-mugshot-fugitive { --ring: var(--fg-fugitive); }
 .fg-mugshot-marshal { --ring: var(--fg-marshal); }
 .fg-mug { display: block; width: 100%; height: 100%; }
+.fg-mugshot-photo { position: relative; }
+.fg-mugshot-photo .fg-mug { object-fit: cover; }
+/* A photo of the Fugitive is a booking photo: a little faded. */
+.fg-mugshot-fugitive.fg-mugshot-photo .fg-mug { filter: grayscale(0.35) contrast(1.08) sepia(0.12); }
+.fg-mug-tag {
+  position: absolute;
+  left: 50%;
+  bottom: 10%;
+  transform: translateX(-50%);
+  padding: 2px 8px;
+  background: #1b1f2a;
+  color: #f3ead8;
+  font: 400 0.8rem var(--fg-type);
+  letter-spacing: 0.1em;
+  border-radius: 2px;
+}
 .fg-mug-placard { font: 400 9px var(--fg-type); letter-spacing: 1px; }
 
 /* --- the side --------------------------------------------------------- */

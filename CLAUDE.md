@@ -24,7 +24,8 @@ problem.
 ## Stack
 
 - Python 3 / Flask, single process, no external database.
-- Persisted state is flat files under `data/`, one Docker mount:
+- Persisted state is flat files under `data/`, one Docker mount (player
+  profiles too: `data/profiles.json` and `data/profiles/photos/`):
   `data/ito/topics.json` (topic content), `data/stats.json`
   (win/loss history, keyed by game id), `data/flip7/play/<code>.json`
   (Flip 7 games played on the app's deck — see Play mode below) and
@@ -677,19 +678,66 @@ read in full; not in the repo).
   Marshal's handwriting). Self-hosted in `static/fonts/` like Baloo 2, latin
   subsets only, licences and sources in its README. Body copy stays on the
   system UI face for legibility.
-- **Mugshots, not profile photos.** Game Night has no profiles, so each
-  player gets a silhouette drawn from a hash of their name (`mugshotSVG()`):
+- **Drawn mugshots when there's no photo.** Each player without one gets a silhouette drawn from a hash of their name (`mugshotSVG()`):
   hair or a hat, maybe glasses, a scarf in their own colour — same name,
   same face, on every device — against the role's backdrop: the height
   chart and a booking placard for the Fugitive, the badge for the Marshal.
   The name itself never enters the SVG markup. They're on the nameplates,
   the seat list, the setup rows (live as you type), the pass-and-play
-  folder and the records. Real photos belong with shared profiles, if those
-  come.
+  folder and the records. A player with a profile photo gets that instead
+  (see Player profiles).
 - **The pass-and-play folder waits for the table to settle**, and the
   opening deal is played when the folder is first opened, not behind it —
   cards in flight are drawn above everything and showed through it.
 - No images and no URLs in `fugitive.js` (a test checks).
+
+## Player profiles (added v1.8.0)
+
+A name and, optionally, a selfie that follow a player into every game:
+`core/profiles.py` (store, photo processing, routes — a hub blueprint, the
+one thing besides the games that `app.py` registers), `templates/me.html`
+(the "You" page), `static/profiles.js` (`GN.me`, `GN.profiles`,
+`GN.avatar`, `GN.picker`, used by every game page).
+
+- **A profile is a claimed name, nothing more.** Records have always keyed
+  players by their name, case-insensitively; a profile is that same name,
+  so every record lines up with no migration and guests carry on exactly as
+  before. Faces are looked up by name on the client (`GN.profiles.photo`),
+  so no game's payload or record shape changed. Names are unique ignoring
+  case; renaming isn't offered (it would orphan the records' key).
+- **Devices hold profiles; there are no accounts.** Guests can't use
+  Authelia, so making a profile gives *this device* a random token
+  (`gamenight:me` in localStorage), stored server-side only as a SHA-256.
+  Only a device holding one of a profile's tokens can change its photo or
+  delete it. Another device joins by scanning a one-time link code from the
+  first (`/me/link/<code>`, ten minutes, in memory, redeemed by a POST from
+  the page so a link preview can't spend it; wrong codes count against the
+  room-code throttle). Up to `MAX_DEVICES` tokens per profile.
+- **Photos are redrawn, never stored as sent.** The page crops a square on
+  a canvas first (which already drops the file's metadata); the server then
+  decodes with Pillow (`MAX_IMAGE_PIXELS` as a bomb guard), applies EXIF
+  rotation, crops to 320×320 and saves a fresh JPEG — no EXIF, so no
+  location — as `data/profiles/photos/<id>-<random>.jpg`. A new photo gets a
+  new random name, so photos are served `immutable` and the old file is
+  deleted. Photo filenames are pattern-checked before touching disk.
+- **Public by design, and the page says so.** `/api/profiles` and the photos
+  are on the public router like the leaderboards, because guests join by QR
+  without signing in. The "You" page states this above the camera button.
+  There is no admin UI: to take a photo down, delete its file and clear
+  `photo` in `data/profiles.json` on vm-core (or add an Authelia-protected
+  route — remember the docker repo's Traefik rule).
+- **`profiles.json` follows the stats rules**: atomic writes with a `.bak`,
+  a damaged file is never written over (503 via `DataUnavailable`) and reads
+  fall back to the backup.
+- **Where faces show**: the hub's "You" chip; Flip 7's setup chips, a
+  "Regulars — tap to add" picker (scorekeeper and play), the table's mats
+  and the records; Fugitive's setup picker, nameplates, seats ("That's me —
+  sit" on a signed-in device), the pass-and-play folder and the records —
+  there, a photo replaces the drawn mugshot (faded a touch for the
+  Fugitive, with the booking number on big ones). No photo: initials, or
+  the drawn mugshot in Fugitive.
+- **iOS doesn't show profiles yet.** The app shows names as before; the
+  native "You" screen and faces come with the next app build.
 
 ## Hub artwork
 

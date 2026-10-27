@@ -1,0 +1,259 @@
+{% extends "base.html" %}
+{% block title %}You — {{ app_name }}{% endblock %}
+{% block head %}<script src="{{ asset('profiles.js') }}"></script>{% endblock %}
+{% block body %}
+<div class="wrap me">
+  <div class="me-bar">
+    <a class="btn btn-quiet me-back" href="{{ back }}" aria-label="Back">←</a>
+    <div class="eyebrow">{{ app_name }}</div>
+  </div>
+  <h1>You</h1>
+  <p class="sub">A name and a selfie that follow you into every game — at the table, on
+    your phone and in the records.</p>
+
+  <div id="me-app"></div>
+
+  {# Said before a photo is taken, not buried after it. #}
+  <p class="hint me-privacy">Your name and photo are shown to anyone using {{ app_name }}: the
+    people at the table, the records pages, and anyone else who has this site's address. You can
+    remove the photo, or delete the profile, from here at any time.</p>
+
+  <input type="file" id="me-camera" accept="image/*" capture="user" hidden>
+  <input type="file" id="me-library" accept="image/*" hidden>
+</div>
+
+<script>
+  const MAX_NAME = {{ max_name }};
+  const LINK_CODE = {{ (link_code or none)|tojson }};
+  const params = new URLSearchParams(location.search);
+  const app = document.getElementById('me-app');
+  let profile = null;      // the server's copy of this device's profile
+  let preview = null;      // {blob, url} — a photo taken but not yet saved
+  let invite = null;       // the add-a-device QR, while it's showing
+  let message = '';
+  let busy = false;
+
+  function n(tag, attrs, children){
+    const node = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs || {})) {
+      if (k === 'class') node.className = v;
+      else if (k === 'text') node.textContent = v;
+      else if (k.startsWith('on')) node.addEventListener(k.slice(2), v);
+      else if (v === true) node.setAttribute(k, '');
+      else if (v !== false && v != null) node.setAttribute(k, v);
+    }
+    (children || []).forEach(c => c && node.appendChild(typeof c === 'string' ? document.createTextNode(c) : c));
+    return node;
+  }
+
+  async function api(method, url, body, isBlob){
+    const headers = {...GN.me.headers()};
+    if (body && !isBlob) headers['Content-Type'] = 'application/json';
+    if (isBlob) headers['Content-Type'] = body.type || 'image/jpeg';
+    let res;
+    try {
+      res = await fetch(url, {method, headers, body: isBlob ? body : body ? JSON.stringify(body) : undefined});
+    } catch (e) {
+      return {ok: false, status: 0, data: {error: 'Can’t reach Game Night — check the connection.'}};
+    }
+    let data = {};
+    try { data = await res.json(); } catch (e) {}
+    return {ok: res.ok, status: res.status, data};
+  }
+
+  function remember(p, token){
+    profile = p;
+    // Keep the page's copy of everyone in step, so the face updates at once.
+    GN.profiles.list = GN.profiles.list.filter(x => x.id !== p.id).concat([p]);
+    const mine = GN.me.get() || {};
+    GN.me.set({id: p.id, name: p.name, photo: p.photo, token: token || mine.token});
+  }
+
+  // --- the photo: cropped square here, redrawn properly by the server -----
+
+  function cropSquare(file){
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        // <img> already applies the camera's rotation; the canvas copies
+        // pixels only, so nothing else from the file goes any further.
+        const side = Math.min(img.naturalWidth, img.naturalHeight);
+        const sx = (img.naturalWidth - side) / 2;
+        const sy = Math.max(0, (img.naturalHeight - side) * 0.42);
+        const canvas = document.createElement('canvas');
+        canvas.width = canvas.height = 640;
+        canvas.getContext('2d').drawImage(img, sx, sy, side, side, 0, 0, 640, 640);
+        URL.revokeObjectURL(url);
+        canvas.toBlob(b => b ? resolve(b) : reject(new Error('blank')), 'image/jpeg', 0.88);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('unreadable')); };
+      img.src = url;
+    });
+  }
+
+  async function picked(input){
+    const file = input.files && input.files[0];
+    input.value = '';
+    if (!file) return;
+    try {
+      const blob = await cropSquare(file);
+      if (preview) URL.revokeObjectURL(preview.url);
+      preview = {blob, url: URL.createObjectURL(blob)};
+      message = '';
+    } catch (e) {
+      message = 'That photo couldn’t be read — try taking it again.';
+    }
+    render();
+  }
+  document.getElementById('me-camera').addEventListener('change', e => picked(e.target));
+  document.getElementById('me-library').addEventListener('change', e => picked(e.target));
+
+  async function savePhoto(){
+    if (!preview || busy) return;
+    busy = true; render();
+    const res = await api('POST', '/api/profiles/me/photo', preview.blob, true);
+    busy = false;
+    if (res.ok) {
+      remember(res.data.profile);
+      URL.revokeObjectURL(preview.url);
+      preview = null;
+      message = 'Looking good.';
+    } else {
+      message = res.data.error || 'That didn’t save — try again.';
+    }
+    render();
+  }
+
+  // --- actions ------------------------------------------------------------
+
+  async function create(name){
+    name = (name || '').trim();
+    if (!name || busy) return;
+    busy = true;
+    const res = await api('POST', '/api/profiles', {name});
+    busy = false;
+    if (res.ok) { remember(res.data.profile, res.data.token); message = ''; }
+    else message = res.data.error || 'That didn’t work — try again.';
+    render();
+  }
+
+  async function removePhoto(){
+    if (!confirm('Remove your photo? Your initials show instead.')) return;
+    const res = await api('DELETE', '/api/profiles/me/photo');
+    if (res.ok) remember(res.data.profile);
+    render();
+  }
+
+  async function addDevice(){
+    const res = await api('POST', '/api/profiles/me/link');
+    if (!res.ok) { message = res.data.error || 'Couldn’t make a link.'; return render(); }
+    invite = res.data;
+    render();
+    setTimeout(() => { invite = null; render(); }, res.data.expires_in * 1000);
+  }
+
+  async function forget(){
+    if (!confirm('Sign this device out? The profile stays, for your other devices.')) return;
+    const res = await api('POST', '/api/profiles/me/forget');
+    // 403: the server no longer knows this device's token, so there's
+    // nothing to keep. Anything else failed, and the token still matters.
+    if (!res.ok && res.status !== 403) { message = res.data.error || 'Couldn’t sign out — try again.'; return render(); }
+    GN.me.clear(); profile = null; render();
+  }
+
+  async function destroy(){
+    if (!confirm(`Delete ${profile.name}’s profile and photo on every device? Past games keep the name.`)) return;
+    const res = await api('DELETE', '/api/profiles/me');
+    // Dropping the token after a failed delete would leave the name claimed
+    // with no device able to remove it.
+    if (!res.ok && res.status !== 403) { message = res.data.error || 'Couldn’t delete it — try again.'; return render(); }
+    GN.profiles.list = GN.profiles.list.filter(x => x.id !== profile.id);
+    GN.me.clear(); profile = null; render();
+  }
+
+  // --- the page -------------------------------------------------------------
+
+  function face(){
+    const wrap = n('div', {class: 'me-face'});
+    if (preview) {
+      wrap.appendChild(n('img', {src: preview.url, alt: 'Your new photo'}));
+    } else {
+      wrap.appendChild(GN.avatar(profile.name, 168));
+    }
+    return wrap;
+  }
+
+  function render(){
+    app.textContent = '';
+    if (!profile) {
+      const input = n('input', {type: 'text', class: 'me-name', maxlength: MAX_NAME, placeholder: 'Your name',
+        value: params.get('name') || '', autocomplete: 'nickname',
+        onkeydown: e => { if (e.key === 'Enter') create(input.value); }});
+      app.appendChild(n('div', {class: 'card me-card'}, [
+        n('h2', {text: 'Make your profile'}),
+        n('p', {class: 'hint', text: 'Use the name you play under — the records already know it, so your past games come with it.'}),
+        input,
+        n('button', {class: 'btn btn-primary me-wide', type: 'button', text: 'Make my profile', onclick: () => create(input.value)}),
+        n('p', {class: 'hint', text: 'Already made one on another phone? Open “You” there and tap “Add another device”.'})
+      ]));
+    } else {
+      const photoButtons = preview
+        ? [n('button', {class: 'btn btn-primary', type: 'button', disabled: busy, text: busy ? 'Saving…' : 'Use this photo', onclick: savePhoto}),
+           n('button', {class: 'btn btn-secondary', type: 'button', text: 'Try again', onclick: () => document.getElementById('me-camera').click()})]
+        : [n('button', {class: 'btn btn-primary', type: 'button', text: profile.photo ? 'Take a new selfie' : 'Take a selfie',
+             onclick: () => document.getElementById('me-camera').click()}),
+           n('button', {class: 'btn btn-secondary', type: 'button', text: 'Choose a photo',
+             onclick: () => document.getElementById('me-library').click()}),
+           profile.photo ? n('button', {class: 'btn btn-quiet', type: 'button', text: 'Remove photo', onclick: removePhoto}) : null];
+      app.appendChild(n('div', {class: 'card me-card me-center'}, [
+        face(),
+        n('div', {class: 'me-who', text: profile.name}),
+        n('div', {class: 'me-buttons'}, photoButtons)
+      ]));
+
+      const devices = n('div', {class: 'card me-card'}, [
+        n('h2', {text: 'Your other devices'}),
+        n('p', {class: 'hint', text: 'Scan this on your iPad or another phone to sign it in as you too. It works once, for ten minutes.'})
+      ]);
+      if (invite) {
+        const qr = n('div', {class: 'qr me-qr'});
+        qr.innerHTML = invite.qr_svg;   // our own server's SVG
+        devices.appendChild(qr);
+      } else {
+        devices.appendChild(n('button', {class: 'btn btn-secondary me-wide', type: 'button', text: 'Add another device', onclick: addDevice}));
+      }
+      app.appendChild(devices);
+
+      app.appendChild(n('div', {class: 'me-quiet'}, [
+        n('button', {class: 'btn btn-quiet', type: 'button', text: 'Sign out on this device', onclick: forget}),
+        n('button', {class: 'btn btn-quiet me-danger', type: 'button', text: 'Delete my profile', onclick: destroy})
+      ]));
+    }
+    if (message) app.appendChild(n('p', {class: 'me-message', role: 'status', text: message}));
+  }
+
+  (async () => {
+    await GN.profiles.load();
+    if (LINK_CODE) {
+      const res = await api('POST', `/api/profiles/link/${encodeURIComponent(LINK_CODE)}`);
+      if (res.ok) {
+        remember(res.data.profile, res.data.token);
+        message = `This device is now ${res.data.profile.name}.`;
+        history.replaceState(null, '', '/me');
+      } else {
+        message = res.data.error || 'That link didn’t work.';
+      }
+    } else if (GN.me.get()) {
+      // Check the token still counts — the profile may have been deleted elsewhere.
+      const res = await api('GET', '/api/profiles/me');
+      if (res.ok) remember(res.data.profile);
+      else if (res.status === 403) GN.me.clear();
+    }
+    // The list may predate a change made just now.
+    GN.profiles.loading = null;
+    await GN.profiles.load();
+    render();
+  })();
+</script>
+{% endblock %}

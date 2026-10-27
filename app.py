@@ -13,6 +13,7 @@ from pathlib import Path
 from flask import Flask, Response, jsonify, redirect, render_template, request, url_for
 from werkzeug.middleware.proxy_fix import ProxyFix
 
+from core import profiles
 from core.jsonfile import DataUnavailable
 from core.qr import svg as qr_svg
 from core.ratelimit import code_guesses
@@ -24,7 +25,7 @@ APP_NAME = "Game Night"
 # Bump this in the same commit as any user-visible change, before pushing.
 # Watchtower deploys `latest`, so this is the only way to tell from a phone
 # which build the server is actually running. See CLAUDE.md.
-APP_VERSION = "1.7.0"
+APP_VERSION = "1.8.0"
 
 # The iOS app (ios/project.yml): team C729B84RYG, the paid personal
 # membership Dishes, Keepsake and Brief use. Named in the file Apple checks
@@ -62,6 +63,8 @@ def create_app():
 
     for game in playable_games():
         app.register_blueprint(game.blueprint)
+    # Player profiles belong to the hub, not a game: every game shows them.
+    app.register_blueprint(profiles.bp)
 
     @app.context_processor
     def inject_globals():

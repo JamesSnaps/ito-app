@@ -1158,3 +1158,9 @@
 @media (prefers-reduced-motion: reduce) {
   .f7-card.is-new, .f7-mat.is-shaking { animation: none; }
 }
+
+/* Player faces from shared profiles (static/profiles.js). */
+.f7-chip .gn-avatar { margin: -2px 0; }
+.f7-mat-head .gn-avatar { box-shadow: 0 0 0 2px rgba(246, 236, 210, 0.6); }
+.f7-lb-name { display: flex; align-items: center; gap: 8px; }
+.flip7 .gn-picker-label { color: rgba(246, 236, 210, 0.7); }
