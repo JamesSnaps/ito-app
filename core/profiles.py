@@ -228,13 +228,29 @@ def remove_photo(pid):
 
 
 def forget_device(pid, token):
-    """This device lets go of the profile. The profile stays."""
+    """This device lets go of the profile. The profile stays while another
+    device holds it; the last one out deletes it, since a profile no device
+    holds could never be changed or deleted, and its name would stay claimed
+    for good. Returns True if that happened."""
     digest = _hash(token)
+    gone = {}
 
-    def change(data, profile):
-        profile["tokens"] = [h for h in profile.get("tokens", []) if not secrets.compare_digest(h, digest)]
+    def mutate(data):
+        profile = data["profiles"].get(pid)
+        if profile is None:
+            raise LookupError("That profile has gone.")
+        tokens = [h for h in profile.get("tokens", []) if not secrets.compare_digest(h, digest)]
+        if tokens:
+            profile["tokens"] = tokens
+            profile["updated"] = _now()
+        else:
+            gone["photo"] = data["profiles"].pop(pid).get("photo") or None
+        return dict(profile)
 
-    return _change(pid, change)
+    _update(mutate)
+    if "photo" in gone:
+        _remove_file(gone["photo"])
+    return "photo" in gone
 
 
 def delete(pid):
@@ -390,15 +406,20 @@ def api_delete_me():
 
 @bp.route("/api/profiles/me/forget", methods=["POST"])
 def api_forget():
-    """Sign this device out of the profile, leaving the profile be."""
+    """Sign this device out of the profile. The last device out deletes it."""
     profile = _me_or_403()
-    forget_device(profile["id"], request.headers.get(TOKEN_HEADER, ""))
-    return jsonify({"forgotten": True})
+    deleted = forget_device(profile["id"], request.headers.get(TOKEN_HEADER, ""))
+    return jsonify({"forgotten": True, "deleted": deleted})
 
 
 @bp.route("/api/profiles/me/photo", methods=["POST"])
 def api_set_photo():
     profile = _me_or_403()
+    # The length is what caps the read: Werkzeug cuts the body off there. A
+    # chunked body has none, and would be read to the end whatever its size.
+    # (No length and not chunked is an empty body — Werkzeug reads nothing.)
+    if request.content_length is None and request.environ.get("wsgi.input_terminated"):
+        return jsonify({"error": "That photo didn't arrive whole — try again."}), 411
     if (request.content_length or 0) > MAX_UPLOAD:
         return jsonify({"error": "That photo is too big — try a smaller one."}), 413
     upload = request.files.get("photo")

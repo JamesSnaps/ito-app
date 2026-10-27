@@ -144,7 +144,8 @@ def test_forgetting_a_device_keeps_the_profile_and_deleting_removes_it():
     link = c.post("/api/profiles/me/link", headers=headers).get_json()["code"]
     second = {"X-Profile-Token": c.post(f"/api/profiles/link/{link}").get_json()["token"]}
 
-    assert c.post("/api/profiles/me/forget", headers=headers).status_code == 200
+    res = c.post("/api/profiles/me/forget", headers=headers)
+    assert res.status_code == 200 and res.get_json()["deleted"] is False
     assert c.get("/api/profiles/me", headers=headers).status_code == 403
     assert c.get("/api/profiles/me", headers=second).status_code == 200
 
@@ -154,6 +155,30 @@ def test_forgetting_a_device_keeps_the_profile_and_deleting_removes_it():
     assert c.get(photo).status_code == 404
     # The name is free again.
     make(c, "Ana")
+
+
+def test_the_last_device_out_deletes_the_profile_and_frees_the_name():
+    # Otherwise no device could ever change or delete it, and nobody could
+    # take the name again.
+    c = client()
+    _, headers = make(c)
+    photo = upload(c, headers, jpeg()).get_json()["profile"]["photo"]
+    res = c.post("/api/profiles/me/forget", headers=headers)
+    assert res.status_code == 200 and res.get_json()["deleted"] is True
+    assert c.get("/api/profiles").get_json()["profiles"] == []
+    assert c.get(photo).status_code == 404
+    make(c, "Ana")
+
+
+def test_an_upload_without_a_length_is_refused_before_it_is_read():
+    # The length is what caps the read; a chunked body has none.
+    c = client()
+    _, headers = make(c)
+    res = c.post("/api/profiles/me/photo", input_stream=io.BytesIO(jpeg()),
+                 headers={**headers, "Content-Type": "image/jpeg", "Transfer-Encoding": "chunked"},
+                 environ_overrides={"wsgi.input_terminated": True})  # as gunicorn sets it
+    assert res.status_code == 411
+    assert c.get("/api/profiles/me", headers=headers).get_json()["profile"]["photo"] is None
 
 
 def test_games_find_a_face_by_name():

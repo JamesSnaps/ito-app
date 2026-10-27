@@ -726,6 +726,13 @@ one thing besides the games that `app.py` registers), `templates/me.html`
   There is no admin UI: to take a photo down, delete its file and clear
   `photo` in `data/profiles.json` on vm-core (or add an Authelia-protected
   route — remember the docker repo's Traefik rule).
+- **The last device out deletes the profile.** Signing out leaves the
+  profile for your other devices, but a profile no device holds could never
+  be changed or deleted, and its name would stay claimed for good — so the
+  last sign-out removes it and its photo (`/forget` answers `deleted`).
+- **A photo upload needs a length.** `Content-Length` is what caps the read
+  (Werkzeug stops there), so a chunked body — no length, read to the end
+  whatever its size — is a 411 before anything is read.
 - **`profiles.json` follows the stats rules**: atomic writes with a `.bak`,
   a damaged file is never written over (503 via `DataUnavailable`) and reads
   fall back to the backup.
