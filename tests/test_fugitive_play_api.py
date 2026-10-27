@@ -214,12 +214,17 @@ def test_pages_render_and_stay_on_this_server():
     c = client()
     code = new_game(c)["code"]
     css = (ROOT / "static" / "fugitive.css").read_text()
+    # The art, sounds and motion are drawn and synthesised in the browser.
+    script = (ROOT / "static" / "fugitive.js").read_text()
+    assert "http://" not in script and "https://" not in script
     for path in ("/fugitive/", f"/fugitive/play/{code}", "/fugitive/rules", "/fugitive/stats",
                  f"/fugitive/rules?back=/fugitive/play/{code}"):
         res = c.get(path)
         assert res.status_code == 200, path
         body = res.get_data(as_text=True)
         assert 'rel="manifest"' in body
+        if path.startswith("/fugitive/play") or path == "/fugitive/":
+            assert "fugitive.js" in body
         for text in (body, css):
             assert "http://" not in text and "https://" not in text, path
     assert c.get("/fugitive/play/ZZZZ").status_code == 404

@@ -2,7 +2,8 @@
 {% block title %}Fugitive — {% if code %}game {{ code }}{% else %}new game{% endif %} — {{ app_name }}{% endblock %}
 {% block body_class %}fugitive{% endblock %}
 {% block theme_color %}#0e1726{% endblock %}
-{% block head %}<link rel="stylesheet" href="{{ asset('fugitive.css') }}">{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ asset('fugitive.css') }}">
+<script src="{{ asset('fugitive.js') }}"></script>{% endblock %}
 {% block body %}
 <div class="wrap">
   <header class="fg-bar">
@@ -14,6 +15,7 @@
     {% endif %}
     <h1 class="fg-title">Fugi<span>tive</span></h1>
     {% if code %}<span class="fg-code" title="Room code — /join with it">{{ code }}</span>{% endif %}
+    <button class="fg-icon-btn" id="sound-btn" type="button" aria-label="Sound"></button>
     {% set here = request.path %}
     <a class="fg-icon-btn" href="{{ url_for('fugitive.stats_view', back=here) }}"
        aria-label="Records" title="Records">★</a>
@@ -35,6 +37,7 @@
   const TABLE_URL = '{{ url_for("fugitive.play_view", code="CODE") }}';
   const API = code => `/fugitive/api/play/${code}`;
   const DECK_LABELS = ['4–14', '15–28', '29–41'];
+  const DECK_ICONS = ['foot', 'car', 'plane'];
   const ROLE_NAMES = {fugitive: 'Fugitive', marshal: 'Marshal'};
   // Last game's two names, so the same pair isn't typed in every time.
   const NAMES_KEY = 'fugitive:names';
@@ -54,21 +57,6 @@
   }
   function tableUrl(code){ return TABLE_URL.replace('CODE', code); }
 
-  // Names are typed at the table and go straight back on screen, so
-  // everything is built as DOM nodes: textContent can't be got wrong.
-  function el(tag, attrs, children){
-    const node = document.createElement(tag);
-    for (const [k, v] of Object.entries(attrs || {})) {
-      if (k === 'class') node.className = v;
-      else if (k === 'text') node.textContent = v;
-      else if (k.startsWith('on')) node.addEventListener(k.slice(2), v);
-      else if (v === true) node.setAttribute(k, '');
-      else if (v !== false && v != null) node.setAttribute(k, v);
-    }
-    (children || []).forEach(c => c && node.appendChild(typeof c === 'string' ? document.createTextNode(c) : c));
-    return node;
-  }
-
   let toastTimer;
   function showToast(text){
     const node = document.getElementById('toast');
@@ -87,7 +75,23 @@
     return {ok: res.ok, status: res.status, data: data || {}};
   }
 
+  const soundBtn = document.getElementById('sound-btn');
+  function drawSoundBtn(){
+    soundBtn.innerHTML = icon(Sound.on ? 'soundOn' : 'soundOff');
+    soundBtn.title = Sound.on ? 'Sound on — tap to mute' : 'Sound off — tap to turn on';
+  }
+  soundBtn.addEventListener('click', () => { Sound.on = !Sound.on; Sound.unlock(); drawSoundBtn(); Sound.play('flick'); });
+  drawSoundBtn();
+
+  // A card as an element: the face if we know it, otherwise its back.
+  function card(n, cls, attrs){
+    const steps = n == null ? 0 : (data && data.game.footprints[String(n)]) || 0;
+    return el('div', {class: `fg-card ${cls || ''}`, 'data-card': n == null ? null : n,
+                      html: n == null ? backSVG() : cardSVG(n, steps), ...(attrs || {})});
+  }
+
   const app = document.getElementById('app');
+  let data = null;   // the latest payload, for card() before the table exists
 
   // ---------------------------------------------------------------- setup
 
@@ -101,6 +105,7 @@
       const fugitive = form.fugitive.trim(), marshal = form.marshal.trim();
       if (!fugitive || !marshal) { form.error = 'Both players need a name.'; return renderSetup(); }
       busy = true;
+      Sound.play('riffle');
       const made = await post(CREATE_URL, {fugitive, marshal});
       if (!made.ok) { busy = false; form.error = made.data.error || 'Couldn’t deal — try again.'; return renderSetup(); }
       writeJSON(NAMES_KEY, {fugitive, marshal});
@@ -136,10 +141,16 @@
     }
 
     function renderSetup(){
+      const hero = el('div', {class: 'fg-hero'}, [
+        el('div', {class: 'fg-card fg-hero-card', style: {'--tilt': '-12deg'}, html: cardSVG(0, 1)}),
+        el('div', {class: 'fg-card fg-hero-card', style: {'--tilt': '0deg'}, html: backSVG()}),
+        el('div', {class: 'fg-card fg-hero-card', style: {'--tilt': '12deg'}, html: cardSVG(42, 0)})
+      ]);
       app.replaceChildren(el('div', {class: 'fg-setup'}, [
-        el('p', {class: 'fg-muted', text: 'One runs, one hunts. The Fugitive lays a trail of face-down hideouts from 0 to 42; the Marshal guesses numbers to turn them over.'}),
+        hero,
+        el('p', {class: 'fg-lede', text: 'One runs, one hunts. The Fugitive lays a trail of face-down hideouts from the cell at 0 to the plane out at 42; the Marshal guesses numbers to turn them over.'}),
         el('div', {id: 'resume'}),
-        el('div', {class: 'fg-panel'}, [
+        el('div', {class: 'fg-panel fg-paper'}, [
           el('h2', {text: 'Who’s playing?'}),
           nameRow('fugitive'),
           nameRow('marshal'),
@@ -175,8 +186,8 @@
         try {
           const res = await fetch(API(entry.code));
           if (res.status === 404) { forget(entry.key); continue; }
-          const data = await res.json();
-          if (data.game.phase !== 'game_over') live.push({...entry, data});
+          const payload = await res.json();
+          if (payload.game.phase !== 'game_over') live.push({...entry, payload});
         } catch (e) {}
       }
       const slot = document.getElementById('resume');
@@ -184,7 +195,7 @@
       slot.replaceChildren(el('div', {class: 'fg-panel'}, [
         el('h2', {text: 'Carry on'}),
         ...live.slice(0, 3).map(g => el('a', {class: 'fg-btn fg-btn-quiet fg-btn-wide', href: tableUrl(g.code),
-          text: `${g.data.players.fugitive} v ${g.data.players.marshal} · ${g.code}`}))
+          text: `${g.payload.players.fugitive} v ${g.payload.players.marshal} · ${g.code}`}))
       ]));
     }
 
@@ -197,14 +208,19 @@
     const KEY = GAME_PREFIX + CODE;
     let device = readJSON(KEY) || {seats: {}};
     device.seats = device.seats || {};
-    let data = null;           // the latest payload
     let shownAs = null;        // pass-and-play: whose hand the screen is showing
     let pick = {card: null, sprints: new Set()};
     let guess = new Set();
     let lastSeq = null;
+    let drawn = null;          // the payload last put on screen, as JSON
     let busy = false;
     let invite = null;
     let assist = readJSON(ASSIST_KEY) !== false;
+    let seenEvent = null;      // the last log entry that's been played out
+    let animating = false;
+    let waiting = null;        // a payload that arrived mid-animation
+    let wasMyTurn = false;
+    const MAP = cityMap(CODE);
 
     function save(){ device.at = Date.now(); writeJSON(KEY, device); }
     function held(){ return ['fugitive', 'marshal'].filter(r => device.seats[r]); }
@@ -237,13 +253,56 @@
         }
       }
       if (payload.next && (device.host || held().length)) return follow(payload.next);
+      if (animating) { waiting = payload; return; }
+      show(payload);
+    }
+
+    // Put a payload on screen, then play out whatever happened since the
+    // last one: cards flying from the decks, hideouts turning over.
+    async function show(payload){
       if (payload.game.seq !== lastSeq) {
         pick = {card: null, sprints: new Set()};
         guess = new Set();
         lastSeq = payload.game.seq;
       }
+      const json = JSON.stringify(payload);
+      const first = data === null;
       data = payload;
+      if (json === drawn && !first) return;
+      drawn = json;
+
+      const log = payload.game.log;
+      const lastId = log.length ? log[log.length - 1].id : 0;
+      // Opening a game already under way doesn't replay it; a fresh deal does.
+      const fresh = first && payload.game.seq === 0;
+      const events = first ? [] : log.filter(e => seenEvent === null || e.id > seenEvent);
+      seenEvent = lastId;
+
       render();
+      const targets = events.map(target);
+      targets.forEach(t => t && (t.style.visibility = 'hidden'));
+      if (fresh || events.length) {
+        animating = true;
+        try {
+          if (fresh) await dealIn();
+          for (let i = 0; i < events.length; i++) await perform(events[i], targets[i]);
+        } finally {
+          animating = false;
+          targets.forEach(t => t && (t.style.visibility = ''));
+        }
+      }
+      const mine = !!(data.game.turn && data.game.turn === data.game.viewer);
+      const pad = document.getElementById('notepad');
+      if (mine && pad && (data.game.phase === 'marshal_guess' || data.game.phase === 'manhunt') && window.innerWidth < 960) {
+        const r = pad.getBoundingClientRect();
+        if (r.top > window.innerHeight * 0.6) pad.scrollIntoView({behavior: Motion.reduced ? 'auto' : 'smooth', block: 'start'});
+      }
+      if (mine && !wasMyTurn && !first) {
+        Sound.play('turn');
+        try { navigator.vibrate && navigator.vibrate(60); } catch (e) {}
+      }
+      wasMyTurn = mine;
+      if (waiting) { const next = waiting; waiting = null; show(next); }
     }
 
     // A rematch swaps roles, and each player's token goes with them.
@@ -287,7 +346,10 @@
       busy = true;
       const res = await post(`${API(CODE)}/move`, {...move, seq: data.game.seq}, token);
       busy = false;
-      if (!res.ok) showToast(res.data.error || 'That didn’t work — try again.');
+      if (!res.ok) {
+        showToast(res.data.error || 'That didn’t work — try again.');
+        Motion.shake(document.querySelector('.fg-plate-me'));
+      }
       take(res.data, token);
     }
 
@@ -297,6 +359,7 @@
       device.seats[role] = res.data.seat_token;
       save();
       if (passAndPlay()) shownAs = null;
+      drawn = null;
       poll();
     }
 
@@ -324,43 +387,134 @@
       if (invite || !device.host) return;
       try {
         invite = await (await fetch(`${API(CODE)}/invite`)).json();
-        render();
+        rerender();
       } catch (e) {}
+    }
+
+    // A local change (a tap) — redraw without waiting for the server, and
+    // without jumping the trail back to its end.
+    function rerender(){ if (!animating) render(true); }
+
+    // ------------------------------------------------------------ motion
+
+    function deckEl(i){ return document.querySelector(`.fg-deck[data-deck="${i}"] .fg-deck-top`); }
+    function plateFor(role){ return document.querySelector(`.fg-plate[data-role="${role}"] .fg-fan`); }
+
+    // Where an event lands on screen, so it can be hidden until it arrives.
+    function target(e){
+      if (e.kind === 'drew') {
+        const fan = plateFor(e.role);
+        if (!fan) return null;
+        if (e.card != null) return fan.querySelector(`[data-card="${e.card}"]`);
+        const backs = fan.querySelectorAll('.fg-card');
+        return backs[backs.length - 1] || null;
+      }
+      if (e.kind === 'hid') return document.querySelector(`.fg-stop[data-index="${e.index}"]`);
+      return null;
+    }
+
+    async function perform(e, node){
+      if (e.kind === 'drew') {
+        Sound.play('flick');
+        await Motion.fly(node, deckEl(e.deck), {spin: -8});
+        if (node && e.card != null && e.role === data.game.viewer) await Motion.turnOver(node);
+        Sound.play('land');
+      } else if (e.kind === 'hid') {
+        Sound.play('slide');
+        await Motion.fly(node, plateFor('fugitive'), {duration: 600});
+        Sound.play('land');
+      } else if (e.kind === 'guessed') {
+        if (e.hit) {
+          for (const i of e.revealed) {
+            const stop = document.querySelector(`.fg-stop[data-index="${i}"] .fg-stop-top`);
+            stop && stop.scrollIntoView({block: 'nearest', inline: 'center', behavior: Motion.reduced ? 'auto' : 'smooth'});
+            await Motion.turnOver(stop);
+            await Motion.stamp(stop, 'Found', 'found', 500);
+          }
+        } else {
+          Sound.play('miss');
+          Motion.shake(document.querySelector('.fg-trail'));
+          await Motion.stamp(document.querySelector('.fg-map'), `${e.numbers.join(', ')} — not here`, 'miss', 700);
+        }
+      } else if (e.kind === 'manhunt') {
+        Sound.play('siren');
+        await Motion.stamp(document.querySelector('.fg-map'), 'Manhunt', 'miss', 1200);
+      } else if (e.kind === 'game_over') {
+        if (e.winner === 'marshal') {
+          Sound.play('caught');
+          await Motion.stamp(document.querySelector('.fg-map'), 'Caught', 'found', 1600);
+        } else {
+          Sound.play('escape');
+          await flyAway();
+          await Motion.stamp(document.querySelector('.fg-map'), 'Escaped', 'escape', 1600);
+        }
+      }
+    }
+
+    // The opening deal: every card in the hands comes off the decks.
+    async function dealIn(){
+      Sound.play('riffle');
+      await Motion.wait(450);
+      const cards = [...document.querySelectorAll('.fg-fan .fg-card')];
+      cards.forEach(c => (c.style.visibility = 'hidden'));
+      for (const c of cards) {
+        const n = Number(c.dataset.card);
+        const deck = c.dataset.card ? (n >= 4 && n <= 41 ? FG.deckOf(n) : 0) : 0;
+        Sound.play('flick');
+        Motion.fly(c, deckEl(deck), {spin: -10, duration: 420});
+        await Motion.wait(90);
+      }
+      await Motion.wait(450);
+    }
+
+    // 42: a plane climbs off across the map.
+    async function flyAway(){
+      const map = document.querySelector('.fg-map');
+      if (!map || Motion.reduced) return;
+      const plane = el('div', {class: 'fg-flyer', html: icon('plane')});
+      map.appendChild(plane);
+      await plane.animate([
+        {transform: 'translate(-10%, 60%) rotate(-14deg) scale(.6)', opacity: 0},
+        {opacity: 1, offset: 0.2},
+        {transform: 'translate(110%, -40%) rotate(-24deg) scale(1.6)', opacity: 0.9}
+      ], {duration: 1500, easing: 'ease-in'}).finished.catch(() => {});
+      plane.remove();
     }
 
     // ------------------------------------------------------------ words
 
-    function status(){
+    function statusTag(){
       const g = data.game, f = data.players.fugitive, m = data.players.marshal;
       const mine = g.turn && g.turn === g.viewer;
+      let line, small = '';
       if (g.phase === 'game_over') {
-        const lines = {
-          caught: [`${m} caught ${f}!`, 'Every hideout found.'],
-          escaped: [`${f} escaped!`, 'Made it to 42.'],
-          manhunt_failed: [`${f} escaped!`, `${m} missed in the Manhunt.`],
-          let_go: [`${f} escaped!`, `${m} let them go.`],
+        [line, small] = {
+          caught: [`${m} caught ${f}`, 'Every hideout found.'],
+          escaped: [`${f} escaped`, 'Made it to 42.'],
+          manhunt_failed: [`${f} escaped`, `${m} missed in the Manhunt.`],
+          let_go: [`${f} escaped`, `${m} let them go.`],
           resigned: [`${g.winner === 'fugitive' ? f : m} wins`, `${g.winner === 'fugitive' ? m : f} gave up.`]
         }[g.reason] || ['Game over', ''];
-        return el('div', {class: 'fg-status', 'data-winner': g.winner}, [lines[0], el('small', {text: lines[1]})]);
-      }
-      let line, small = '';
-      if (g.phase === 'fugitive_draw') {
-        line = mine ? 'Your move: draw a card' : `${f} is drawing`;
-        small = 'From any deck — the Marshal sees which one.';
+      } else if (g.phase === 'fugitive_draw') {
+        line = mine ? 'Your move — draw a card' : `${f} is drawing`;
+        small = 'From any deck. The Marshal sees which one.';
       } else if (g.phase === 'fugitive_hide') {
-        line = mine ? 'Your move: hide' : `${f} is on the run`;
-        small = g.first_turn ? (g.hides_left === 2 ? 'First turn: one or two hideouts.' : 'One more, or stop there.') : 'Lay a hideout, or draw an extra card instead.';
+        line = mine ? 'Your move — hide' : `${f} is on the run`;
+        small = g.first_turn ? (g.hides_left === 2 ? 'First turn: one or two hideouts.' : 'One more, or stop there.')
+                             : 'Lay a hideout, or draw an extra card instead.';
       } else if (g.phase === 'marshal_draw') {
-        line = mine ? `Your move: draw ${g.draws_left === 2 ? 'two cards' : 'a card'}` : `${m} is drawing`;
-        small = 'Cards you draw can’t be hideouts.';
+        line = mine ? `Your move — draw ${g.draws_left === 2 ? 'two cards' : 'a card'}` : `${m} is drawing`;
+        small = 'Cards the Marshal holds can’t be hideouts.';
       } else if (g.phase === 'marshal_guess') {
-        line = mine ? 'Your move: guess' : `${m} is guessing`;
-        small = 'One number, or several — but then every one must be right.';
+        line = mine ? 'Your move — guess' : `${m} is guessing`;
+        small = 'One number, or several — then every one must be right.';
       } else if (g.phase === 'manhunt') {
         line = 'Manhunt!';
-        small = `${f} played 42. ${m} must find every hideout left, one guess at a time — one miss and they’re gone.`;
+        small = `${m} must find every hideout left, one guess at a time. One miss and ${f} is gone.`;
       }
-      return el('div', {class: 'fg-status', 'data-turn': g.turn}, [line, el('small', {text: small})]);
+      return el('div', {class: 'fg-tag', 'data-turn': g.turn || '', 'data-winner': g.winner || ''}, [
+        el('div', {class: 'fg-tag-line', text: line}), el('div', {class: 'fg-tag-small', text: small})
+      ]);
     }
 
     function describe(e){
@@ -381,194 +535,242 @@
       return null;
     }
 
-    // ------------------------------------------------------------ cards
+    // ------------------------------------------------------------ the desk
 
-    function steps(card){
-      const n = data.game.footprints[String(card)] || 0;
-      return n ? '•'.repeat(n) : '';
-    }
-
-    function cardFace(card, extra, attrs){
-      return el('div', {class: `fg-card ${extra || ''}`, ...(attrs || {})}, [
-        String(card), el('span', {class: 'fg-steps', text: steps(card)})
-      ]);
-    }
-    function cardBack(label, extra){
-      return el('div', {class: `fg-card fg-card-back ${extra || ''}`, text: label || '?'});
-    }
-
-    function trail(){
+    // A hideout with its sprint cards tucked beneath, peeking out below it
+    // the way they would on a real table.
+    function stop(h, i){
       const g = data.game;
+      const under = h.sprints
+        ? h.sprints.map(c => card(c, 'fg-stop-under'))
+        : Array.from({length: h.sprint_count}, () => card(null, 'fg-stop-under'));
+      under.forEach((u, k) => { u.style.setProperty('--k', k + 1); });
+      const cls = ['fg-stop-top',
+                   h.card != null && !h.revealed ? 'fg-secret' : '',
+                   h.revealed && i > 0 && h.card !== 42 ? 'fg-found' : ''].join(' ');
+      const top = card(h.card, cls, {title: h.card != null && !h.revealed ? 'Still face down to the Marshal' : null});
+      let hint = null;
       const sets = g.candidates && assist ? g.candidates : null;
-      const row = el('div', {class: 'fg-trail', id: 'trail'}, g.hideouts.map((h, i) => {
-        let card;
-        if (h.card == null) card = cardBack('?');
-        else {
-          const cls = [h.card === 42 ? 'fg-card-escape' : '',
-                       !h.revealed ? 'fg-card-secret' : '',
-                       h.revealed && i > 0 && h.card !== 42 ? 'fg-card-found' : ''].join(' ');
-          card = cardFace(h.card, cls, {title: !h.revealed ? 'Still hidden from the Marshal' : ''});
-        }
-        const sprints = h.sprints
-          ? h.sprints.map(c => el('span', {class: 'fg-chip', text: String(c), title: `Sprinted with ${c}`}))
-          : Array.from({length: h.sprint_count}, () => el('span', {class: 'fg-chip fg-chip-back', title: 'A sprint card, face down'}));
-        let range = null;
-        if (sets && h.card == null && sets[i]) {
-          const s = sets[i];
-          range = el('div', {class: 'fg-range', text: s.length <= 4 ? s.join(' · ') : `${s[0]}–${s[s.length - 1]} · ${s.length} left`});
-        }
-        return el('div', {class: 'fg-stop'}, [card, el('div', {class: 'fg-stop-sprints'}, sprints), range]);
-      }));
-      return el('div', {class: 'fg-panel'}, [el('h2', {text: 'The trail'}), row]);
+      if (sets && h.card == null && sets[i]) {
+        const s = sets[i];
+        hint = el('div', {class: 'fg-range', text: s.length <= 4 ? s.join(' · ') : `${s[0]}–${s[s.length - 1]}`});
+      }
+      return el('div', {class: 'fg-stop', 'data-index': i, style: {'--under': under.length}},
+                [el('div', {class: 'fg-stack'}, [...under.reverse(), top]), hint]);
+    }
+
+    // Where the Fugitive's next hideout would go, while they're choosing.
+    function slot(){
+      const g = data.game;
+      const last = g.hideouts[g.hideouts.length - 1].card;
+      const fp = c => g.footprints[String(c)] || 0;
+      const reach = last + g.max_step + [...pick.sprints].reduce((a, c) => a + fp(c), 0);
+      const children = [];
+      if (pick.card != null) {
+        const ok = pick.card > last && pick.card <= reach;
+        [...pick.sprints].forEach((c, k) => {
+          const u = card(c, 'fg-stop-under');
+          u.style.setProperty('--k', k + 1);
+          children.unshift(u);
+        });
+        children.push(card(pick.card, `fg-stop-top fg-preview ${ok ? '' : 'fg-too-far'}`));
+      } else {
+        children.push(el('div', {class: 'fg-card fg-slot-empty'}, [
+          el('span', {text: 'up to'}), el('strong', {text: String(reach)})
+        ]));
+      }
+      return el('div', {class: 'fg-stop fg-slot', style: {'--under': pick.sprints.size}},
+                [el('div', {class: 'fg-stack'}, children)]);
     }
 
     function decks(){
       const g = data.game;
       const canDraw = g.turn === g.viewer && (g.phase === 'fugitive_draw' || g.phase === 'marshal_draw');
-      return el('div', {class: 'fg-panel'}, [
-        el('h2', {text: 'Decks'}),
-        el('div', {class: 'fg-decks'}, g.deck_counts.map((n, i) => {
-          const body = [cardBack(String(n)), el('span', {text: DECK_LABELS[i]})];
-          return canDraw
-            ? el('button', {class: 'fg-deck', type: 'button', disabled: n === 0, 'aria-label': `Draw from ${DECK_LABELS[i]}`,
-                            onclick: () => send({type: 'draw', deck: i})}, body)
-            : el('div', {class: 'fg-deck'}, body);
-        }))
-      ]);
+      return el('div', {class: 'fg-decks'}, g.deck_counts.map((n, i) => {
+        const layers = Math.min(4, Math.ceil(n / 4));
+        const pile = el('div', {class: 'fg-pile'}, [
+          ...Array.from({length: layers}, (_, k) => card(null, 'fg-pile-card', {style: `--k:${k}`})),
+          n ? el('div', {class: 'fg-card fg-pile-card fg-deck-top', style: `--k:${layers}`, html: backSVG(n)})
+            : el('div', {class: 'fg-card fg-deck-top fg-pile-empty'})
+        ]);
+        const label = el('div', {class: 'fg-deck-label', html: icon(DECK_ICONS[i])}, [el('span', {text: DECK_LABELS[i]})]);
+        const attrs = {class: `fg-deck ${canDraw && n ? 'fg-deck-live' : ''}`, 'data-deck': i};
+        return canDraw && n
+          ? el('button', {...attrs, type: 'button', 'aria-label': `Draw from ${DECK_LABELS[i]} (${n} left)`,
+                          onclick: () => send({type: 'draw', deck: i})}, [pile, label])
+          : el('div', attrs, [pile, label]);
+      }));
     }
 
-    // ------------------------------------------------------------ the Fugitive
-
-    function fugitivePanel(){
+    // A player's place at the table: their name and their hand, fanned.
+    function plate(role, mine){
       const g = data.game;
-      const hand = g.hand || [];
-      const hiding = g.turn === 'fugitive' && g.phase === 'fugitive_hide';
+      const count = g.hand_counts[role];
+      const faces = mine ? (g.hand || []) : null;
+      const list = faces || Array.from({length: count}, () => null);
+      const hiding = mine && role === 'fugitive' && g.turn === 'fugitive' && g.phase === 'fugitive_hide';
       const last = g.hideouts[g.hideouts.length - 1].card;
       const fp = c => g.footprints[String(c)] || 0;
-      const power = [...pick.sprints].reduce((a, c) => a + fp(c), 0);
-      const reach = last + g.max_step + power;
+      const spread = Math.min(7, 44 / Math.max(list.length, 1));
 
-      function canReach(card){
-        const spare = hand.filter(c => c !== card).reduce((a, c) => a + fp(c), 0);
-        return card > last && card - last - g.max_step <= spare;
-      }
+      const fan = el('div', {class: `fg-fan ${mine ? 'fg-fan-mine' : 'fg-fan-backs'} ${list.length ? '' : 'fg-fan-empty'}`},
+        list.map((n, i) => {
+          const mid = (list.length - 1) / 2;
+          const attrs = {style: `--r:${(i - mid) * spread}deg; --y:${Math.pow(i - mid, 2) * 0.9}px; --i:${i}`};
+          let cls = 'fg-fan-card';
+          if (hiding) {
+            const spare = (g.hand || []).filter(c => c !== n).reduce((a, c) => a + fp(c), 0);
+            const reachable = n > last && n - last - g.max_step <= spare;
+            if (pick.card === n) cls += ' fg-picked';
+            else if (pick.sprints.has(n)) cls += ' fg-sprinting';
+            else if (!reachable && pick.card === null) cls += ' fg-dim';
+            Object.assign(attrs, {role: 'button', tabindex: 0, 'aria-pressed': pick.card === n || pick.sprints.has(n) ? 'true' : 'false',
+              'aria-label': `${n}${pick.card === null ? '' : pick.card === n ? ', hiding here' : ', sprint with it'}`,
+              onclick: () => tapCard(n),
+              onkeydown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tapCard(n); } }});
+          }
+          return card(n, cls, attrs);
+        }));
 
-      function tap(card){
-        if (pick.card === null || pick.card === card) {
-          pick.card = pick.card === card ? null : card;
-          pick.sprints.delete(card);
-        } else if (fp(card) > 0) {
-          pick.sprints.has(card) ? pick.sprints.delete(card) : pick.sprints.add(card);
-        }
-        render();
-      }
-
-      const cards = hand.map(c => {
-        const classes = [pick.sprints.has(c) ? 'fg-sprinting' : '', hiding && !canReach(c) ? 'fg-unreachable' : ''].join(' ');
-        const attrs = hiding
-          ? {role: 'button', tabindex: 0, 'aria-pressed': pick.card === c ? 'true' : 'false', onclick: () => tap(c),
-             onkeydown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tap(c); } }}
-          : {};
-        return cardFace(c, classes, attrs);
-      });
-
-      const children = [el('h2', {text: `Your hand · ${data.players.fugitive}, the Fugitive`}),
-                        el('div', {class: `fg-hand ${hiding ? '' : 'fg-hand-static'}`}, cards)];
-
-      if (hiding) {
-        let hint;
-        if (pick.card === null) hint = `Your last hideout is ${last}. Tap a card to hide there — up to ${last + g.max_step}, or further with sprint cards.`;
-        else if (pick.card <= last) hint = `Hideouts go up — pick something above ${last}.`;
-        else if (pick.card > reach) hint = `${pick.card} needs ${pick.card - reach} more footprint${pick.card - reach > 1 ? 's' : ''}: tap cards to sprint with them.`;
-        else hint = `Hide at ${pick.card}${pick.sprints.size ? `, sprinting with ${[...pick.sprints].sort((a, b) => a - b).join(', ')}` : ''}.`;
-        children.push(el('p', {class: 'fg-muted fg-reach', text: hint}));
-
-        const ok = pick.card !== null && pick.card > last && pick.card <= reach;
-        const actions = [el('button', {class: 'fg-btn fg-btn-fugitive', type: 'button', disabled: !ok,
-          text: ok ? `Hide at ${pick.card}` : 'Hide',
-          onclick: () => send({type: 'hide', card: pick.card, sprints: [...pick.sprints]})})];
-        if (g.first_turn && g.hides_left === 1) {
-          actions.push(el('button', {class: 'fg-btn fg-btn-quiet', type: 'button', text: 'Done — one is enough', onclick: () => send({type: 'pass'})}));
-        } else if (!g.first_turn) {
-          const any = g.deck_counts.some(n => n > 0);
-          actions.push(el('button', {class: 'fg-btn fg-btn-quiet', type: 'button',
-            text: any ? 'Don’t hide — draw an extra card' : 'Don’t hide', onclick: () => send({type: 'pass'})}));
-        }
-        children.push(el('div', {class: 'fg-actions'}, actions));
-      } else if (g.turn === 'fugitive' && g.phase === 'fugitive_draw') {
-        children.push(el('p', {class: 'fg-muted fg-reach', text: 'Tap a deck to draw.'}));
-      }
-      return el('div', {class: 'fg-panel'}, children);
+      const badge = el('span', {class: `fg-badge fg-badge-${role}`, html: icon(role === 'fugitive' ? 'foot' : 'star')});
+      const name = el('div', {class: 'fg-plate-name'}, [badge,
+        el('span', {text: data.players[role]}),
+        el('small', {text: `${ROLE_NAMES[role]} · ${count} card${count === 1 ? '' : 's'}`})]);
+      return el('div', {class: `fg-plate ${mine ? 'fg-plate-me' : ''} ${g.turn === role ? 'fg-plate-turn' : ''}`, 'data-role': role},
+                [name, fan]);
     }
 
-    // ------------------------------------------------------------ the Marshal
-
-    function marshalPanel(){
-      const g = data.game;
-      const hand = g.hand || [];
-      const guessing = g.turn === 'marshal' && (g.phase === 'marshal_guess' || g.phase === 'manhunt');
-      const children = [el('h2', {text: `Your cards · ${data.players.marshal}, the Marshal`}),
-        hand.length ? el('div', {class: 'fg-hand fg-hand-static'}, hand.map(c => cardFace(c)))
-                    : el('p', {class: 'fg-muted', text: 'None yet. Every card you draw is a number the Fugitive can’t be hiding at.'})];
-
-      if (g.turn === 'marshal' && g.phase === 'marshal_draw') {
-        children.push(el('p', {class: 'fg-muted fg-reach', text: `Tap a deck to draw${g.draws_left === 2 ? ' — two this turn' : ''}.`}));
+    function tapCard(n){
+      const fp = c => data.game.footprints[String(c)] || 0;
+      if (pick.card === null || pick.card === n) {
+        pick.card = pick.card === n ? null : n;
+        pick.sprints.delete(n);
+      } else if (fp(n) > 0) {
+        pick.sprints.has(n) ? pick.sprints.delete(n) : pick.sprints.add(n);
       }
-      if (!guessing) return el('div', {class: 'fg-panel'}, children);
+      Sound.play('flick');
+      rerender();
+    }
 
+    function fugitiveControls(){
+      const g = data.game;
+      if (g.turn !== 'fugitive' || g.viewer !== 'fugitive') return null;
+      if (g.phase === 'fugitive_draw') return el('div', {class: 'fg-controls'}, [el('p', {class: 'fg-hint', text: 'Tap a deck to draw.'})]);
+      if (g.phase !== 'fugitive_hide') return null;
+      const last = g.hideouts[g.hideouts.length - 1].card;
+      const fp = c => g.footprints[String(c)] || 0;
+      const reach = last + g.max_step + [...pick.sprints].reduce((a, c) => a + fp(c), 0);
+      let hint;
+      if (pick.card === null) hint = `From ${last} you can reach ${last + g.max_step}. Pick a card to hide at; then tap others to sprint further.`;
+      else if (pick.card <= last) hint = `Hideouts go up — pick something above ${last}.`;
+      else if (pick.card > reach) hint = `${pick.card} needs ${pick.card - reach} more footprint${pick.card - reach > 1 ? 's' : ''} — tap cards to sprint with them.`;
+      else hint = pick.sprints.size ? `Sprinting with ${[...pick.sprints].sort((a, b) => a - b).join(', ')}.` : 'Ready.';
+      const ok = pick.card !== null && pick.card > last && pick.card <= reach;
+      const buttons = [el('button', {class: 'fg-btn fg-btn-fugitive', type: 'button', disabled: !ok,
+        text: ok ? `Hide at ${pick.card}` : 'Hide', onclick: () => send({type: 'hide', card: pick.card, sprints: [...pick.sprints]})})];
+      if (g.first_turn && g.hides_left === 1) {
+        buttons.push(el('button', {class: 'fg-btn fg-btn-quiet', type: 'button', text: 'Done — one is enough', onclick: () => send({type: 'pass'})}));
+      } else if (!g.first_turn) {
+        buttons.push(el('button', {class: 'fg-btn fg-btn-quiet', type: 'button',
+          text: g.deck_counts.some(n => n > 0) ? 'Lie low — draw a card' : 'Lie low', onclick: () => send({type: 'pass'})}));
+      }
+      return el('div', {class: 'fg-controls'}, [el('p', {class: 'fg-hint', text: hint}), el('div', {class: 'fg-actions'}, buttons)]);
+    }
+
+    function marshalControls(){
+      const g = data.game;
+      if (g.viewer !== 'marshal' || g.turn !== 'marshal') return null;
+      if (g.phase === 'marshal_draw') {
+        return el('div', {class: 'fg-controls'}, [el('p', {class: 'fg-hint', text: `Tap a deck to draw${g.draws_left === 2 ? ' — two this turn' : ''}.`})]);
+      }
+      return el('div', {class: 'fg-controls'}, [el('p', {class: 'fg-hint', text: g.phase === 'manhunt'
+        ? 'Manhunt — circle one number at a time on your notepad.' : 'Circle a number on your notepad — or several, if you’re sure.'})]);
+    }
+
+    function guessButtons(){
+      const g = data.game;
+      const nums = [...guess].sort((a, b) => a - b);
+      const label = nums.length === 0 ? 'Circle a number'
+        : nums.length === 1 ? `Guess ${nums[0]}` : `Guess all ${nums.length} — every one must be right`;
+      const buttons = [el('button', {class: 'fg-btn fg-btn-marshal', type: 'button', disabled: !nums.length, text: label,
+        onclick: () => send({type: 'guess', numbers: nums})})];
+      if (g.phase === 'manhunt') {
+        buttons.push(el('button', {class: 'fg-btn fg-btn-quiet fg-btn-ink', type: 'button', text: 'Let them go',
+          onclick: () => { if (confirm(`Let ${data.players.fugitive} escape?`)) send({type: 'let_go'}); }}));
+      }
+      return el('div', {class: 'fg-actions fg-pad-actions'}, buttons);
+    }
+
+    // The Marshal's notepad: 1 to 41 on lined paper. Circle to guess; your
+    // own cards and the sprints you've seen are struck through in pen.
+    function notepad(){
+      const g = data.game;
+      const guessing = g.turn === 'marshal' && (g.phase === 'marshal_guess' || g.phase === 'manhunt');
       const found = new Set(g.hideouts.filter(h => h.revealed).map(h => h.card));
-      const known = new Set(hand);
-      g.hideouts.forEach(h => (h.sprints || []).forEach(c => known.add(c)));
-      const possible = assist && g.candidates
-        ? new Set(g.candidates.filter((s, i) => !g.hideouts[i].revealed).flat()) : null;
+      const struck = new Set(g.hand || []);
+      g.hideouts.forEach(h => (h.sprints || []).forEach(c => struck.add(c)));
+      const missed = new Set();
+      g.log.forEach(e => { if (e.kind === 'guessed' && !e.hit && e.numbers.length === 1) missed.add(e.numbers[0]); });
+      const possible = assist && g.candidates ? new Set(g.candidates.filter((s, i) => !g.hideouts[i].revealed).flat()) : null;
       const manhunt = g.phase === 'manhunt';
 
-      const pad = el('div', {class: 'fg-pad'}, Array.from({length: 41}, (_, k) => {
+      const grid = el('div', {class: 'fg-pad'}, Array.from({length: 41}, (_, k) => {
         const n = k + 1;
-        if (found.has(n)) return el('button', {class: 'fg-num fg-found', type: 'button', disabled: true, text: String(n)});
-        const out = known.has(n);
-        const cls = ['fg-num', out ? 'fg-out' : '', !out && possible && !possible.has(n) ? 'fg-unlikely' : ''].join(' ');
-        return el('button', {class: cls, type: 'button', 'aria-pressed': guess.has(n) ? 'true' : 'false', text: String(n),
+        const cls = ['fg-num',
+          found.has(n) ? 'fg-num-found' : '',
+          struck.has(n) ? 'fg-num-struck' : '',
+          missed.has(n) && !found.has(n) ? 'fg-num-missed' : '',
+          possible && !possible.has(n) && !found.has(n) && !struck.has(n) ? 'fg-num-faint' : ''].join(' ');
+        return el('button', {class: cls, type: 'button', disabled: !guessing || found.has(n),
+          'aria-pressed': guess.has(n) ? 'true' : 'false', text: String(n),
           onclick: () => {
             if (manhunt) guess = guess.has(n) ? new Set() : new Set([n]);
             else guess.has(n) ? guess.delete(n) : guess.add(n);
-            render();
+            Sound.play('flick');
+            rerender();
           }});
       }));
-      children.push(pad);
-      if (g.candidates) {
-        children.push(el('label', {class: 'fg-toggle'}, [
-          el('input', {type: 'checkbox', checked: assist, onchange: e => { assist = e.target.checked; writeJSON(ASSIST_KEY, assist); render(); }}),
-          'Notepad help: show what each hideout could still be'
-        ]));
-      }
-
-      const nums = [...guess].sort((a, b) => a - b);
-      const label = nums.length === 0 ? 'Pick a number'
-        : nums.length === 1 ? `Guess ${nums[0]}` : `Guess all ${nums.length} — every one must be right`;
-      const actions = [el('button', {class: 'fg-btn fg-btn-marshal', type: 'button', disabled: !nums.length, text: label,
-        onclick: () => send({type: 'guess', numbers: nums})})];
-      if (manhunt) {
-        actions.push(el('button', {class: 'fg-btn fg-btn-quiet', type: 'button', text: 'Let them go',
-          onclick: () => { if (confirm(`Let ${data.players.fugitive} escape?`)) send({type: 'let_go'}); }}));
-      }
-      children.push(el('div', {class: 'fg-actions'}, actions));
-      return el('div', {class: 'fg-panel'}, children);
+      const toggle = g.candidates ? el('label', {class: 'fg-toggle'}, [
+        el('input', {type: 'checkbox', checked: assist, onchange: e => { assist = e.target.checked; writeJSON(ASSIST_KEY, assist); rerender(); }}),
+        'Pencil in what each hideout could be'
+      ]) : null;
+      return el('div', {class: 'fg-notepad', id: 'notepad'}, [el('div', {class: 'fg-notepad-head', text: `${data.players.marshal}’s notes`}),
+        grid, guessing ? guessButtons() : null, toggle]);
     }
 
-    // ------------------------------------------------------------ the rail
+    function desk(){
+      const g = data.game;
+      const me = g.viewer === 'table' ? null : g.viewer;
+      // Across the table: the other player. The table itself seats the
+      // Marshal across and the Fugitive near.
+      const across = me === 'fugitive' ? 'marshal' : me === 'marshal' ? 'fugitive' : 'marshal';
+      const near = me || 'fugitive';
+      const showSlot = g.viewer === 'fugitive' && g.turn === 'fugitive' && g.phase === 'fugitive_hide';
+      const trail = el('div', {class: 'fg-trail', id: 'trail'}, [...g.hideouts.map(stop), showSlot ? slot() : null]);
+      const map = el('div', {class: 'fg-map'}, [el('div', {class: 'fg-map-bg', html: MAP}), trail]);
+      return el('div', {class: `fg-desk ${g.phase === 'manhunt' ? 'fg-siren' : ''} ${g.phase === 'game_over' ? 'fg-over' : ''}`}, [
+        plate(across, false),
+        map,
+        decks(),
+        plate(near, near === me),
+        me === 'fugitive' ? fugitiveControls() : null,
+        me === 'marshal' ? marshalControls() : null
+      ]);
+    }
 
-    function log(){
-      const lines = data.game.log.map(describe).filter(Boolean).reverse().slice(0, 12);
-      return el('div', {class: 'fg-panel'}, [
-        el('h2', {text: 'What’s happened'}),
+    // ------------------------------------------------------------ the side
+
+    function caseNotes(){
+      const lines = data.game.log.map(describe).filter(Boolean).reverse().slice(0, 14);
+      return el('div', {class: 'fg-panel fg-notes'}, [
+        el('h2', {text: 'Case notes'}),
         lines.length ? el('ul', {class: 'fg-log'}, lines.map(t => el('li', {text: t})))
                      : el('p', {class: 'fg-muted', text: 'Nothing yet — the Fugitive moves first.'})
       ]);
     }
 
     function seats(){
-      const children = [el('h2', {text: 'Players'})];
+      const children = [el('h2', {text: 'At the table'})];
       for (const role of ['fugitive', 'marshal']) {
         const mine = !!device.seats[role];
         const taken = data.seats[role].taken;
@@ -576,10 +778,10 @@
         if (mine) right = el('span', {class: 'fg-muted', text: 'This device'});
         else if (taken) {
           right = device.host
-            ? el('button', {class: 'fg-btn fg-btn-quiet', type: 'button', text: 'Free seat', onclick: () => freeSeat(role)})
+            ? el('button', {class: 'fg-btn fg-btn-quiet fg-btn-small', type: 'button', text: 'Free seat', onclick: () => freeSeat(role)})
             : el('span', {class: 'fg-muted', text: 'Seated'});
         } else {
-          right = el('button', {class: `fg-btn fg-btn-${role}`, type: 'button', text: 'Sit here', onclick: () => sitAt(role)});
+          right = el('button', {class: `fg-btn fg-btn-small fg-btn-${role}`, type: 'button', text: 'Sit here', onclick: () => sitAt(role)});
         }
         children.push(el('div', {class: 'fg-seat'}, [
           el('span', {class: `fg-role-tag fg-role-${role}`, text: ROLE_NAMES[role]}),
@@ -593,8 +795,7 @@
         if (invite) {
           const qr = el('div', {class: 'fg-qr'});
           qr.innerHTML = invite.qr_svg;   // our own server's SVG, not user input
-          children.push(qr, el('p', {class: 'fg-muted', style: 'text-align:center',
-            text: `Scan to sit down, or enter ${CODE} at /join.`}));
+          children.push(qr, el('p', {class: 'fg-muted fg-center', text: `Scan to sit down, or enter ${CODE} at /join.`}));
         }
       }
       const g = data.game;
@@ -604,35 +805,36 @@
           : el('p', {class: 'fg-muted', text: 'The device that dealt can start a rematch.'}));
       } else if (g.viewer !== 'table') {
         children.push(el('button', {class: 'fg-btn fg-btn-quiet fg-btn-wide', type: 'button', text: 'Give up', onclick: resign}));
+      } else if (!held().length) {
+        children.push(el('p', {class: 'fg-muted', text: 'You’re watching. Take a free seat to play.'}));
       }
       return el('div', {class: 'fg-panel'}, children);
     }
 
     function curtain(role){
       const name = data.players[role];
-      return el('div', {class: 'fg-curtain'}, [el('div', {}, [
-        el('h2', {text: `Pass to ${name}`}),
-        el('p', {text: `${ROLE_NAMES[role]}’s turn. Tap when only ${name} can see the screen.`}),
-        el('button', {class: `fg-btn fg-btn-${role}`, type: 'button', text: `I’m ${name}`,
-          onclick: () => { shownAs = role; poll(); }})
+      return el('div', {class: 'fg-curtain'}, [el('div', {class: 'fg-folder'}, [
+        el('div', {class: 'fg-folder-tab', text: 'Confidential'}),
+        el('h2', {text: `For ${name}’s eyes only`}),
+        el('p', {text: `The ${ROLE_NAMES[role]}’s turn. Pass the device over, and tap when only ${name} can see it.`}),
+        el('button', {class: `fg-btn fg-btn-${role}`, type: 'button', text: `I’m ${name} — open it`,
+          onclick: () => { shownAs = role; drawn = null; Sound.play('slide'); poll(); }})
       ])]);
     }
 
-    function render(){
+    function render(keepScroll){
       if (!data) return;
       const g = data.game;
-      const main = [status(), trail()];
-      if (g.viewer === 'fugitive') main.push(fugitivePanel());
-      if (g.viewer === 'marshal') main.push(marshalPanel());
-      if (g.viewer === 'table' && !held().length && g.phase !== 'game_over') {
-        main.push(el('p', {class: 'fg-muted', text: 'You’re watching. Take a free seat to play.'}));
-      }
-      const rail = [decks(), seats(), log()];
+      const trailEl = document.getElementById('trail');
+      const scroll = keepScroll && trailEl ? trailEl.scrollLeft : null;
+      const side = [g.viewer === 'marshal' ? notepad() : null, seats(), caseNotes()];
       const hidden = curtainRole();
-      app.replaceChildren(el('div', {class: 'fg-table'}, [el('div', {}, main), el('div', {}, rail)]),
-                          ...(hidden ? [curtain(hidden)] : []));
+      app.replaceChildren(el('div', {class: 'fg-room'}, [
+        el('div', {class: 'fg-main'}, [statusTag(), desk()]),
+        el('div', {class: 'fg-side'}, side)
+      ]), ...(hidden ? [curtain(hidden)] : []));
       const row = document.getElementById('trail');
-      if (row) row.scrollLeft = row.scrollWidth;
+      if (row) row.scrollLeft = scroll == null ? row.scrollWidth : scroll;
       document.title = `${g.turn && g.turn === g.viewer ? '● Your turn — ' : ''}Fugitive — ${CODE}`;
     }
 

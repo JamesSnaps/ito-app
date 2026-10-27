@@ -630,6 +630,50 @@ read in full; not in the repo).
   replayed by the Swift tests. An offline game's moves are uploaded later
   and replayed here before they're recorded.
 
+### Fugitive's table (v1.7.0)
+
+- **A desk, not a dashboard.** The page is a detective's desk at night:
+  dark wood lit from above, a street map spread on it (`cityMap()`, seeded
+  by the room code so every device shows the same city) with the trail laid
+  across it, the three decks below, the other player's hand fanned as backs
+  across the table and yours fanned at the bottom. The table view seats the
+  Marshal across and the Fugitive near.
+- **Every card is drawn, not shipped** (`cardSVG()` in `static/fugitive.js`):
+  a night scene seeded by the number, so the same card looks the same on
+  every device. The era follows the rulebook's deck icons — 0 the cell, 1–14
+  on foot, 15–28 by car, 29–41 the airfield, 42 the plane out at sunrise —
+  with corner numbers, shoe prints for footprints and the deck icon. The
+  **back is one design for every card**: a deck icon on the back would say
+  which third of the trail a face-down hideout is in.
+- **Sprint cards are tucked under their hideout**, each peeking out a little
+  lower, faces showing once they're known — the count is public, as on a
+  real table. While hiding, the next slot on the trail previews the pick.
+- **The log is played out, not just shown** — the iOS app's PlayStore idea
+  in the browser. `show()` renders, then works through log entries newer
+  than `seenEvent`: a draw flies from its deck to the drawer's fan (turning
+  over only for the drawer), a hideout slides in from the Fugitive's hand,
+  a find turns the card over under a FOUND stamp, a miss stamps NOT HERE
+  and shakes the trail, a Manhunt sounds a siren and washes the desk red and
+  blue, and the end is CAUGHT or a plane taking off. Targets are hidden
+  until their animation lands them, payloads that arrive mid-animation wait
+  (`waiting`), and opening a game already under way doesn't replay it — only
+  a fresh deal is dealt out. Polls only redraw when the payload changed, so
+  nothing restarts every second. `prefers-reduced-motion` skips the motion.
+- **Sounds are synthesised** (`Sound` in `fugitive.js`), as on iOS: noise
+  bursts for paper, sines for thuds and chimes. Browsers only start audio
+  after a tap, so the first tap anywhere unlocks it; the bar has a mute
+  toggle (`fugitive:sound`).
+- **The Marshal's notepad is paper**: lined, a red margin, handwriting from
+  the device's own fonts. Your cards and seen sprints are struck in pen,
+  wrong single guesses in pencil, finds circled green, picks circled red.
+  The Guess buttons live on the notepad; on a phone it scrolls into view
+  when it's time to guess.
+- **`el()` sets `style` objects with `setProperty`.** `Object.assign` onto
+  `node.style` silently drops custom properties (`--under`, `--tilt`), which
+  is how the tucked sprint cards were clipped for a while.
+- No images, no font files, no URLs in `fugitive.js` (a test checks), and
+  the typewriter and handwriting faces fall back through what the device has.
+
 ## Hub artwork
 
 - Each game's menu tile has an SVG in `templates/art/<id>.html` and an
