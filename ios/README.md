@@ -58,7 +58,12 @@ UPLOAD=0 ios/scripts/testflight.sh   # archive and export an .ipa only
 ```
 
 The build number is the UTC time, as for Brief, so every upload is newer
-than the last. Archives go to `~/Library/Developer/Xcode/DerivedData/GameNight`.
+than the last. Signing and upload use the team's App Store Connect API key
+(the one Brief and Dishes use): its ids go in `~/.appstoreconnect/gamenight.env`
+as `ASC_KEY_ID` / `ASC_ISSUER_ID`, the `.p8` in
+`~/.appstoreconnect/private_keys/`. Without that file the script falls back
+to the account signed in to Xcode, which Xcode 27.1 no longer shares with
+`xcodebuild`. Archives go to `~/Library/Developer/Xcode/DerivedData/GameNight`.
 
 Then in App Store Connect → TestFlight:
 
