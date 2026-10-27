@@ -1,0 +1,545 @@
+/* Fugitive: a detective's desk at night. A city map spread on dark wood,
+   a lamp's pool of light, cards that look printed, and ink stamps. The
+   Fugitive is amber, the Marshal teal, so whose turn it is reads at a
+   glance. Scoped under .fugitive on <body>, over the shared shell.
+
+   No images and nothing fetched from elsewhere: the wood, the map and the
+   cards are gradients and inline SVG, and the three faces below are
+   bundled in static/fonts (see its README for the licences). */
+
+/* Wanted-poster capitals: the title, card numbers, nameplates. */
+@font-face {
+  font-family: "Bebas Neue";
+  src: url("fonts/bebas-neue-latin.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+/* A worn typewriter: case tags, notes, rubber stamps. */
+@font-face {
+  font-family: "Special Elite";
+  src: url("fonts/special-elite-latin.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+/* The Marshal's handwriting. */
+@font-face {
+  font-family: "Caveat";
+  src: url("fonts/caveat-variable-latin.woff2") format("woff2-variations");
+  font-weight: 400 700;
+  font-display: swap;
+}
+
+.fugitive {
+  --fg-bg: #0b111d;
+  --fg-panel: #141f33;
+  --fg-panel-2: #1d2c48;
+  --fg-line: rgba(243, 234, 216, 0.14);
+  --fg-card: #f3ead8;
+  --fg-ink: #13213a;
+  --fg-fugitive: #e0a84f;
+  --fg-marshal: #5fb3c9;
+  --fg-found: #3fae6a;
+  --fg-miss: #d9483b;
+  --fg-type: "Special Elite", "American Typewriter", "Courier New", Courier, monospace;
+  --fg-hand: "Caveat", "Bradley Hand", "Segoe Print", "Marker Felt", cursive;
+  --fg-poster: "Bebas Neue", "Oswald", Impact, "Arial Narrow", sans-serif;
+  --w: 64px;
+  background:
+    radial-gradient(ellipse at 50% -10%, rgba(224, 168, 79, 0.12), transparent 55%),
+    var(--fg-bg);
+}
+
+.fugitive .wrap { max-width: 1240px; }
+
+/* --- bar ------------------------------------------------------------- */
+
+.fg-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+.fg-title {
+  font: 400 2.1rem/1 var(--fg-poster);
+  margin: 0;
+  flex: 1;
+  letter-spacing: 0.08em;
+}
+.fg-title span { color: var(--fg-fugitive); }
+.fg-icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--fg-panel);
+  color: var(--text);
+  text-decoration: none;
+  border: 1px solid var(--fg-line);
+  font-size: 1.05rem;
+  cursor: pointer;
+  padding: 0;
+}
+.fg-code {
+  font-family: var(--fg-type);
+  font-weight: 400;
+  letter-spacing: 0.2em;
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: var(--fg-card);
+  color: var(--fg-ink);
+}
+.fg-icon { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8;
+           stroke-linecap: round; stroke-linejoin: round; display: block; }
+@media (max-width: 420px) { .fg-code { display: none; } }
+
+/* --- buttons and panels ---------------------------------------------- */
+
+.fg-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 48px;
+  padding: 10px 18px;
+  border: 0;
+  border-radius: 12px;
+  font: 700 1rem var(--font-display);
+  color: var(--fg-ink);
+  background: var(--fg-card);
+  cursor: pointer;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.35);
+}
+.fg-btn:active { transform: translateY(1px); box-shadow: none; }
+.fg-btn:disabled { opacity: 0.4; cursor: default; }
+.fg-btn-fugitive { background: var(--fg-fugitive); }
+.fg-btn-marshal { background: var(--fg-marshal); }
+.fg-btn-quiet { background: transparent; color: var(--text); border: 1px solid var(--fg-line); box-shadow: none; }
+.fg-btn-wide { width: 100%; }
+.fg-btn-small { min-height: 36px; padding: 6px 12px; font-size: 0.9rem; }
+
+.fg-panel {
+  background: var(--fg-panel);
+  border: 1px solid var(--fg-line);
+  border-radius: 16px;
+  padding: 16px;
+  margin-bottom: 12px;
+}
+.fg-panel h2 { margin: 0 0 10px; font: 400 0.85rem var(--fg-type); text-transform: uppercase; letter-spacing: 0.14em; color: var(--muted-2); }
+.fg-muted { color: var(--muted-2); font-size: 0.9rem; line-height: 1.45; }
+.fg-center { text-align: center; }
+.fg-error { color: #ffb4ad; margin-top: 8px; font-size: 0.9rem; }
+
+/* --- cards ------------------------------------------------------------ */
+
+/* A card is its SVG; --w sizes it everywhere. */
+.fg-card {
+  position: relative;
+  flex: none;
+  width: var(--w);
+  height: calc(var(--w) * 1.4);
+  border-radius: calc(var(--w) * 0.09);
+  user-select: none;
+  -webkit-user-select: none;
+}
+.fg-art { display: block; width: 100%; height: 100%; filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.45)); }
+.fg-art-num { font: 400 40px var(--fg-poster); letter-spacing: 0.02em; }
+.fg-art-corner { font: 400 14px var(--fg-poster); }
+.fg-art-back { font: 400 22px var(--fg-poster); }
+.fg-card-cover { position: absolute; inset: 0; }
+.fg-ghost { position: fixed; left: 0; top: 0; z-index: 60; pointer-events: none; }
+
+/* --- setup ------------------------------------------------------------ */
+
+.fg-setup { max-width: 520px; margin: 0 auto; }
+.fg-hero { display: flex; justify-content: center; padding: 10px 0 4px; --w: 96px; }
+.fg-hero-card { margin: 0 -14px; transform: translateY(10px) rotate(var(--tilt)); }
+.fg-hero-card:nth-child(2) { z-index: 1; transform: translateY(-4px); }
+.fg-lede { color: var(--muted-2); text-align: center; line-height: 1.5; margin: 14px 8px 18px; }
+.fg-name-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.fg-role-tag {
+  width: 92px;
+  flex: none;
+  font: 400 0.85rem var(--fg-type);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.fg-role-fugitive { color: var(--fg-fugitive); }
+.fg-role-marshal { color: var(--fg-marshal); }
+.fg-name-row input {
+  flex: 1;
+  min-width: 0;
+  font: 600 1.05rem var(--font-ui);
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid var(--fg-line);
+  background: var(--fg-bg);
+  color: var(--text);
+}
+.fg-choice { display: grid; gap: 8px; margin: 14px 0; }
+.fg-choice label {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--fg-line);
+  cursor: pointer;
+}
+.fg-choice input { margin-top: 3px; width: auto; }
+.fg-choice strong { display: block; }
+
+/* --- the room --------------------------------------------------------- */
+
+.fg-room { display: grid; gap: 14px; }
+@media (min-width: 960px) {
+  .fg-room { grid-template-columns: minmax(0, 1fr) 330px; align-items: start; }
+}
+
+/* The status: a manila case tag. */
+.fg-tag {
+  position: relative;
+  margin-bottom: 12px;
+  padding: 12px 16px 12px 44px;
+  border-radius: 6px 14px 14px 6px;
+  background: linear-gradient(180deg, #e9d9b4, #dcc79b);
+  color: #3a2c17;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35);
+}
+.fg-tag::before {
+  content: "";
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  margin-top: -6px;
+  border-radius: 50%;
+  background: var(--fg-bg);
+  box-shadow: inset 0 0 0 3px #b9a273;
+}
+.fg-tag-line { font: 400 1.2rem var(--fg-type); }
+@media (max-width: 520px) { .fg-tag { padding: 9px 12px 9px 38px; } .fg-tag::before { left: 13px; } .fg-tag-small { font-size: 0.8rem; } }
+.fg-tag-small { font-size: 0.88rem; margin-top: 2px; opacity: 0.8; }
+.fg-tag[data-turn="fugitive"] { border-right: 8px solid var(--fg-fugitive); }
+.fg-tag[data-turn="marshal"] { border-right: 8px solid var(--fg-marshal); }
+
+/* The desk: dark wood, lit from above. */
+.fg-desk {
+  position: relative;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 22px;
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(255, 214, 150, 0.2), transparent 60%),
+    repeating-linear-gradient(91deg, rgba(0, 0, 0, 0.09) 0 2px, transparent 2px 11px, rgba(255, 255, 255, 0.02) 11px 13px, transparent 13px 23px),
+    linear-gradient(180deg, #4a3221, #2b1c12);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05), inset 0 -30px 60px rgba(0, 0, 0, 0.35), 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+/* A Manhunt: the desk washed in red and blue. */
+.fg-siren { animation: fg-siren 1.2s infinite; }
+@keyframes fg-siren {
+  0%, 100% { box-shadow: inset 0 0 0 2px rgba(217, 72, 59, 0.8), 0 0 40px rgba(217, 72, 59, 0.45); }
+  50% { box-shadow: inset 0 0 0 2px rgba(80, 140, 255, 0.8), 0 0 40px rgba(80, 140, 255, 0.45); }
+}
+
+/* The map the trail is laid across. */
+.fg-map {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #142338;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5), inset 0 0 40px rgba(0, 0, 0, 0.5);
+  transform: rotate(-0.4deg);
+}
+.fg-map-bg { position: absolute; inset: 0; }
+.fg-map-art { width: 100%; height: 100%; display: block; }
+
+.fg-trail {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  overflow-x: auto;
+  padding: 16px 16px 14px;
+  min-height: calc(var(--w) * 1.4 + 36px);
+  scroll-snap-type: x proximity;
+  --w: 60px;
+}
+@media (min-width: 960px) { .fg-trail { --w: 92px; } }
+/* Footprints between stops, faint on the map. */
+.fg-stop + .fg-stop::before {
+  content: "";
+  position: absolute;
+  left: -14px;
+  top: calc(var(--w) * 0.7);
+  width: 14px;
+  height: 8px;
+  background: radial-gradient(circle at 25% 30%, rgba(243, 234, 216, 0.45) 1.5px, transparent 2px),
+              radial-gradient(circle at 75% 70%, rgba(243, 234, 216, 0.45) 1.5px, transparent 2px);
+}
+.fg-stop { position: relative; flex: none; scroll-snap-align: end; display: flex; flex-direction: column; align-items: center; }
+/* Sprint cards sit under the hideout, each peeking out a little lower. */
+.fg-stack { position: relative; width: var(--w); height: calc(var(--w) * 1.4 + var(--under, 0) * var(--w) * 0.24); }
+.fg-stack > .fg-card { position: absolute; left: 0; top: 0; }
+.fg-stack > .fg-stop-under { top: calc(var(--k) * var(--w) * 0.24); transform: rotate(calc(var(--k) * 1.5deg)); }
+.fg-stop-top { z-index: 2; }
+.fg-secret .fg-art { outline: 2px dashed var(--fg-fugitive); outline-offset: 3px; border-radius: 8px; }
+.fg-found .fg-art { filter: drop-shadow(0 0 6px rgba(63, 174, 106, 0.9)); }
+.fg-range {
+  margin-top: 6px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: rgba(243, 234, 216, 0.9);
+  color: #23458a;
+  font: 700 1rem/1.1 var(--fg-hand);
+  transform: rotate(-2deg);
+  max-width: calc(var(--w) + 20px);
+  text-align: center;
+}
+/* Where the next hideout goes. */
+.fg-slot-empty {
+  display: grid;
+  place-content: center;
+  text-align: center;
+  border: 2px dashed rgba(224, 168, 79, 0.7);
+  border-radius: 9px;
+  color: var(--fg-fugitive);
+  font: 600 0.75rem var(--fg-type);
+  animation: fg-breathe 1.6s ease-in-out infinite;
+}
+.fg-slot-empty strong { font: 400 2rem var(--fg-poster); }
+.fg-preview { opacity: 0.92; animation: fg-breathe 1.6s ease-in-out infinite; }
+.fg-too-far .fg-art { filter: grayscale(0.6) brightness(0.7); }
+@keyframes fg-breathe { 50% { transform: translateY(-3px); } }
+.fg-flyer { position: absolute; left: 0; top: 30%; width: 26%; color: var(--fg-card); pointer-events: none; }
+.fg-flyer .fg-icon { width: 100%; height: auto; stroke-width: 1.2; }
+
+/* The three decks. */
+.fg-decks { display: flex; justify-content: center; gap: clamp(14px, 6vw, 44px); --w: 44px; }
+@media (min-width: 960px) { .fg-decks { --w: 56px; } }
+.fg-deck {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--fg-card);
+  font: 600 0.8rem var(--fg-type);
+}
+.fg-pile { position: relative; width: var(--w); height: calc(var(--w) * 1.4 + 10px); }
+.fg-pile > .fg-card { position: absolute; left: 0; bottom: calc(var(--k) * 2.5px); }
+.fg-pile-empty { border: 2px dashed rgba(243, 234, 216, 0.25); border-radius: 8px; }
+.fg-deck-label { display: flex; align-items: center; gap: 5px; opacity: 0.85; white-space: nowrap; }
+.fg-deck-label .fg-icon { width: 16px; height: 16px; }
+.fg-deck-live { cursor: pointer; }
+.fg-deck-live .fg-deck-top { animation: fg-lift 1.4s ease-in-out infinite; }
+.fg-deck-live .fg-deck-top .fg-art { filter: drop-shadow(0 0 8px rgba(224, 168, 79, 0.85)); }
+.fg-deck-live:hover .fg-deck-top { transform: translateY(-6px) rotate(-3deg); }
+@keyframes fg-lift { 50% { transform: translateY(-5px); } }
+
+/* A player's place: a nameplate and their hand, fanned. */
+.fg-plate { display: grid; justify-items: center; gap: 6px; }
+.fg-plate-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 14px 4px 4px;
+  border-radius: 999px;
+  background: rgba(10, 14, 24, 0.55);
+  font: 400 1.35rem/1 var(--fg-poster);
+  letter-spacing: 0.06em;
+}
+.fg-plate-name small { font: 400 0.72rem var(--fg-type); letter-spacing: 0; color: var(--muted-2); }
+.fg-plate-turn .fg-plate-name { box-shadow: 0 0 0 2px var(--fg-card); }
+.fg-badge { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; color: var(--fg-ink); }
+.fg-badge .fg-icon { width: 17px; height: 17px; }
+.fg-badge-fugitive { background: var(--fg-fugitive); }
+.fg-badge-marshal { background: var(--fg-marshal); }
+
+.fg-fan { display: flex; justify-content: center; padding: 8px 0 0; min-height: calc(var(--w) * 1.4 + 16px); }
+.fg-fan-mine { padding: 26px 0 24px; }
+.fg-fan-backs { --w: 34px; min-height: calc(var(--w) * 1.4 + 10px); }
+.fg-fan-empty { min-height: 0; padding: 0; }
+.fg-fan-mine { --w: clamp(48px, 15vw, 76px); }
+.fg-fan-card {
+  margin-left: calc(var(--w) * -0.42);
+  transform: translateY(var(--y)) rotate(var(--r));
+  transform-origin: 50% 120%;
+  transition: transform 0.18s ease, filter 0.18s;
+}
+.fg-fan-card:first-child { margin-left: 0; }
+.fg-fan-backs .fg-fan-card { margin-left: calc(var(--w) * -0.55); }
+.fg-fan-mine [role="button"] { cursor: pointer; }
+.fg-fan-mine [role="button"]:hover { transform: translateY(calc(var(--y) - 8px)) rotate(var(--r)); }
+.fg-picked { transform: translateY(calc(var(--y) - 22px)) rotate(0deg) !important; z-index: 3; }
+.fg-picked .fg-art { filter: drop-shadow(0 0 8px rgba(224, 168, 79, 0.95)); }
+.fg-sprinting { transform: translateY(calc(var(--y) - 12px)) rotate(var(--r)) !important; }
+.fg-sprinting .fg-art { filter: drop-shadow(0 0 7px rgba(95, 179, 201, 0.95)); }
+.fg-dim .fg-art { filter: brightness(0.6) saturate(0.6); }
+
+.fg-controls { display: grid; gap: 8px; justify-items: center; }
+.fg-hint { margin: 0; text-align: center; color: var(--fg-card); font-size: 0.92rem; line-height: 1.45; max-width: 520px; }
+.fg-actions { display: grid; gap: 8px; width: 100%; max-width: 520px; }
+@media (min-width: 520px) { .fg-actions { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); } }
+
+/* Mugshots: drawn from each player's name (fugitive.js). */
+.fg-mugshot {
+  display: inline-block;
+  flex: none;
+  width: var(--m, 36px);
+  height: var(--m, 36px);
+  border-radius: 50%;
+  overflow: hidden;
+  box-shadow: 0 0 0 2px var(--ring, var(--fg-card)), 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+.fg-mugshot-fugitive { --ring: var(--fg-fugitive); }
+.fg-mugshot-marshal { --ring: var(--fg-marshal); }
+.fg-mug { display: block; width: 100%; height: 100%; }
+.fg-mug-placard { font: 400 9px var(--fg-type); letter-spacing: 1px; }
+
+/* --- the side --------------------------------------------------------- */
+
+/* The Marshal's notepad: lined paper, a red margin, pen and pencil. */
+.fg-notepad {
+  margin-bottom: 12px;
+  padding: 14px 14px 14px 30px;
+  border-radius: 6px;
+  color: #23314f;
+  background:
+    linear-gradient(90deg, transparent 21px, rgba(217, 72, 59, 0.5) 21px 22px, transparent 22px),
+    repeating-linear-gradient(180deg, transparent 0 25px, rgba(60, 100, 170, 0.22) 25px 26px),
+    #f6efdc;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+  transform: rotate(0.6deg);
+}
+.fg-notepad-head { font: 700 1.5rem/1.1 var(--fg-hand); margin-bottom: 8px; }
+.fg-pad { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px 2px; }
+.fg-num {
+  position: relative;
+  height: 38px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #23314f;
+  font: 600 1.5rem/1 var(--fg-hand);
+  cursor: pointer;
+  padding: 0;
+}
+.fg-num:disabled { cursor: default; }
+.fg-num[aria-pressed="true"] { box-shadow: 0 0 0 2.5px var(--fg-miss); color: var(--fg-miss); }
+.fg-num-found { box-shadow: 0 0 0 2.5px var(--fg-found); color: #1f6e3f; }
+.fg-num-struck::after, .fg-num-missed::after {
+  content: "";
+  position: absolute;
+  left: 14%;
+  right: 14%;
+  top: 50%;
+  border-top: 2.5px solid #23314f;
+  transform: rotate(-24deg);
+}
+.fg-num-missed::after { border-top: 1.5px solid rgba(35, 49, 79, 0.55); transform: rotate(18deg); }
+.fg-num-faint { opacity: 0.32; }
+.fg-pad-actions { margin-top: 12px; max-width: none; }
+.fg-btn-ink { color: #23314f; border-color: rgba(35, 49, 79, 0.35); }
+.fg-toggle { display: flex; gap: 8px; align-items: center; margin-top: 10px; font: 600 1.15rem var(--fg-hand); }
+.fg-toggle input { flex: none; width: 18px; height: 18px; margin: 0; }
+
+.fg-notes h2 { font-family: var(--fg-type); }
+.fg-log { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; font: 0.88rem var(--fg-type); color: var(--muted-2); }
+.fg-log li:first-child { color: var(--text); }
+
+.fg-seat { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.fg-seat-name { flex: 1; font: 400 1.25rem var(--fg-poster); letter-spacing: 0.05em; }
+.fg-seat .fg-role-tag { display: block; width: auto; font-size: 0.68rem; letter-spacing: 0.1em; }
+.fg-who { display: flex; align-items: center; gap: 10px; }
+.fg-qr { background: #fff; border-radius: 12px; padding: 10px; width: 180px; margin: 4px auto 8px; }
+.fg-qr svg { display: block; width: 100%; height: auto; }
+
+/* --- stamps, curtain, toast ------------------------------------------- */
+
+.fg-stamp {
+  position: absolute;
+  z-index: 70;
+  padding: 6px 16px;
+  border: 4px double currentColor;
+  border-radius: 8px;
+  font: 400 clamp(1.5rem, 6.5vw, 2.6rem) var(--fg-type);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  pointer-events: none;
+  background: rgba(243, 234, 216, 0.85);
+  transform: rotate(-12deg);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
+}
+.fg-stamp-found { color: #1f8a4c; }
+.fg-stamp-miss { color: var(--fg-miss); }
+.fg-stamp-escape { color: #c9772b; }
+
+/* Pass-and-play: a confidential folder over everything while the device
+   changes hands. */
+.fg-curtain {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(8, 12, 20, 0.97);
+}
+.fg-folder {
+  position: relative;
+  max-width: 420px;
+  padding: 36px 26px 26px;
+  border-radius: 6px 14px 14px 14px;
+  background: linear-gradient(180deg, #e3cf9f, #d1b780);
+  color: #3a2c17;
+  text-align: center;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+}
+.fg-folder-tab {
+  position: absolute;
+  top: -26px;
+  left: 0;
+  padding: 4px 16px;
+  border-radius: 8px 8px 0 0;
+  background: #e3cf9f;
+  font: 700 0.8rem var(--fg-type);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--fg-miss);
+}
+.fg-folder .fg-mugshot { display: block; margin: 0 auto 14px; transform: rotate(-3deg); border-radius: 6px;
+  box-shadow: 0 0 0 4px #f3ead8, 0 6px 14px rgba(0, 0, 0, 0.35); }
+.fg-folder .fg-mugshot .fg-mug { border-radius: 6px; }
+.fg-folder h2 { font: 400 1.7rem/1.2 var(--fg-type); margin: 0 0 10px; color: #3a2c17; }
+.fg-folder p { margin: 0 0 20px; line-height: 1.5; }
+
+.fg-toast {
+  position: fixed;
+  left: 50%;
+  bottom: max(20px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 80;
+  padding: 10px 16px;
+  border-radius: 12px;
+  background: var(--fg-card);
+  color: var(--fg-ink);
+  font-weight: 600;
+  max-width: calc(100% - 32px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fg-siren, .fg-deck-live .fg-deck-top, .fg-slot-empty, .fg-preview { animation: none; }
+}
+
+/* --- rules and records ------------------------------------------------- */
+
+.fg-page { max-width: 640px; margin: 0 auto; line-height: 1.55; }
+.fg-page h2 { color: var(--text); font: 400 1.6rem var(--fg-poster); letter-spacing: 0.05em; margin-top: 24px; }
+.fg-page table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.fg-page th, .fg-page td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--fg-line); }
+.fg-page th { color: var(--muted-2); font-weight: 600; }
+.fg-num-cell { text-align: right; font-variant-numeric: tabular-nums; }

@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Fugitive — rules — {{ app_name }}{% endblock %}
+{% block body_class %}fugitive{% endblock %}
+{% block theme_color %}#0e1726{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ asset('fugitive.css') }}">{% endblock %}
+{% block body %}
+{# Our own summary of the 2nd-edition rulebook, not its text. Every number
+   here comes from engine.py, so the page and the game can't disagree. #}
+<div class="wrap fg-page">
+  <header class="fg-bar">
+    <a class="fg-icon-btn" href="{{ back }}" aria-label="Back" title="Back">←</a>
+    <h1 class="fg-title">How to play</h1>
+  </header>
+
+  <p>Two players. One is the <strong>Fugitive</strong>, laying a trail of face-down
+    hideouts from {{ engine.START_CARD }} to {{ engine.ESCAPE_CARD }}. The other is the
+    <strong>Marshal</strong>, guessing numbers to turn those hideouts over.</p>
+
+  <h2>The cards</h2>
+  <p>Every card from {{ engine.START_CARD }} to {{ engine.ESCAPE_CARD }} is a hideout number. Each also
+    has footprints (•) — one or two — which matter when it's used to sprint.
+    {{ engine.START_CARD }} starts face up as the first hideout. The rest of
+    {{ engine.DECKS[0][0] }}–{{ engine.DECKS[-1][1] }} sit in three decks:
+    {% for lo, hi in engine.DECKS %}{{ lo }}–{{ hi }}{% if not loop.last %}, {% endif %}{% endfor %}.</p>
+  <p>The Fugitive starts with {{ engine.STARTING_CARDS|join(", ") }}, plus
+    {{ engine.STARTING_DRAWS[0] }} cards from the low deck and {{ engine.STARTING_DRAWS[1] }} from the middle one.
+    The Marshal starts with nothing.</p>
+
+  <h2>The Fugitive's turn</h2>
+  <p><strong>Draw</strong> one card from any deck. The Marshal sees which deck, not which card.</p>
+  <p>Then <strong>hide</strong>: put a card face down at the end of the trail. It must be
+    higher than your last hideout, and at most {{ engine.MAX_STEP }} higher. To go further,
+    <strong>sprint</strong>: tuck cards from your hand beneath it, and each one adds its
+    footprints to the distance. The Marshal can see how many cards you sprinted with,
+    but not which.</p>
+  <p>Or don't hide, and draw one more card from the lowest deck that has any left.</p>
+  <p>On your very first turn there's no draw: place one or two hideouts.</p>
+
+  <h2>The Marshal's turn</h2>
+  <p><strong>Draw</strong> one card from any deck (two on your first turn). A card in your
+    hand is a number the Fugitive can't be hiding at.</p>
+  <p>Then <strong>guess</strong>. Name one number from 1 to 41: if a face-down hideout has
+    it, it's turned over along with the cards sprinted to it. Or name several at once — but
+    they're only turned over if every single one is right.</p>
+
+  <h2>Winning</h2>
+  <p>The Marshal wins the moment every hideout is face up.</p>
+  <p>The Fugitive wins by laying {{ engine.ESCAPE_CARD }}, which goes down face up. But if the
+    Marshal hasn't turned over anything above {{ engine.MANHUNT_MAX_REVEALED }}, they may start a
+    <strong>Manhunt</strong>: guess the hideouts still face down one at a time, carrying on
+    while they're right. Find them all and the Fugitive is caught at the last second; one
+    miss and they're gone. The cards sprinted to {{ engine.ESCAPE_CARD }} are never shown.</p>
+
+  <h2>Playing here</h2>
+  <p>Each phone that sits down sees only its own player's cards. The table — an iPad or a
+    TV — shows what both players could see across a real table. Passing one device back and
+    forth works too: it hides the hands while it changes hands.</p>
+  <p>The Marshal's notepad can show what each hideout could still be, worked out only from
+    what the Marshal has seen. Switch it off to keep your own notes.</p>
+  <p class="fg-muted">Which cards carry two footprints is our own spread for now:
+    {{ engine.TWO_FOOTPRINTS|sort|join(", ") }}.</p>
+</div>
+{% endblock %}
