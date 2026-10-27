@@ -106,7 +106,9 @@ final class FugitiveStore {
     }
 
     private var askingToken: String? {
-        if device.seats.count == 2, let turn = game?.turn, shownAs == turn { return device.seat(turn) }
+        // Pass-and-play: the screen's player keeps their view while their
+        // move is still playing out; the folder only goes up after it.
+        if device.seats.count == 2, let shown = shownAs, animating || game?.turn == shown { return device.seat(shown) }
         return device.askingToken
     }
 
@@ -340,6 +342,14 @@ final class FugitiveStore {
         lastEvent = nil
         dealt = false
         shownAs = nil
+        // Whatever the last game was still playing out stops here, rather
+        // than landing a stamp or a plane on the new deal.
+        animator?.cancel()
+        animator = nil
+        animating = false
+        stamp = nil
+        flyingAway = false
+        dealing = false
         queue = []
         landing = []
         incomingCards = []
@@ -351,11 +361,12 @@ final class FugitiveStore {
         guard animator == nil, !queue.isEmpty else { return }
         animating = true
         animator = Task { [weak self] in
-            while let self, !self.queue.isEmpty {
+            while let self, !Task.isCancelled, !self.queue.isEmpty {
                 let event = self.queue.removeFirst()
                 await self.perform(event)
             }
-            guard let self else { return }
+            // Cancelled by a rematch, which has already reset all this.
+            guard let self, !Task.isCancelled else { return }
             self.animating = false
             self.animator = nil
             self.nudgeIfMyTurn()
@@ -370,6 +381,8 @@ final class FugitiveStore {
     }
 
     private func show(_ text: String, _ kind: Stamp.Kind, for seconds: Double) async {
+        // A cancelled play-out (a rematch) mustn't stamp the new game.
+        guard !Task.isCancelled else { return }
         stamp = Stamp(text: text, kind: kind)
         Sound.shared.play(.stamp)
         await pause(seconds)
