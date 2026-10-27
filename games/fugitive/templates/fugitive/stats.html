@@ -2,7 +2,8 @@
 {% block title %}Fugitive — records — {{ app_name }}{% endblock %}
 {% block body_class %}fugitive{% endblock %}
 {% block theme_color %}#0e1726{% endblock %}
-{% block head %}<link rel="stylesheet" href="{{ asset('fugitive.css') }}">{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ asset('fugitive.css') }}">
+<script src="{{ asset('fugitive.js') }}"></script>{% endblock %}
 {% block body %}
 <div class="wrap fg-page">
   <header class="fg-bar">
@@ -22,7 +23,9 @@
     <tbody>
       {% for p in rows %}
       <tr>
-        <td>{{ p.name }}</td>
+        {# Their mugshot, in front of whichever side they win more as. #}
+        <td><span class="fg-who" data-name="{{ p.name }}"
+                  data-role="{{ 'marshal' if p.marshal_wins > p.fugitive_wins else 'fugitive' }}">{{ p.name }}</span></td>
         <td class="fg-num-cell">{{ p.wins }}/{{ p.games }}</td>
         <td class="fg-num-cell">{{ p.win_rate }}%</td>
         <td class="fg-num-cell">{{ p.fugitive_wins }}/{{ p.fugitive_games }}</td>
@@ -52,4 +55,8 @@
   </table>
   {% endif %}
 </div>
+<script>
+  document.querySelectorAll('.fg-who').forEach(cell =>
+    cell.prepend(mugshot(cell.dataset.name, cell.dataset.role, 34)));
+</script>
 {% endblock %}

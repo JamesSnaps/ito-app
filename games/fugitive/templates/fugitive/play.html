@@ -121,14 +121,15 @@
     }
 
     function nameRow(role){
+      const face = mugshot(form[role] || ROLE_NAMES[role], role, 44);
       const input = el('input', {
         type: 'text', maxlength: MAX_NAME, value: form[role], placeholder: 'Name',
         autocomplete: 'off', 'aria-label': `${ROLE_NAMES[role]}'s name`,
-        oninput: e => { form[role] = e.target.value; },
+        oninput: e => { form[role] = e.target.value; face.innerHTML = mugshotSVG(e.target.value || ROLE_NAMES[role], role); },
         onkeydown: e => { if (e.key === 'Enter') deal(); }
       });
       return el('div', {class: 'fg-name-row'}, [
-        el('span', {class: `fg-role-tag fg-role-${role}`, text: ROLE_NAMES[role]}), input
+        face, el('span', {class: `fg-role-tag fg-role-${role}`, text: ROLE_NAMES[role]}), input
       ]);
     }
 
@@ -220,6 +221,7 @@
     let animating = false;
     let waiting = null;        // a payload that arrived mid-animation
     let wasMyTurn = false;
+    let dealt = false;         // the opening deal has been played out here
     const MAP = cityMap(CODE);
 
     function save(){ device.at = Date.now(); writeJSON(KEY, device); }
@@ -273,12 +275,16 @@
 
       const log = payload.game.log;
       const lastId = log.length ? log[log.length - 1].id : 0;
-      // Opening a game already under way doesn't replay it; a fresh deal does.
-      const fresh = first && payload.game.seq === 0;
+      // Opening a game already under way doesn't replay it; a fresh deal
+      // does — once, and not behind a pass-and-play folder.
+      const folder = curtainRole();
+      const fresh = !dealt && payload.game.seq === 0 && !folder;
+      if (fresh) dealt = true;
       const events = first ? [] : log.filter(e => seenEvent === null || e.id > seenEvent);
       seenEvent = lastId;
 
-      render();
+      // The folder waits until whatever just happened has played out.
+      render(false, fresh || events.length > 0);
       const targets = events.map(target);
       targets.forEach(t => t && (t.style.visibility = 'hidden'));
       if (fresh || events.length) {
@@ -290,6 +296,7 @@
           animating = false;
           targets.forEach(t => t && (t.style.visibility = ''));
         }
+        if (folder) render(true);
       }
       const mine = !!(data.game.turn && data.game.turn === data.game.viewer);
       const pad = document.getElementById('notepad');
@@ -632,8 +639,7 @@
           return card(n, cls, attrs);
         }));
 
-      const badge = el('span', {class: `fg-badge fg-badge-${role}`, html: icon(role === 'fugitive' ? 'foot' : 'star')});
-      const name = el('div', {class: 'fg-plate-name'}, [badge,
+      const name = el('div', {class: 'fg-plate-name'}, [mugshot(data.players[role], role, 38),
         el('span', {text: data.players[role]}),
         el('small', {text: `${ROLE_NAMES[role]} · ${count} card${count === 1 ? '' : 's'}`})]);
       return el('div', {class: `fg-plate ${mine ? 'fg-plate-me' : ''} ${g.turn === role ? 'fg-plate-turn' : ''}`, 'data-role': role},
@@ -784,8 +790,8 @@
           right = el('button', {class: `fg-btn fg-btn-small fg-btn-${role}`, type: 'button', text: 'Sit here', onclick: () => sitAt(role)});
         }
         children.push(el('div', {class: 'fg-seat'}, [
-          el('span', {class: `fg-role-tag fg-role-${role}`, text: ROLE_NAMES[role]}),
-          el('span', {class: 'fg-seat-name', text: data.players[role]}),
+          mugshot(data.players[role], role, 34),
+          el('span', {class: 'fg-seat-name'}, [data.players[role], el('span', {class: `fg-role-tag fg-role-${role}`, text: ROLE_NAMES[role]})]),
           right
         ]));
       }
@@ -815,6 +821,7 @@
       const name = data.players[role];
       return el('div', {class: 'fg-curtain'}, [el('div', {class: 'fg-folder'}, [
         el('div', {class: 'fg-folder-tab', text: 'Confidential'}),
+        mugshot(name, role, 112),
         el('h2', {text: `For ${name}’s eyes only`}),
         el('p', {text: `The ${ROLE_NAMES[role]}’s turn. Pass the device over, and tap when only ${name} can see it.`}),
         el('button', {class: `fg-btn fg-btn-${role}`, type: 'button', text: `I’m ${name} — open it`,
@@ -822,13 +829,13 @@
       ])]);
     }
 
-    function render(keepScroll){
+    function render(keepScroll, holdFolder){
       if (!data) return;
       const g = data.game;
       const trailEl = document.getElementById('trail');
       const scroll = keepScroll && trailEl ? trailEl.scrollLeft : null;
       const side = [g.viewer === 'marshal' ? notepad() : null, seats(), caseNotes()];
-      const hidden = curtainRole();
+      const hidden = holdFolder ? null : curtainRole();
       app.replaceChildren(el('div', {class: 'fg-room'}, [
         el('div', {class: 'fg-main'}, [statusTag(), desk()]),
         el('div', {class: 'fg-side'}, side)

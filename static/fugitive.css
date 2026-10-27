@@ -3,9 +3,31 @@
    Fugitive is amber, the Marshal teal, so whose turn it is reads at a
    glance. Scoped under .fugitive on <body>, over the shared shell.
 
-   No images and no font downloads: the wood, the map and the cards are
-   gradients and inline SVG, and the typewriter face is whatever the device
-   already has. */
+   No images and nothing fetched from elsewhere: the wood, the map and the
+   cards are gradients and inline SVG, and the three faces below are
+   bundled in static/fonts (see its README for the licences). */
+
+/* Wanted-poster capitals: the title, card numbers, nameplates. */
+@font-face {
+  font-family: "Bebas Neue";
+  src: url("fonts/bebas-neue-latin.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+/* A worn typewriter: case tags, notes, rubber stamps. */
+@font-face {
+  font-family: "Special Elite";
+  src: url("fonts/special-elite-latin.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+/* The Marshal's handwriting. */
+@font-face {
+  font-family: "Caveat";
+  src: url("fonts/caveat-variable-latin.woff2") format("woff2-variations");
+  font-weight: 400 700;
+  font-display: swap;
+}
 
 .fugitive {
   --fg-bg: #0b111d;
@@ -18,8 +40,9 @@
   --fg-marshal: #5fb3c9;
   --fg-found: #3fae6a;
   --fg-miss: #d9483b;
-  --fg-type: "American Typewriter", "Courier New", Courier, monospace;
-  --fg-hand: "Bradley Hand", "Segoe Print", "Marker Felt", "Comic Sans MS", cursive;
+  --fg-type: "Special Elite", "American Typewriter", "Courier New", Courier, monospace;
+  --fg-hand: "Caveat", "Bradley Hand", "Segoe Print", "Marker Felt", cursive;
+  --fg-poster: "Bebas Neue", "Oswald", Impact, "Arial Narrow", sans-serif;
   --w: 64px;
   background:
     radial-gradient(ellipse at 50% -10%, rgba(224, 168, 79, 0.12), transparent 55%),
@@ -32,11 +55,10 @@
 
 .fg-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
 .fg-title {
-  font-family: var(--font-display);
-  font-size: 1.6rem;
+  font: 400 2.1rem/1 var(--fg-poster);
   margin: 0;
   flex: 1;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.08em;
 }
 .fg-title span { color: var(--fg-fugitive); }
 .fg-icon-btn {
@@ -56,7 +78,7 @@
 }
 .fg-code {
   font-family: var(--fg-type);
-  font-weight: 700;
+  font-weight: 400;
   letter-spacing: 0.2em;
   padding: 6px 12px;
   border-radius: 6px;
@@ -99,7 +121,7 @@
   padding: 16px;
   margin-bottom: 12px;
 }
-.fg-panel h2 { margin: 0 0 10px; font: 700 0.8rem var(--fg-type); text-transform: uppercase; letter-spacing: 0.14em; color: var(--muted-2); }
+.fg-panel h2 { margin: 0 0 10px; font: 400 0.85rem var(--fg-type); text-transform: uppercase; letter-spacing: 0.14em; color: var(--muted-2); }
 .fg-muted { color: var(--muted-2); font-size: 0.9rem; line-height: 1.45; }
 .fg-center { text-align: center; }
 .fg-error { color: #ffb4ad; margin-top: 8px; font-size: 0.9rem; }
@@ -117,9 +139,9 @@
   -webkit-user-select: none;
 }
 .fg-art { display: block; width: 100%; height: 100%; filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.45)); }
-.fg-art-num { font: 800 30px var(--font-display); }
-.fg-art-corner { font: 800 11px var(--font-display); }
-.fg-art-back { font: 800 19px var(--font-display); }
+.fg-art-num { font: 400 40px var(--fg-poster); letter-spacing: 0.02em; }
+.fg-art-corner { font: 400 14px var(--fg-poster); }
+.fg-art-back { font: 400 22px var(--fg-poster); }
 .fg-card-cover { position: absolute; inset: 0; }
 .fg-ghost { position: fixed; left: 0; top: 0; z-index: 60; pointer-events: none; }
 
@@ -130,11 +152,11 @@
 .fg-hero-card { margin: 0 -14px; transform: translateY(10px) rotate(var(--tilt)); }
 .fg-hero-card:nth-child(2) { z-index: 1; transform: translateY(-4px); }
 .fg-lede { color: var(--muted-2); text-align: center; line-height: 1.5; margin: 14px 8px 18px; }
-.fg-name-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.fg-name-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
 .fg-role-tag {
   width: 92px;
   flex: none;
-  font: 700 0.8rem var(--fg-type);
+  font: 400 0.85rem var(--fg-type);
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
@@ -192,7 +214,7 @@
   background: var(--fg-bg);
   box-shadow: inset 0 0 0 3px #b9a273;
 }
-.fg-tag-line { font: 700 1.1rem var(--fg-type); }
+.fg-tag-line { font: 400 1.2rem var(--fg-type); }
 @media (max-width: 520px) { .fg-tag { padding: 9px 12px 9px 38px; } .fg-tag::before { left: 13px; } .fg-tag-small { font-size: 0.8rem; } }
 .fg-tag-small { font-size: 0.88rem; margin-top: 2px; opacity: 0.8; }
 .fg-tag[data-turn="fugitive"] { border-right: 8px solid var(--fg-fugitive); }
@@ -268,7 +290,7 @@
   border-radius: 6px;
   background: rgba(243, 234, 216, 0.9);
   color: #23458a;
-  font: 700 0.75rem var(--fg-hand);
+  font: 700 1rem/1.1 var(--fg-hand);
   transform: rotate(-2deg);
   max-width: calc(var(--w) + 20px);
   text-align: center;
@@ -284,7 +306,7 @@
   font: 600 0.75rem var(--fg-type);
   animation: fg-breathe 1.6s ease-in-out infinite;
 }
-.fg-slot-empty strong { font: 800 1.6rem var(--font-display); }
+.fg-slot-empty strong { font: 400 2rem var(--fg-poster); }
 .fg-preview { opacity: 0.92; animation: fg-breathe 1.6s ease-in-out infinite; }
 .fg-too-far .fg-art { filter: grayscale(0.6) brightness(0.7); }
 @keyframes fg-breathe { 50% { transform: translateY(-3px); } }
@@ -323,12 +345,13 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 12px 4px 4px;
+  padding: 4px 14px 4px 4px;
   border-radius: 999px;
   background: rgba(10, 14, 24, 0.55);
-  font-weight: 700;
+  font: 400 1.35rem/1 var(--fg-poster);
+  letter-spacing: 0.06em;
 }
-.fg-plate-name small { font: 500 0.75rem var(--fg-type); color: var(--muted-2); }
+.fg-plate-name small { font: 400 0.72rem var(--fg-type); letter-spacing: 0; color: var(--muted-2); }
 .fg-plate-turn .fg-plate-name { box-shadow: 0 0 0 2px var(--fg-card); }
 .fg-badge { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; color: var(--fg-ink); }
 .fg-badge .fg-icon { width: 17px; height: 17px; }
@@ -361,6 +384,21 @@
 .fg-actions { display: grid; gap: 8px; width: 100%; max-width: 520px; }
 @media (min-width: 520px) { .fg-actions { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); } }
 
+/* Mugshots: drawn from each player's name (fugitive.js). */
+.fg-mugshot {
+  display: inline-block;
+  flex: none;
+  width: var(--m, 36px);
+  height: var(--m, 36px);
+  border-radius: 50%;
+  overflow: hidden;
+  box-shadow: 0 0 0 2px var(--ring, var(--fg-card)), 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+.fg-mugshot-fugitive { --ring: var(--fg-fugitive); }
+.fg-mugshot-marshal { --ring: var(--fg-marshal); }
+.fg-mug { display: block; width: 100%; height: 100%; }
+.fg-mug-placard { font: 400 9px var(--fg-type); letter-spacing: 1px; }
+
 /* --- the side --------------------------------------------------------- */
 
 /* The Marshal's notepad: lined paper, a red margin, pen and pencil. */
@@ -376,7 +414,7 @@
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
   transform: rotate(0.6deg);
 }
-.fg-notepad-head { font: 700 1.05rem var(--fg-hand); margin-bottom: 8px; }
+.fg-notepad-head { font: 700 1.5rem/1.1 var(--fg-hand); margin-bottom: 8px; }
 .fg-pad { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px 2px; }
 .fg-num {
   position: relative;
@@ -385,7 +423,7 @@
   border-radius: 50%;
   background: transparent;
   color: #23314f;
-  font: 700 1.15rem var(--fg-hand);
+  font: 600 1.5rem/1 var(--fg-hand);
   cursor: pointer;
   padding: 0;
 }
@@ -405,7 +443,7 @@
 .fg-num-faint { opacity: 0.32; }
 .fg-pad-actions { margin-top: 12px; max-width: none; }
 .fg-btn-ink { color: #23314f; border-color: rgba(35, 49, 79, 0.35); }
-.fg-toggle { display: flex; gap: 8px; align-items: center; margin-top: 10px; font: 600 0.9rem var(--fg-hand); }
+.fg-toggle { display: flex; gap: 8px; align-items: center; margin-top: 10px; font: 600 1.15rem var(--fg-hand); }
 .fg-toggle input { flex: none; width: 18px; height: 18px; margin: 0; }
 
 .fg-notes h2 { font-family: var(--fg-type); }
@@ -413,7 +451,9 @@
 .fg-log li:first-child { color: var(--text); }
 
 .fg-seat { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-.fg-seat-name { flex: 1; font-weight: 600; }
+.fg-seat-name { flex: 1; font: 400 1.25rem var(--fg-poster); letter-spacing: 0.05em; }
+.fg-seat .fg-role-tag { display: block; width: auto; font-size: 0.68rem; letter-spacing: 0.1em; }
+.fg-who { display: flex; align-items: center; gap: 10px; }
 .fg-qr { background: #fff; border-radius: 12px; padding: 10px; width: 180px; margin: 4px auto 8px; }
 .fg-qr svg { display: block; width: 100%; height: auto; }
 
@@ -425,7 +465,7 @@
   padding: 6px 16px;
   border: 4px double currentColor;
   border-radius: 8px;
-  font: 800 clamp(1.4rem, 6vw, 2.4rem) var(--fg-type);
+  font: 400 clamp(1.5rem, 6.5vw, 2.6rem) var(--fg-type);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   white-space: nowrap;
@@ -471,7 +511,10 @@
   text-transform: uppercase;
   color: var(--fg-miss);
 }
-.fg-folder h2 { font: 800 1.5rem var(--fg-type); margin: 0 0 10px; color: #3a2c17; }
+.fg-folder .fg-mugshot { display: block; margin: 0 auto 14px; transform: rotate(-3deg); border-radius: 6px;
+  box-shadow: 0 0 0 4px #f3ead8, 0 6px 14px rgba(0, 0, 0, 0.35); }
+.fg-folder .fg-mugshot .fg-mug { border-radius: 6px; }
+.fg-folder h2 { font: 400 1.7rem/1.2 var(--fg-type); margin: 0 0 10px; color: #3a2c17; }
 .fg-folder p { margin: 0 0 20px; line-height: 1.5; }
 
 .fg-toast {
@@ -495,7 +538,7 @@
 /* --- rules and records ------------------------------------------------- */
 
 .fg-page { max-width: 640px; margin: 0 auto; line-height: 1.55; }
-.fg-page h2 { color: var(--text); font-family: var(--font-display); font-size: 1.15rem; margin-top: 24px; }
+.fg-page h2 { color: var(--text); font: 400 1.6rem var(--fg-poster); letter-spacing: 0.05em; margin-top: 24px; }
 .fg-page table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
 .fg-page th, .fg-page td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--fg-line); }
 .fg-page th { color: var(--muted-2); font-weight: 600; }

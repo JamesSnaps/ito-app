@@ -671,8 +671,25 @@ read in full; not in the repo).
 - **`el()` sets `style` objects with `setProperty`.** `Object.assign` onto
   `node.style` silently drops custom properties (`--under`, `--tilt`), which
   is how the tucked sprint cards were clipped for a while.
-- No images, no font files, no URLs in `fugitive.js` (a test checks), and
-  the typewriter and handwriting faces fall back through what the device has.
+- **Three bundled faces give it its voice**: Bebas Neue (wanted-poster
+  capitals — title, card numbers, nameplates), Special Elite (a worn
+  typewriter — case tags, notes, stamps, the folder) and Caveat (the
+  Marshal's handwriting). Self-hosted in `static/fonts/` like Baloo 2, latin
+  subsets only, licences and sources in its README. Body copy stays on the
+  system UI face for legibility.
+- **Mugshots, not profile photos.** Game Night has no profiles, so each
+  player gets a silhouette drawn from a hash of their name (`mugshotSVG()`):
+  hair or a hat, maybe glasses, a scarf in their own colour — same name,
+  same face, on every device — against the role's backdrop: the height
+  chart and a booking placard for the Fugitive, the badge for the Marshal.
+  The name itself never enters the SVG markup. They're on the nameplates,
+  the seat list, the setup rows (live as you type), the pass-and-play
+  folder and the records. Real photos belong with shared profiles, if those
+  come.
+- **The pass-and-play folder waits for the table to settle**, and the
+  opening deal is played when the folder is first opened, not behind it —
+  cards in flight are drawn above everything and showed through it.
+- No images and no URLs in `fugitive.js` (a test checks).
 
 ## Hub artwork
 

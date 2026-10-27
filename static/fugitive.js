@@ -376,3 +376,75 @@ function cityMap(seedText){
   s += `<rect x="${40 + r() * 300}" y="${20 + r() * 140}" width="${30 + r() * 30}" height="${20 + r() * 20}" rx="4" fill="#57b97a" fill-opacity="0.08"/>`;
   return s + '</svg>';
 }
+
+// ------------------------------------------------------------------ mugshots
+
+// There are no profile photos in Game Night, so each player gets a mugshot
+// drawn from their name: the same name always gets the same silhouette —
+// hair or hat, glasses, a scarf in their own colour — against the role's
+// backdrop. The Fugitive stands at the height chart holding a booking
+// placard; the Marshal stands in front of the badge. The name itself never
+// goes into the markup (it's typed at the table); only a hash of it does.
+function nameSeed(name){
+  let h = 2166136261;
+  for (const ch of (name || '').trim().toLowerCase()) h = Math.imul(h ^ ch.codePointAt(0), 16777619);
+  return (h >>> 0) % 1000003;
+}
+
+const SCARVES = ['#e0a84f', '#d9483b', '#5fb3c9', '#57b97a', '#b07cd8', '#f08aa8', '#f2d06b', '#7aa2ff'];
+
+function mugshotSVG(name, role){
+  const r = seeded(nameSeed(name));
+  const id = `m${++FG.uid}`;
+  const ink = '#141a28';
+  const scarf = SCARVES[Math.floor(r() * SCARVES.length)];
+  const hair = Math.floor(r() * 5);         // short, long, bun, curls, none
+  const hat = r() < 0.3 ? Math.floor(r() * 3) : -1;   // fedora, beanie, cap
+  const glasses = r() < 0.28;
+  const tilt = (r() - 0.5) * 6;
+  let s = `<svg class="fg-mug" viewBox="0 0 100 100" aria-hidden="true"><defs><clipPath id="${id}"><circle cx="50" cy="50" r="50"/></clipPath></defs><g clip-path="url(#${id})">`;
+  if (role === 'marshal') {
+    s += `<rect width="100" height="100" fill="#2c5f73"/>`;
+    s += `<g transform="translate(20 6) scale(2.5)" fill="#ffffff" opacity="0.08"><path d="${ICON_PATHS.star}"/></g>`;
+  } else {
+    // The height chart.
+    s += `<rect width="100" height="100" fill="#cbc3b1"/>`;
+    for (let y = 8; y < 100; y += 8) s += `<rect x="0" y="${y}" width="100" height="${y % 24 === 8 ? 1.6 : 0.8}" fill="#6d6555" opacity="0.6"/>`;
+  }
+  s += `<g transform="rotate(${tilt} 50 80) translate(50 100) scale(1.14) translate(-50 -100)">`;
+  // Shoulders, neck, head.
+  s += `<path d="M6 104 C 8 80, 28 72, 50 72 C 72 72, 92 80, 94 104 Z" fill="${ink}"/>`;
+  s += `<rect x="43" y="56" width="14" height="18" fill="${ink}"/>`;
+  s += `<ellipse cx="50" cy="44" rx="16" ry="19" fill="${ink}"/>`;
+  if (hat === -1) {
+    if (hair === 0) s += `<path d="M33 42 C 32 26, 44 21, 52 22 C 62 22, 69 30, 67 42 C 63 34, 56 31, 48 31 C 41 31, 36 35, 33 42 Z" fill="${ink}"/>`;
+    if (hair === 1) s += `<path d="M32 46 C 28 24, 46 18, 56 22 C 70 26, 72 44, 70 66 L 63 66 C 66 50, 62 36, 50 33 C 40 34, 36 48, 37 66 L 30 66 C 28 58, 30 52, 32 46 Z" fill="${ink}"/>`;
+    if (hair === 2) s += `<circle cx="50" cy="20" r="8" fill="${ink}"/>`;
+    if (hair === 3) for (let i = 0; i < 7; i++) s += `<circle cx="${36 + i * 4.7}" cy="${27 + Math.abs(i - 3) * 1.8}" r="6" fill="${ink}"/>`;
+  } else if (hat === 0) {
+    s += `<ellipse cx="50" cy="31" rx="27" ry="4.5" fill="${ink}"/><path d="M35 31 C 36 18, 42 14, 50 15 C 58 14, 64 18, 65 31 Z" fill="${ink}"/>` +
+         `<rect x="35" y="25" width="30" height="3.4" fill="${scarf}" opacity="0.9"/>`;
+  } else if (hat === 1) {
+    s += `<path d="M33 36 C 33 20, 67 20, 67 36 Z" fill="${ink}"/><rect x="32" y="33" width="36" height="6" rx="3" fill="${scarf}"/>`;
+  } else {
+    s += `<path d="M34 35 C 34 21, 66 21, 66 35 Z" fill="${ink}"/><path d="M60 33 L 80 36 L 64 38 Z" fill="${ink}"/>`;
+  }
+  if (glasses) {
+    s += `<g fill="none" stroke="#f3ead8" stroke-opacity="0.75" stroke-width="1.6"><circle cx="43.5" cy="45" r="4.5"/><circle cx="56.5" cy="45" r="4.5"/><path d="M48 45 h4"/></g>`;
+  }
+  // A scarf in their colour, so two silhouettes at the table tell apart.
+  s += `<path d="M38 70 C 44 76, 56 76, 62 70 L 64 76 C 57 82, 43 82, 36 76 Z" fill="${scarf}"/>`;
+  s += `</g>`;
+  if (role === 'marshal') {
+    s += `<g transform="translate(60 76) scale(0.75)" fill="#e0a84f" stroke="#7a5a2a" stroke-width="0.8"><path d="${ICON_PATHS.star}"/></g>`;
+  } else {
+    s += `<rect x="28" y="80" width="44" height="16" rx="1.5" fill="#1b1f2a"/>` +
+         `<text x="50" y="92" text-anchor="middle" class="fg-mug-placard" fill="#f3ead8">${String(nameSeed(name) % 90000 + 10000)}</text>`;
+  }
+  return s + `</g></svg>`;
+}
+
+// A mugshot as an element, ringed in the role's colour.
+function mugshot(name, role, size){
+  return el('span', {class: `fg-mugshot fg-mugshot-${role}`, style: {'--m': `${size || 36}px`}, html: mugshotSVG(name, role)});
+}
