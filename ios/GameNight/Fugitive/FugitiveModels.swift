@@ -30,9 +30,25 @@ nonisolated struct FugitivePayload: Codable, Equatable {
     let seatToken: String?
     /// On a refused move, alongside the current game.
     let error: String?
+    /// Which seat the computer plays, in a game against it; nil otherwise.
+    var computer: FugitiveComputer? = nil
 
     func name(_ role: FugitiveRole) -> String { players[role.rawValue] ?? role.title }
     func taken(_ role: FugitiveRole) -> Bool { seats[role.rawValue]?.taken ?? false }
+}
+
+/// The computer's seat and level, as a new game asks for it and the
+/// payload says it back. Its seed stays with whoever keeps the game.
+nonisolated struct FugitiveComputer: Codable, Equatable {
+    /// Its name in its seat — game.py's COMPUTER_NAME.
+    static let name = "Computer"
+
+    let role: FugitiveRole
+    /// "easy" or "hard".
+    let level: String
+
+    /// "Computer · Hard", for its seat.
+    var label: String { "Computer · \(FugitiveAI.Level(rawValue: level)?.title ?? level.capitalized)" }
 }
 
 nonisolated struct FugitiveSeat: Codable, Equatable {

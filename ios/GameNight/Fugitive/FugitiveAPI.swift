@@ -11,6 +11,13 @@ extension GameNightClient {
         try await send("POST", "fugitive/api/play", body: ["fugitive": fugitive, "marshal": marshal])
     }
 
+    /// A game against the computer: your name in your seat, and the computer
+    /// in the other at `level`. The server names it and plays it.
+    func fugitiveCreate(you: FugitiveRole, name: String, level: FugitiveAI.Level) async throws -> FugitivePayload {
+        try await send("POST", "fugitive/api/play",
+                       body: FugitiveSoloBody(you: you, name: name, computer: .init(role: you.other, level: level.rawValue)))
+    }
+
     func fugitiveState(code: String, token: String?) async throws -> FugitivePayload {
         try await send("GET", "fugitive/api/play/\(code)", token: token, tokenHeader: Self.fugitiveHeader)
     }
@@ -40,6 +47,27 @@ extension GameNightClient {
     /// without the app can still sit down.
     func fugitiveTableURL(code: String) -> URL {
         baseURL.appendingPathComponent("fugitive/play/\(code)")
+    }
+}
+
+/// `{"<your role>": name, "computer": {role, level}}`.
+nonisolated struct FugitiveSoloBody: Encodable {
+    let you: FugitiveRole
+    let name: String
+    let computer: FugitiveComputer
+
+    struct Key: CodingKey {
+        let stringValue: String
+        var intValue: Int? { nil }
+        init(_ string: String) { stringValue = string }
+        init?(stringValue: String) { self.stringValue = stringValue }
+        init?(intValue: Int) { nil }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: Key.self)
+        try container.encode(name, forKey: Key(you.rawValue))
+        try container.encode(computer, forKey: Key("computer"))
     }
 }
 

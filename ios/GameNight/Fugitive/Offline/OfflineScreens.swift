@@ -1,8 +1,9 @@
 import SwiftUI
 
 /// An offline game kept on this phone. When this phone holds only one of
-/// the two seats it's a two-phone game, so while the table is on screen
-/// it's advertised for the other phone to join (NearbyHost).
+/// the two seats and the computer doesn't hold the other, it's a two-phone
+/// game, so while the table is on screen it's advertised for the other
+/// phone to join (NearbyHost).
 struct OfflineFugitiveScreen: View {
     @State private var store: FugitiveStore
     @State private var host = NearbyHost.shared
@@ -14,7 +15,7 @@ struct OfflineFugitiveScreen: View {
     var body: some View {
         FugitiveTableScreen(store: store)
             .overlay(alignment: .top) {
-                if store.device.seats.count == 1 {
+                if twoPhones {
                     if let problem = host.problem {
                         NearbyBadge(text: problem, warning: true)
                     } else {
@@ -31,8 +32,12 @@ struct OfflineFugitiveScreen: View {
             .onDisappear { host.stop() }
     }
 
+    private var twoPhones: Bool {
+        store.device.seats.count == 1 && OfflineTable.shared.saved(store.code)?.computer == nil
+    }
+
     private func advertise() {
-        guard store.device.seats.count == 1, let seat = store.device.seats.first,
+        guard twoPhones, let seat = store.device.seats.first,
               let game = OfflineTable.shared.saved(store.code) else { return }
         host.start(code: store.code, hostName: game.name(seat),
                    players: "\(game.name(.fugitive)) v \(game.name(.marshal))")
