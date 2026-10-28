@@ -113,6 +113,9 @@ final class ItoHostStore {
 
     private let api: any ItoHosting
     private let tokens: ItoHostTokens
+    /// Bumped by every change made from here, so a poll that set off before
+    /// one can't land after it and put the older room back on screen.
+    private var changes = 0
 
     /// `code` nil starts a new room; otherwise it's one this device started.
     init(code: String?, api: any ItoHosting = AppSettings.client, tokens: ItoHostTokens = ItoHostTokens()) {
@@ -137,6 +140,7 @@ final class ItoHostStore {
             return
         }
         busy = true
+        changes += 1
         defer { busy = false }
         do {
             let created = try await api.itoCreate()
@@ -154,8 +158,11 @@ final class ItoHostStore {
     /// Catches up with the room — another device may be hosting it too.
     func refresh() async {
         guard let code else { return }
+        let before = changes
         do {
-            state = try await api.itoState(code: code)
+            let fresh = try await api.itoState(code: code)
+            guard changes == before else { return }
+            state = fresh
             if token != nil { tokens.lastRoom = code }
         } catch let failure as GameNightClient.Failure where failure.status == 404 {
             gone()
@@ -180,6 +187,7 @@ final class ItoHostStore {
         asking = false
         if let outcome, let code, let token {
             busy = true
+            changes += 1
             do {
                 try await api.itoResult(code: code, outcome: outcome, token: token)
             } catch {
@@ -203,6 +211,7 @@ final class ItoHostStore {
     func reset() async {
         guard let code, let token else { return }
         busy = true
+        changes += 1
         defer { busy = false }
         do {
             state = try await api.itoReset(code: code, token: token)
@@ -223,6 +232,7 @@ final class ItoHostStore {
     private func draw(reroll: Bool) async {
         guard let code, let token, !busy else { return }
         busy = true
+        changes += 1
         defer { busy = false }
         do {
             state = try await api.itoDraw(code: code, category: category, reroll: reroll, token: token)

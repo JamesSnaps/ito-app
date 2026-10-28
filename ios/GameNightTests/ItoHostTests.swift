@@ -113,6 +113,22 @@ import Testing
         #expect(server.draws.isEmpty)
     }
 
+    @Test func aPollThatSetOffBeforeADealDoesntUndoIt() async {
+        let server = FakeItoServer()
+        let store = ItoHostStore(code: nil, api: server, tokens: tokens)
+        await store.start()
+        // The poll reads the room, then a card is dealt before its answer
+        // gets back: the older room must not land over the new card.
+        server.whileAnsweringState = { await store.requestDraw() }
+        await store.refresh()
+        #expect(store.roundNumber == 1 && store.state?.drawId == 1)
+
+        // With nothing dealt meanwhile, a poll catches up as before.
+        server.whileAnsweringState = nil
+        await store.refresh()
+        #expect(store.roundNumber == 1)
+    }
+
     @Test func aNewSessionKeepsTheRoom() async {
         let server = FakeItoServer()
         let store = ItoHostStore(code: nil, api: server, tokens: tokens)
@@ -133,6 +149,9 @@ import Testing
     var results: [ItoOutcome] = []
     var failResults = false
     var gone = false
+    /// Runs between reading the room and answering with it — a request that
+    /// lands while a poll is on its way back.
+    var whileAnsweringState: (() async -> Void)?
 
     private func check(_ token: String?) throws {
         if gone { throw GameNightClient.Failure.server(status: 404, message: "gone", payload: nil) }
@@ -155,7 +174,9 @@ import Testing
 
     func itoState(code: String) async throws -> ItoState {
         try check(nil)
-        return state
+        let answer = state
+        await whileAnsweringState?()
+        return answer
     }
 
     func itoDraw(code: String, category: String?, reroll: Bool, token: String) async throws -> ItoState {
