@@ -312,3 +312,11 @@ def test_a_future_or_unreadable_time_is_replaced_with_now():
         assert c.post("/fugitive/api/offline", json=upload_body(6, f"offline-time-{i:04}", played_at=when)).status_code == 200
     stamps = [g["at"] for g in c.get("/fugitive/api/stats").get_json()["recent"]]
     assert all(not s.startswith("2999") and not s.startswith("2026-10-20") for s in stamps), stamps
+
+
+def test_an_offline_game_played_without_hints_says_so_in_the_records():
+    c = client()
+    assert c.post("/fugitive/api/offline", json=upload_body(6, game_id="offline-no-hint-1", hints="off")).status_code == 400
+    res = c.post("/fugitive/api/offline", json=upload_body(6, game_id="offline-no-hint-2", hints=False))
+    assert res.get_json() == {"recorded": True}
+    assert c.get("/fugitive/api/stats").get_json()["recent"][0]["hints"] is False

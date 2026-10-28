@@ -21,6 +21,10 @@ nonisolated struct FugitiveHiding: Equatable {
     var mode: Mode = .hideout
     var pick: Int?
     var sprints: Set<Int> = []
+    /// False in a game without the app's hints: any card on from the trail
+    /// can be picked, nothing switches to Sprint for you, and the hint says
+    /// only what's chosen. The rules still refuse a hideout out of reach.
+    var hints = true
 
     /// As far as the Fugitive gets without sprinting.
     static func freeReach(_ game: FugitiveGame) -> Int { game.lastHideout + game.maxStep }
@@ -31,7 +35,7 @@ nonisolated struct FugitiveHiding: Equatable {
 
     func canHide(_ game: FugitiveGame) -> Bool {
         guard let pick else { return false }
-        return pick > game.lastHideout && pick <= reach(game)
+        return pick > game.lastHideout && (!hints || pick <= reach(game))
     }
 
     static func cost(_ card: Int, in game: FugitiveGame) -> Cost {
@@ -46,7 +50,7 @@ nonisolated struct FugitiveHiding: Equatable {
     func canTap(_ card: Int, in game: FugitiveGame) -> Bool {
         if card == pick { return true }
         switch mode {
-        case .hideout: return Self.cost(card, in: game) != .outOfReach
+        case .hideout: return hints ? Self.cost(card, in: game) != .outOfReach : card > game.lastHideout
         case .sprint: return game.steps(card) > 0
         }
     }
@@ -55,7 +59,7 @@ nonisolated struct FugitiveHiding: Equatable {
         guard canTap(card, in: game) else { return }
         if card == pick {
             // The hideout again: start over.
-            self = Self()
+            self = Self(hints: hints)
             return
         }
         switch mode {
@@ -64,7 +68,7 @@ nonisolated struct FugitiveHiding: Equatable {
             pick = card
             sprints.remove(card)
             // Out of reach as it stands, so sprinting is the only way there.
-            if card > reach(game) { mode = .sprint }
+            if hints && card > reach(game) { mode = .sprint }
         case .sprint:
             if sprints.contains(card) { sprints.remove(card) } else { sprints.insert(card) }
         }
@@ -95,6 +99,11 @@ nonisolated struct FugitiveHiding: Equatable {
     }
 
     func hint(_ game: FugitiveGame) -> String {
+        guard hints else {
+            guard let pick else { return "Tap a card to hide there, then switch to Sprint to tuck cards under it." }
+            let k = sprints.count
+            return "Hide at \(pick)" + (k > 0 ? " with \(k) sprint card\(k == 1 ? "" : "s")." : ".")
+        }
         let free = Self.freeReach(game)
         guard let pick else {
             let playable = (game.hand ?? []).contains { Self.cost($0, in: game) != .outOfReach }

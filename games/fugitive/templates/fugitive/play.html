@@ -47,6 +47,10 @@
   const COMPUTER_NAME = {{ computer_name|tojson }};
   const LEVEL_NAMES = {easy: 'Easy', hard: 'Hard'};
   const ASSIST_KEY = 'fugitive:assist';
+  // Deal with the app's hints, or without (one setting for the whole table).
+  const HINTS_KEY = 'fugitive:hints';
+  // The Marshal's own pencil marks on the notepad, per game.
+  const MARKS_PREFIX = 'fugitive:marks:';
   // What this device holds in a game: {host, seats: {fugitive, marshal},
   // pass, at}. Pass-and-play is a device holding both seats.
   const GAME_PREFIX = 'fugitive:game:';
@@ -112,7 +116,8 @@
     const solo = readJSON(SOLO_KEY) || {};
     const form = {fugitive: saved.fugitive || '', marshal: saved.marshal || '', mode: solo.on ? 'computer' : 'phones',
                   me: solo.name || saved.fugitive || '', you: solo.you === 'marshal' ? 'marshal' : 'fugitive',
-                  level: LEVEL_NAMES[solo.level] ? solo.level : 'hard', error: null};
+                  level: LEVEL_NAMES[solo.level] ? solo.level : 'hard', error: null,
+                  hints: readJSON(HINTS_KEY) !== false};
     let busy = false;
     const other = role => role === 'fugitive' ? 'marshal' : 'fugitive';
 
@@ -122,7 +127,7 @@
       if (!me) { form.error = 'Your name, please.'; return renderSetup(); }
       busy = true;
       Sound.play('riffle');
-      const made = await post(CREATE_URL, {[form.you]: me, computer: {role: other(form.you), level: form.level}});
+      const made = await post(CREATE_URL, {[form.you]: me, computer: {role: other(form.you), level: form.level}, hints: form.hints});
       if (!made.ok) { busy = false; form.error = made.data.error || 'Couldn’t deal — try again.'; return renderSetup(); }
       writeJSON(SOLO_KEY, {on: true, name: me, you: form.you, level: form.level});
       const sat = await post(`${API(made.data.code)}/seats/${form.you}/claim`);
@@ -139,7 +144,7 @@
       if (!fugitive || !marshal) { form.error = 'Both players need a name.'; return renderSetup(); }
       busy = true;
       Sound.play('riffle');
-      const made = await post(CREATE_URL, {fugitive, marshal});
+      const made = await post(CREATE_URL, {fugitive, marshal, hints: form.hints});
       if (!made.ok) { busy = false; form.error = made.data.error || 'Couldn’t deal — try again.'; return renderSetup(); }
       writeJSON(NAMES_KEY, {fugitive, marshal});
       writeJSON(SOLO_KEY, {...solo, on: false});
@@ -247,6 +252,12 @@
             choice('pass', 'Pass this device between us', 'Hands are hidden while it changes hands.'),
             choice('computer', 'Against the computer', 'On your own. Easy plays plainly; Hard bluffs, and deduces as well as the notepad. Kept in its own records, apart from games between people.')
           ]),
+          // One setting for the table: both players see which it was.
+          el('label', {class: 'fg-toggle fg-hints-toggle'}, [
+            el('input', {type: 'checkbox', checked: form.hints, onchange: e => { form.hints = e.target.checked; writeJSON(HINTS_KEY, form.hints); }}),
+            el('span', {}, [el('strong', {text: 'Hints'}),
+              el('small', {text: ' — reach badges for the Fugitive, an automatic notepad for the Marshal. Off for the game as printed.'})])
+          ]),
           el('button', {class: 'fg-btn fg-btn-fugitive fg-btn-wide', type: 'button', text: 'Deal', onclick: deal}),
           form.error ? el('div', {class: 'fg-error', text: form.error}) : null
         ])
@@ -314,6 +325,12 @@
     const MAP = cityMap(CODE);
 
     function save(){ device.at = Date.now(); writeJSON(KEY, device); }
+    // The game was dealt without the app's hints: no reach badges, no running
+    // total, no automatic notepad. The server sends no notepad help either.
+    function hintsOn(){ return !data || data.hints !== false; }
+    // The Marshal's own marks, and whether a tap on the notepad marks or guesses.
+    let marks = new Set(readJSON(MARKS_PREFIX + CODE) || []);
+    let marking = false;
     function held(){ return ['fugitive', 'marshal'].filter(r => device.seats[r]); }
     function passAndPlay(){ return held().length === 2; }
 
@@ -524,11 +541,12 @@
         Sound.play('land');
       } else if (e.kind === 'guessed') {
         if (e.hit) {
-          for (const i of e.revealed) {
+          // One card at a time, each with its own stamp.
+          for (const [k, i] of e.revealed.entries()) {
             const stop = document.querySelector(`.fg-stop[data-index="${i}"] .fg-stop-top`);
             stop && stop.scrollIntoView({block: 'nearest', inline: 'center', behavior: Motion.reduced ? 'auto' : 'smooth'});
             await Motion.turnOver(stop);
-            await Motion.stamp(stop, 'Found', 'found', 500);
+            await Motion.stamp(stop, e.revealed.length > 1 ? `Found · ${k + 1} of ${e.revealed.length}` : 'Found', 'found', 600);
           }
         } else {
           Sound.play('miss');
@@ -612,7 +630,8 @@
         small = `${m} must find every hideout left, one guess at a time. One miss and ${f} is gone.`;
       }
       return el('div', {class: 'fg-tag', 'data-turn': g.turn || '', 'data-winner': g.winner || ''}, [
-        el('div', {class: 'fg-tag-line', text: line}), el('div', {class: 'fg-tag-small', text: small})
+        el('div', {class: 'fg-tag-line', text: line}),
+        el('div', {class: 'fg-tag-small'}, [small, hintsOn() ? null : el('span', {class: 'fg-nohints', text: 'No hints'})])
       ]);
     }
 
@@ -666,7 +685,7 @@
       const reach = last + g.max_step + [...pick.sprints].reduce((a, c) => a + fp(c), 0);
       const children = [];
       if (pick.card != null) {
-        const ok = pick.card > last && pick.card <= reach;
+        const ok = !hintsOn() || (pick.card > last && pick.card <= reach);
         [...pick.sprints].forEach((c, k) => {
           const u = card(c, 'fg-stop-under');
           u.style.setProperty('--k', k + 1);
@@ -674,9 +693,9 @@
         });
         children.push(card(pick.card, `fg-stop-top fg-preview ${ok ? '' : 'fg-too-far'}`));
       } else {
-        children.push(el('div', {class: 'fg-card fg-slot-empty'}, [
-          el('span', {text: 'up to'}), el('strong', {text: String(reach)})
-        ]));
+        children.push(el('div', {class: 'fg-card fg-slot-empty'}, hintsOn()
+          ? [el('span', {text: 'up to'}), el('strong', {text: String(reach)})]
+          : [el('span', {text: 'next'})]));
       }
       return el('div', {class: 'fg-stop fg-slot', style: {'--under': pick.sprints.size}},
                 [el('div', {class: 'fg-stack'}, children)]);
@@ -756,6 +775,9 @@
     // Whether a tap on this card does anything in the step that's on.
     function canTapCard(g, n){
       if (pick.card === n) return true;
+      // Without hints, any card on from the last hideout can be picked; the
+      // rules still refuse a hideout out of reach when Hide is tapped.
+      if (!hintsOn()) return pick.mode === 'hideout' ? n > g.hideouts[g.hideouts.length - 1].card : fp(g, n) > 0;
       return pick.mode === 'hideout' ? hideCost(g, n) !== null : fp(g, n) > 0;
     }
 
@@ -766,6 +788,7 @@
       const steps = fp(g, n);
       const s = k => `${k} footprint${k === 1 ? '' : 's'}`;
       if (pick.sprints.has(n)) return {kind: 'sprint', text: `+${steps}`, shoe: true, label: `sprinting, ${s(steps)}`};
+      if (!hintsOn()) return null;
       if (pick.mode === 'sprint') return steps ? {kind: 'steps', text: `+${steps}`, shoe: true, label: `sprint for ${s(steps)}`} : null;
       const cost = hideCost(g, n);
       if (cost === null) return null;
@@ -790,7 +813,7 @@
         pick.sprints.delete(n);
         const last = g.hideouts[g.hideouts.length - 1].card;
         // Out of reach as it stands, so sprinting is the only way there.
-        if (n > last + g.max_step + sprintSum(g)) pick.mode = 'sprint';
+        if (hintsOn() && n > last + g.max_step + sprintSum(g)) pick.mode = 'sprint';
       } else {
         pick.sprints.has(n) ? pick.sprints.delete(n) : pick.sprints.add(n);
       }
@@ -799,6 +822,11 @@
     }
 
     function hideHint(g){
+      if (!hintsOn()) {
+        if (pick.card === null) return 'Tap a card to hide there, then switch to Sprint to tuck cards under it.';
+        const k = pick.sprints.size;
+        return `Hide at ${pick.card}${k ? ` with ${k} sprint card${k === 1 ? '' : 's'}` : ''}.`;
+      }
       const last = g.hideouts[g.hideouts.length - 1].card;
       const free = last + g.max_step;
       if (pick.card === null) {
@@ -840,7 +868,8 @@
       if (g.phase !== 'fugitive_hide') return null;
       const last = g.hideouts[g.hideouts.length - 1].card;
       const reach = last + g.max_step + sprintSum(g);
-      const ok = pick.card !== null && pick.card > last && pick.card <= reach;
+      // Without hints Hide is offered for any pick: the rules say if it's too far.
+      const ok = pick.card !== null && pick.card > last && (!hintsOn() || pick.card <= reach);
       // The first turn places two hideouts, one at a time.
       const heading = g.first_turn
         ? el('p', {class: 'fg-hide-heading', text: g.hides_left >= 2 ? 'First turn · hideout 1 of 2' : 'First turn · hideout 2 of 2, or stop at one'})
@@ -899,13 +928,24 @@
     function notepad(){
       const g = data.game;
       const guessing = g.turn === 'marshal' && (g.phase === 'marshal_guess' || g.phase === 'manhunt');
+      // Found cards are face up on the table, so they're circled either way.
+      // Everything else the app writes in is a hint, and off without them.
+      const auto = hintsOn();
       const found = new Set(g.hideouts.filter(h => h.revealed).map(h => h.card));
-      const struck = new Set(g.hand || []);
-      g.hideouts.forEach(h => (h.sprints || []).forEach(c => struck.add(c)));
+      const struck = new Set(auto ? g.hand || [] : []);
+      if (auto) g.hideouts.forEach(h => (h.sprints || []).forEach(c => struck.add(c)));
+      // A wrong single guess: a pencil tick by the number, not a strike — it
+      // wasn't there *then*, and the Fugitive may still hide there later.
       const missed = new Set();
-      g.log.forEach(e => { if (e.kind === 'guessed' && !e.hit && e.numbers.length === 1) missed.add(e.numbers[0]); });
-      const possible = assist && g.candidates ? new Set(g.candidates.filter((s, i) => !g.hideouts[i].revealed).flat()) : null;
+      if (auto) g.log.forEach(e => { if (e.kind === 'guessed' && !e.hit && e.numbers.length === 1) missed.add(e.numbers[0]); });
+      const possible = auto && assist && g.candidates ? new Set(g.candidates.filter((s, i) => !g.hideouts[i].revealed).flat()) : null;
       const manhunt = g.phase === 'manhunt';
+      const pencil = n => {
+        marks.has(n) ? marks.delete(n) : marks.add(n);
+        writeJSON(MARKS_PREFIX + CODE, [...marks]);
+        Sound.play('flick');
+        rerender();
+      };
 
       const grid = el('div', {class: 'fg-pad'}, Array.from({length: 41}, (_, k) => {
         const n = k + 1;
@@ -913,21 +953,32 @@
           found.has(n) ? 'fg-num-found' : '',
           struck.has(n) ? 'fg-num-struck' : '',
           missed.has(n) && !found.has(n) ? 'fg-num-missed' : '',
+          marks.has(n) && !found.has(n) ? 'fg-num-marked' : '',
           possible && !possible.has(n) && !found.has(n) && !struck.has(n) ? 'fg-num-faint' : ''].join(' ');
-        return el('button', {class: cls, type: 'button', disabled: !guessing || found.has(n),
+        return el('button', {class: cls, type: 'button', disabled: marking ? found.has(n) : !guessing || found.has(n),
           'aria-pressed': guess.has(n) ? 'true' : 'false', text: String(n),
+          title: missed.has(n) ? 'Guessed — not there then' : null,
           onclick: () => {
+            if (marking) return pencil(n);
             if (manhunt) guess = guess.has(n) ? new Set() : new Set([n]);
             else guess.has(n) ? guess.delete(n) : guess.add(n);
             Sound.play('flick');
             rerender();
           }});
       }));
-      const toggle = g.candidates ? el('label', {class: 'fg-toggle'}, [
+      // Your own pencil: a tap crosses a number out, or clears it.
+      const tools = el('div', {class: 'fg-pad-tools'}, [
+        el('button', {type: 'button', class: `fg-pad-tool ${marking ? '' : 'fg-pad-tool-on'}`, 'aria-pressed': String(!marking),
+          text: guessing ? 'Guess' : 'Look', onclick: () => { marking = false; rerender(); }}),
+        el('button', {type: 'button', class: `fg-pad-tool ${marking ? 'fg-pad-tool-on' : ''}`, 'aria-pressed': String(marking),
+          text: '✎ Mark', onclick: () => { marking = true; rerender(); }})
+      ]);
+      const toggle = auto && g.candidates ? el('label', {class: 'fg-toggle'}, [
         el('input', {type: 'checkbox', checked: assist, onchange: e => { assist = e.target.checked; writeJSON(ASSIST_KEY, assist); rerender(); }}),
         'Pencil in what each hideout could be'
       ]) : null;
-      return el('div', {class: 'fg-notepad', id: 'notepad'}, [el('div', {class: 'fg-notepad-head', text: `${data.players.marshal}’s notes`}),
+      return el('div', {class: 'fg-notepad', id: 'notepad'}, [
+        el('div', {class: 'fg-notepad-top'}, [el('div', {class: 'fg-notepad-head', text: `${data.players.marshal}’s notes`}), tools]),
         grid, guessing ? guessButtons() : null, toggle]);
     }
 
@@ -962,7 +1013,22 @@
       ]);
     }
 
+    // Opened by hand while the seats panel would otherwise be folded.
+    let seatsOpened = false;
+
     function seats(){
+      // Folded to one line once everyone's sitting and the game's going: the
+      // whole panel is only wanted when someone joins, or at the end.
+      const full = ['fugitive', 'marshal'].every(r => data.seats[r].taken);
+      if (full && data.game.phase !== 'game_over' && !seatsOpened) {
+        return el('button', {class: 'fg-panel fg-seats-folded', type: 'button',
+          'aria-label': `At the table: ${data.players.fugitive} and ${data.players.marshal}. Show seats and Give up.`,
+          onclick: () => { seatsOpened = true; rerender(); }}, [
+          el('span', {class: 'fg-seats-folded-title', text: 'At the table'}),
+          ...['fugitive', 'marshal'].flatMap(r => [mugshot(data.players[r], r, 24), el('span', {text: data.players[r]})]),
+          el('span', {class: 'fg-muted', text: '▾'})
+        ]);
+      }
       const children = [el('h2', {text: 'At the table'})];
       for (const role of ['fugitive', 'marshal']) {
         const mine = !!device.seats[role];

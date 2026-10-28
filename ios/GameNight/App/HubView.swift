@@ -402,8 +402,9 @@ struct SettingsView: View {
             }
             Section {
                 Toggle("Sounds", isOn: Binding(get: { Sound.enabled }, set: { Sound.enabled = $0 }))
+                Toggle("Music in Fugitive", isOn: Binding(get: { Music.enabled }, set: { Music.enabled = $0 }))
             } footer: {
-                Text("Shuffles, cards and the rest. They follow the silent switch.")
+                Text("Shuffles, cards and the rest; Fugitive’s music builds as the hunt closes in. Both follow the silent switch.")
             }
             Section("About") {
                 LabeledContent("Version", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?")

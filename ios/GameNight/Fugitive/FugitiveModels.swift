@@ -32,6 +32,11 @@ nonisolated struct FugitivePayload: Codable, Equatable {
     let error: String?
     /// Which seat the computer plays, in a game against it; nil otherwise.
     var computer: FugitiveComputer? = nil
+    /// False for a game dealt without the app's hints; absent otherwise.
+    var hints: Bool? = nil
+
+    /// Reach badges, the running total and the automatic notepad.
+    var hintsOn: Bool { hints != false }
 
     func name(_ role: FugitiveRole) -> String { players[role.rawValue] ?? role.title }
     func taken(_ role: FugitiveRole) -> Bool { seats[role.rawValue]?.taken ?? false }
@@ -111,6 +116,15 @@ nonisolated struct Hideout: Codable, Equatable {
     let sprintCount: Int
     let sprints: [Int]?
     let revealed: Bool
+}
+
+extension Hideout {
+    /// As it was before a guess turned it over: face down to the Marshal,
+    /// still the Fugitive's own to the Fugitive.
+    func unturned(for viewer: FugitiveRole?) -> Hideout {
+        let mine = viewer == .fugitive
+        return Hideout(card: mine ? card : nil, sprintCount: sprintCount, sprints: mine ? sprints : nil, revealed: false)
+    }
 }
 
 nonisolated struct FugitiveEvent: Codable, Equatable, Identifiable {

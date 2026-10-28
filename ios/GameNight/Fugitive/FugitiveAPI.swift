@@ -7,15 +7,16 @@ import Foundation
 extension GameNightClient {
     static let fugitiveHeader = "X-Fugitive-Token"
 
-    func fugitiveCreate(fugitive: String, marshal: String) async throws -> FugitivePayload {
-        try await send("POST", "fugitive/api/play", body: ["fugitive": fugitive, "marshal": marshal])
+    func fugitiveCreate(fugitive: String, marshal: String, hints: Bool = true) async throws -> FugitivePayload {
+        try await send("POST", "fugitive/api/play", body: FugitivePairBody(fugitive: fugitive, marshal: marshal, hints: hints))
     }
 
     /// A game against the computer: your name in your seat, and the computer
     /// in the other at `level`. The server names it and plays it.
-    func fugitiveCreate(you: FugitiveRole, name: String, level: FugitiveAI.Level) async throws -> FugitivePayload {
+    func fugitiveCreate(you: FugitiveRole, name: String, level: FugitiveAI.Level, hints: Bool = true) async throws -> FugitivePayload {
         try await send("POST", "fugitive/api/play",
-                       body: FugitiveSoloBody(you: you, name: name, computer: .init(role: you.other, level: level.rawValue)))
+                       body: FugitiveSoloBody(you: you, name: name, computer: .init(role: you.other, level: level.rawValue),
+                                              hints: hints))
     }
 
     func fugitiveState(code: String, token: String?) async throws -> FugitivePayload {
@@ -51,10 +52,18 @@ extension GameNightClient {
 }
 
 /// `{"<your role>": name, "computer": {role, level}}`.
+/// A game between two people: their names, and whether it's played with hints.
+nonisolated struct FugitivePairBody: Encodable {
+    let fugitive: String
+    let marshal: String
+    let hints: Bool
+}
+
 nonisolated struct FugitiveSoloBody: Encodable {
     let you: FugitiveRole
     let name: String
     let computer: FugitiveComputer
+    var hints = true
 
     struct Key: CodingKey {
         let stringValue: String
@@ -68,6 +77,7 @@ nonisolated struct FugitiveSoloBody: Encodable {
         var container = encoder.container(keyedBy: Key.self)
         try container.encode(name, forKey: Key(you.rawValue))
         try container.encode(computer, forKey: Key("computer"))
+        try container.encode(hints, forKey: Key("hints"))
     }
 }
 
@@ -86,6 +96,8 @@ nonisolated struct OfflineUploadBody: Encodable {
     let playedAt: String?
     /// A game against the computer: its seat, level and seed. Left out for two people.
     var computer: Computer? = nil
+    /// False for a game played without hints, so the records say so.
+    var hints: Bool? = nil
 
     nonisolated struct Computer: Encodable, Equatable {
         let role: FugitiveRole
@@ -94,7 +106,7 @@ nonisolated struct OfflineUploadBody: Encodable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, players, decks, moves, computer
+        case id, players, decks, moves, computer, hints
         case playedAt = "played_at"
     }
 }
