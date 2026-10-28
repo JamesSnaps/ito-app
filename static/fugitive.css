@@ -139,7 +139,7 @@
   -webkit-user-select: none;
 }
 .fg-art { display: block; width: 100%; height: 100%; filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.45)); }
-.fg-art-num { font: 400 40px var(--fg-poster); letter-spacing: 0.02em; }
+.fg-art-num { font: 400 30px var(--fg-poster); letter-spacing: 0.02em; }
 .fg-art-corner { font: 400 14px var(--fg-poster); }
 .fg-art-back { font: 400 22px var(--fg-poster); }
 .fg-card-cover { position: absolute; inset: 0; }
@@ -430,7 +430,8 @@
   font: 400 0.95rem var(--fg-type); color: rgba(243, 234, 216, 0.9);
 }
 .fg-pass:hover { text-decoration: underline; }
-.fg-hidebar-space { height: 120px; }
+/* Room at the end of the page, so its last panel scrolls clear of the bar. */
+#app:has(> .fg-hidebar) { padding-bottom: 120px; }
 .fg-hide-heading { margin: 0; font: 400 0.85rem var(--fg-type); letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-fugitive); }
 .fg-steps { display: inline-flex; padding: 3px; border-radius: 999px; background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(243, 234, 216, 0.14); }
 .fg-step {
