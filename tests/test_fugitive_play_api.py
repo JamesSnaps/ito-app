@@ -282,10 +282,12 @@ def shape(value):
     if isinstance(value, dict):
         return {k: shape(v) for k, v in value.items()}
     if isinstance(value, list):
+        # An empty list says nothing about its items: whether a hideout has
+        # any sprint cards under it is down to the deal.
         merged = None
         for item in value:
             merged = merge(merged, shape(item))
-        return [merged]
+        return [merged if merged is not None else "*"]
     return "*"
 
 
