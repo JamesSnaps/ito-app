@@ -495,8 +495,9 @@ why everything here is shaped around a JSON API.
 ## iOS app (`ios/`, started alongside v1.6.0)
 
 A native SwiftUI front end to the same server: Flip 7 Play (dealer or
-seat), Fugitive (since app 1.2.0), both games' records, ito hosting (since
-app 1.4.0) and its topic display, and player profiles. Rules pages, ito's
+seat), Fugitive (since app 1.2.0; against the computer, online or off,
+since 1.5.0), both games' records, ito hosting (since app 1.4.0) and its
+topic display, and player profiles. Rules pages, ito's
 stats and a scorekeeper's spectator board open the server's own pages in an
 in-app Safari sheet rather than being rebuilt.
 
@@ -527,9 +528,9 @@ in-app Safari sheet rather than being rebuilt.
   Python suite if the API's keys drift.
 - **The Swift that doesn't need UIKit also builds on Linux**
   (`ios/LinuxTests`): a Swift package of symlinks to the app's models,
-  client, offline engine, offline table, nearby play and ito's host store,
-  with the Xcode project's settings (Swift 6.2, MainActor by default) and a
-  signature-only MultipeerConnectivity stub. `./run.sh` runs it in the
+  client, offline engine, computer opponent and table, nearby play and
+  ito's host store, with the Xcode project's settings (Swift 6.2, MainActor
+  by default) and a signature-only MultipeerConnectivity stub. `./run.sh` runs it in the
   `swift:6.2` image; CI runs it on every PR touching `ios/` or Fugitive
   (`.github/workflows/swift-tests.yml`). The SwiftUI screens still only
   build in Xcode. A new non-UI file worth checking needs a symlink there.
@@ -581,7 +582,8 @@ in-app Safari sheet rather than being rebuilt.
 - **The app talks to production by default**, so the server must be on a
   version with the app's endpoints (v1.6.1+; v1.8.2+ for app 1.2.0; v1.9.0+
   for app 1.3.0's offline uploads — offline play itself needs no server;
-  v1.10.0+ for app 1.4.0's ito hosting) before a build goes out.
+  v1.10.0+ for app 1.4.0's ito hosting; v1.11.0+ for app 1.5.0's online
+  games against the computer) before a build goes out.
 - **`.dockerignore` keeps `ios/` out of the server image.**
 - **QR codes are scanned in the app** (`ScanSheet`, VisionKit's
   `DataScannerViewController`, QR only), from the hub's toolbar and the Join
@@ -665,6 +667,19 @@ phones side by side.
   id, so a retried upload doesn't count twice. A 4xx is remembered, not
   retried; sent games are cleared after a week; a finished game is never
   dropped unsent. The records screen says how many are waiting.
+- **Against the computer, offline** (app 1.5.0): the saved game keeps
+  `computer {role, level, seed}` and `movedAt`, and the computer's seat
+  gets a token nobody is handed, exactly as game.py's room does. Every look
+  at the table (`fugitiveState`) runs `computerMoves`: if it's the
+  computer's turn and `computerDelay` (game.py's 1.5s) has passed since the
+  last move, it makes *one* move with `FugitiveAI.choose` from its seat's
+  view and `moveRNG(seed, seq)`, recorded in `moves` like anyone's. The
+  store's 1s poll is the clock. A rematch swaps its seat, with a fresh seed;
+  its seat can't be freed. It's never uploaded (`OfflineUploads.waiting`
+  skips it, and pruning treats it as sent), and it isn't advertised for a
+  nearby phone — both seats are taken. `OfflineTableTests` replays the
+  fixture's computer-v-person games through the table, one look per
+  computer move.
 - `NSLocalNetworkUsageDescription` and `NSBonjourServices`
   (`_gn-fugitive._tcp/_udp`) are in `project.yml` and the committed
   `Info.plist`; iOS asks before the first nearby game.
@@ -862,15 +877,25 @@ the computer", takes your name, a seat (Swap roles) and Easy or Hard.
   draw is an integer pick, so a Swift port can choose identically. The
   per-move generator is `move_rng(seed, seq)`; the seed is secret (or the
   computer's moves could be worked out from the code), from SystemRandom.
-- **Offline is next, not here.** On a plane there's no server, so the iOS
-  app needs `FugitiveAI.swift`, a line-for-line port played by
-  `OfflineTable` the way `game.py` plays ai.py. It's pinned already:
+- **Offline, it's a Swift port** (app 1.5.0): on a plane there's no
+  server, so `ios/.../Offline/FugitiveAI.swift` is ai.py line for line —
+  `Mulberry32` with wrapping `UInt32` arithmetic, `moveRNG`, `choose` and
+  every helper in the same order — and `OfflineTable` plays it the way
+  game.py plays ai.py (see "Offline Fugitive"). It's pinned:
   `tests/test_fugitive_ai.py` writes `Fixtures/fugitive_ai_games.json`
   (every level pairing, and each level against a random player, with the
   decks, the seed and every move — the computer's marked) and fails if
-  ai.py stops choosing that way. **Change ai.py → rewrite the fixture
-  (`WRITE_IOS_FIXTURES=1 pytest tests -q -k ai_scripts`) → make the Swift
-  agree** once the port exists. The app's setup has no "vs computer" yet.
+  ai.py stops choosing that way; `FugitiveAITests` deals each game with
+  `FugitiveEngine` and, at every computer move, the Swift AI must choose
+  exactly that move from that seat's view. **Change ai.py → rewrite the
+  fixture (`WRITE_IOS_FIXTURES=1 pytest tests -q -k ai_scripts`) → make the
+  Swift agree.** CI runs both halves.
+- **The app's setup offers it twice**: "Against the computer" (online:
+  `computer: {role, level}` to `POST /fugitive/api/play`, the server plays
+  it) and "Against the computer, offline" (OfflineTable plays it). Your
+  name, a seat (Swap roles) and Easy or Hard, as on the web. The payload's
+  `computer` is what the table reads: its seat shows "Computer · Hard" and
+  has no Free seat button.
 
 ## Player profiles (added v1.8.0)
 

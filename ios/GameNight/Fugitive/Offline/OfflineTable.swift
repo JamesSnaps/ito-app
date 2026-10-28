@@ -10,6 +10,12 @@ import Foundation
 // after every change, like the server's saved rooms. It keeps the decks as
 // they were before the deal and every move made, which is all the server
 // needs to replay it once there's signal again (OfflineUploads).
+//
+// Or one seat is the computer (FugitiveAI), played here the way game.py
+// plays ai.py: its seat token is made here and never handed out, and it
+// makes one move per look at the table once the last move has had
+// `computerDelay` to play out on screen. Games against it never go home —
+// the records are games between people.
 
 /// One offline game: everything the server keeps for a room, and enough to
 /// send it home.
@@ -43,6 +49,17 @@ nonisolated struct OfflineGame: Codable, Equatable {
     var createdAt: Date
     var finishedAt: Date?
     var upload: Upload
+    /// The computer's seat, level and the secret seed its choices come from;
+    /// nil for two people.
+    var computer: Computer?
+    /// When the last move was made: the computer waits `computerDelay` after it.
+    var movedAt: Date?
+
+    nonisolated struct Computer: Codable, Equatable {
+        var role: FugitiveRole
+        var level: FugitiveAI.Level
+        var seed: UInt32
+    }
 
     func name(_ role: FugitiveRole) -> String { players[role.rawValue] ?? role.title }
 }
@@ -85,14 +102,20 @@ struct OfflineShelf {
 /// answered by the same one (NearbyHost), so both phones play one game.
 final class OfflineTable: FugitiveTransport {
     static let shared = OfflineTable()
+    /// game.py's COMPUTER_DELAY.
+    static let computerDelay: TimeInterval = 1.5
 
     let shelf: OfflineShelf
+    /// Seconds between a move and the computer's next one: long enough for
+    /// the table to play the last move out. Tests set it to 0.
+    let computerDelay: TimeInterval
     var tokens: FugitiveTokens { .offline }
     /// Games read or written this session: the table asks every second.
     private var cache: [String: OfflineGame] = [:]
 
-    init(shelf: OfflineShelf = .standard) {
+    init(shelf: OfflineShelf = .standard, computerDelay: TimeInterval = OfflineTable.computerDelay) {
         self.shelf = shelf
+        self.computerDelay = computerDelay
     }
 
     func inviteURL(code: String) -> URL? { nil }
@@ -103,12 +126,31 @@ final class OfflineTable: FugitiveTransport {
     /// last, when a test rigs one). Answers as the server's create does:
     /// the table's view, with the dealer's token.
     func create(fugitive: String, marshal: String, decks rigged: [[Int]]? = nil) throws -> FugitivePayload {
+        try create(players: ["fugitive": fugitive, "marshal": marshal], computer: nil, decks: rigged)
+    }
+
+    /// A game against the computer: `name` sits as `you` (the caller still
+    /// claims the seat, as online), and the computer takes the other one at
+    /// `level`, under its own name, with a seed nobody sees.
+    func create(you: FugitiveRole, name: String, level: FugitiveAI.Level, decks rigged: [[Int]]? = nil,
+                seed: UInt32? = nil) throws -> FugitivePayload {
+        var rng = SystemRandomNumberGenerator()
+        let computer = OfflineGame.Computer(role: you.other, level: level, seed: seed ?? rng.next())
+        return try create(players: [you.rawValue: name, you.other.rawValue: FugitiveComputer.name],
+                          computer: computer, decks: rigged)
+    }
+
+    private func create(players: [String: String], computer: OfflineGame.Computer?, decks rigged: [[Int]]?) throws -> FugitivePayload {
         var rng = SystemRandomNumberGenerator()
         let decks = rigged ?? FugitiveEngine.deckRanges.map { Array($0).shuffled(using: &rng) }
+        var seats: [String: String] = [:]
+        // Taken, by a token nobody is ever given.
+        if let computer { seats[computer.role.rawValue] = Self.newToken() }
         let game = OfflineGame(
-            id: UUID().uuidString, code: freshCode(), players: ["fugitive": fugitive, "marshal": marshal],
+            id: UUID().uuidString, code: freshCode(), players: players,
             decks: decks, moves: [], state: FugitiveEngine.newGame(decks: decks), hostToken: Self.newToken(),
-            seats: [:], next: nil, createdAt: Date(), finishedAt: nil, upload: .notYet)
+            seats: seats, next: nil, createdAt: Date(), finishedAt: nil, upload: .notYet,
+            computer: computer, movedAt: Date())
         try save(game)
         return payload(game, token: game.hostToken).with(hostToken: game.hostToken)
     }
@@ -116,7 +158,9 @@ final class OfflineTable: FugitiveTransport {
     // MARK: - the server's API, answered here
 
     func fugitiveState(code: String, token: String?) async throws -> FugitivePayload {
-        payload(try game(code), token: token)
+        var game = try game(code)
+        if computerMoves(&game) { try save(game) }
+        return payload(game, token: token)
     }
 
     func fugitiveMove(code: String, _ move: FugitiveMove, token: String) async throws -> FugitivePayload {
@@ -133,6 +177,7 @@ final class OfflineTable: FugitiveTransport {
             throw Self.refusal(400, refusal.message)
         }
         game.moves.append(.init(role: role, move: move))
+        game.movedAt = Date()
         if game.state.phase == .gameOver && game.finishedAt == nil { game.finishedAt = Date() }
         try save(game)
         return payload(game, token: token)
@@ -154,6 +199,9 @@ final class OfflineTable: FugitiveTransport {
         guard case .host = identify(game, token) else {
             throw Self.refusal(403, "Only the device that dealt can free a seat.")
         }
+        if game.computer?.role == role {
+            throw Self.refusal(400, "The computer keeps its seat — start a new game instead.")
+        }
         game.seats[role.rawValue] = nil
         try save(game)
         return payload(game, token: token)
@@ -172,11 +220,16 @@ final class OfflineTable: FugitiveTransport {
             var seats: [String: String] = [:]
             seats["fugitive"] = game.seats["marshal"]
             seats["marshal"] = game.seats["fugitive"]
+            // The computer swaps roles too, with a fresh seed.
+            let computer = game.computer.map {
+                OfflineGame.Computer(role: $0.role.other, level: $0.level, seed: rng.next())
+            }
             let fresh = OfflineGame(
                 id: UUID().uuidString, code: freshCode(),
                 players: ["fugitive": game.name(.marshal), "marshal": game.name(.fugitive)],
                 decks: decks, moves: [], state: FugitiveEngine.newGame(decks: decks), hostToken: game.hostToken,
-                seats: seats, next: nil, createdAt: Date(), finishedAt: nil, upload: .notYet)
+                seats: seats, next: nil, createdAt: Date(), finishedAt: nil, upload: .notYet,
+                computer: computer, movedAt: Date())
             try save(fresh)
             game.next = fresh.code
             try save(game)
@@ -192,6 +245,35 @@ final class OfflineTable: FugitiveTransport {
         guard var game = try? game(code) else { return }
         change(&game)
         try? save(game)
+    }
+
+    // MARK: - the computer
+
+    /// game.py's computer_moves: the computer's move, if it's its turn and
+    /// the last move has had time to play out. One move per look — a
+    /// Marshal's two draws and a guess land a beat apart, as a person's
+    /// would. Returns whether it moved; the caller saves.
+    @discardableResult
+    func computerMoves(_ game: inout OfflineGame, now: Date = Date()) -> Bool {
+        guard let computer = game.computer, FugitiveEngine.turn(game.state) == computer.role else { return false }
+        if let moved = game.movedAt, now.timeIntervalSince(moved) < computerDelay { return false }
+        var rng = FugitiveAI.moveRNG(seed: computer.seed, seq: game.state.seq)
+        var move: FugitiveMove
+        do {
+            move = try FugitiveAI.choose(FugitiveEngine.view(game.state, viewer: computer.role),
+                                         level: computer.level, rng: &rng)
+            game.state = try FugitiveEngine.apply(game.state, role: computer.role, move: move)
+        } catch {
+            // A bug, which the fixture exists to stop. Giving up beats a
+            // table stuck on the computer's turn for good.
+            move = FugitiveMove(type: .resign, seq: game.state.seq)
+            guard let resigned = try? FugitiveEngine.apply(game.state, role: computer.role, move: move) else { return false }
+            game.state = resigned
+        }
+        game.moves.append(.init(role: computer.role, move: move))
+        game.movedAt = now
+        if game.state.phase == .gameOver && game.finishedAt == nil { game.finishedAt = now }
+        return true
     }
 
     // MARK: - inside
@@ -225,7 +307,8 @@ final class OfflineTable: FugitiveTransport {
             you: you,
             game: FugitiveEngine.view(game.state, viewer: viewer),
             next: game.next,
-            hostToken: nil, inviteUrl: nil, seatToken: nil, error: nil)
+            hostToken: nil, inviteUrl: nil, seatToken: nil, error: nil,
+            computer: game.computer.map { FugitiveComputer(role: $0.role, level: $0.level.rawValue) })
     }
 
     private func game(_ code: String) throws -> OfflineGame {
@@ -269,6 +352,6 @@ extension FugitivePayload {
     nonisolated func with(hostToken: String? = nil, seatToken: String? = nil) -> FugitivePayload {
         FugitivePayload(code: code, players: players, seats: seats, you: you, game: game, next: next,
                         hostToken: hostToken ?? self.hostToken, inviteUrl: inviteUrl,
-                        seatToken: seatToken ?? self.seatToken, error: error)
+                        seatToken: seatToken ?? self.seatToken, error: error, computer: computer)
     }
 }

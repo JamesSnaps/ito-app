@@ -110,6 +110,85 @@ import Testing
         }
     }
 
+    // MARK: - against the computer
+
+    /// The AI fixture's games with the computer in one seat and a random
+    /// player in the other: dealt here with the same decks and seed, the
+    /// table must play the computer's moves exactly as ai.py did.
+    @Test func theComputerPlaysOneMovePerLookExactlyAsTheFixtureDoes() async throws {
+        let root = try FugitiveAITests.root()
+        let games = try #require(root["games"] as? [[String: Any]]).filter { ($0["levels"] as? [String: String])?.count == 1 }
+        #expect(games.count == 4)
+        let table = OfflineTable(shelf: OfflineShelf(folder: folder), computerDelay: 0)
+
+        for game in games {
+            let levels = try #require(game["levels"] as? [String: String])
+            let (seat, level) = try #require(levels.first)
+            let computer = try #require(FugitiveRole(rawValue: seat))
+            let dealt = try table.create(you: computer.other, name: "Ana",
+                                         level: try #require(FugitiveAI.Level(rawValue: level)),
+                                         decks: try #require(game["decks"] as? [[Int]]),
+                                         seed: UInt32(try #require(game["seed"] as? Int)))
+            let mine = try #require(try await table.fugitiveClaim(code: dealt.code, role: computer.other).seatToken)
+
+            for (number, step) in try #require(game["steps"] as? [[String: Any]]).enumerated() {
+                let label = "\(levels), step \(number)"
+                let move = try JSONDecoder().decode(FugitiveEngineTests.ScriptMove.self,
+                                                    from: JSONSerialization.data(withJSONObject: step["move"] ?? [:])).move
+                let before = try #require(table.saved(dealt.code)).state.seq
+                if step["computer"] as? Bool == true {
+                    // A look at the table is what moves it — once.
+                    let seen = try await table.fugitiveState(code: dealt.code, token: mine)
+                    #expect(seen.game.seq == before + 1, "\(label)")
+                    let played = try #require(table.saved(dealt.code)?.moves.last)
+                    #expect(played.role == computer && FugitiveAITests.unsequenced(played.move) == move, "\(label)")
+                } else {
+                    let sent = FugitiveMove(type: move.type, deck: move.deck, card: move.card, sprints: move.sprints,
+                                            numbers: move.numbers, seq: before)
+                    _ = try await table.fugitiveMove(code: dealt.code, sent, token: mine)
+                }
+            }
+            let finished = try #require(table.saved(dealt.code))
+            #expect(finished.state.reason == game["reason"] as? String && finished.finishedAt != nil)
+        }
+        // None of them goes home: the records are games between people.
+        #expect(OfflineUploads.waiting(on: table.shelf).isEmpty)
+    }
+
+    @Test func theComputerKeepsItsSeatWaitsItsTurnAndSwapsInARematch() async throws {
+        let table = OfflineTable(shelf: OfflineShelf(folder: folder), computerDelay: 3600)
+        let dealt = try table.create(you: .marshal, name: "Ana", level: .easy)
+        let host = try #require(dealt.hostToken)
+        #expect(dealt.players == ["fugitive": "Computer", "marshal": "Ana"])
+        #expect(dealt.computer == FugitiveComputer(role: .fugitive, level: "easy"))
+        #expect(dealt.computer?.label == "Computer · Easy")
+        #expect(dealt.taken(.fugitive) && !dealt.taken(.marshal))
+        await #expect(throws: OfflineTable.refusal(409, "Someone's already sitting there.")) {
+            try await table.fugitiveClaim(code: dealt.code, role: .fugitive)
+        }
+        await #expect(throws: OfflineTable.refusal(400, "The computer keeps its seat — start a new game instead.")) {
+            try await table.fugitiveRelease(code: dealt.code, role: .fugitive, token: host)
+        }
+        let ana = try #require(try await table.fugitiveClaim(code: dealt.code, role: .marshal).seatToken)
+
+        // Its first hideout waits until the deal has had time to play out.
+        #expect(try await table.fugitiveState(code: dealt.code, token: ana).game.seq == 0)
+        var game = try #require(table.saved(dealt.code))
+        #expect(!table.computerMoves(&game, now: Date().addingTimeInterval(1)))
+        #expect(table.computerMoves(&game, now: Date().addingTimeInterval(3601)))
+        #expect(game.state.seq == 1 && game.moves.map(\.role) == [.fugitive])
+
+        // A rematch: you swap, and so does the computer, with a new seed.
+        _ = try await table.fugitiveMove(code: dealt.code, FugitiveMove(type: .resign, seq: 0), token: ana)
+        let rematch = try await table.fugitiveRematch(code: dealt.code, token: host)
+        let swapped = try await table.fugitiveState(code: rematch.code, token: ana)
+        #expect(swapped.you.seat == .fugitive && swapped.computer == FugitiveComputer(role: .marshal, level: "easy"))
+        #expect(swapped.players == ["fugitive": "Ana", "marshal": "Computer"])
+        let before = try #require(table.saved(dealt.code)?.computer?.seed)
+        #expect(table.saved(rematch.code)?.computer?.seed != before)
+        #expect(OfflineUploads.waiting(on: table.shelf).isEmpty)
+    }
+
     @Test func gamesNobodyNeedsAreClearedButAnUnsentFinishIsKept() throws {
         let shelf = OfflineShelf(folder: folder)
         let table = OfflineTable(shelf: shelf)

@@ -1,8 +1,8 @@
 # The iOS app's Swift that doesn't need UIKit — above all the offline
-# Fugitive engine, which must play exactly like games/fugitive/engine.py —
-# built and tested on Linux with the Xcode project's settings. The Python
-# suite checks the fixture still matches engine.py; this checks the Swift
-# still matches the fixture. See ios/LinuxTests/Package.swift.
+# Fugitive engine and computer opponent, which must play exactly like
+# games/fugitive/engine.py and ai.py — built and tested on Linux with the
+# Xcode project's settings. The Python suite checks the fixtures still match
+# the Python; this checks the Swift still matches the fixtures. See ios/LinuxTests/Package.swift.
 name: Swift tests (Linux)
 
 on:
@@ -13,6 +13,7 @@ on:
       - "ios/**"
       - "games/fugitive/**"
       - "tests/test_fugitive_offline.py"
+      - "tests/test_fugitive_ai.py"
       - ".github/workflows/swift-tests.yml"
   workflow_dispatch:
 

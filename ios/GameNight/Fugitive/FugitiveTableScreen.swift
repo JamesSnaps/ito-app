@@ -841,6 +841,9 @@ private struct SeatsPanel: View {
             Spacer()
             if store.device.seat(role) != nil {
                 Text("This device").font(.footnote).foregroundStyle(Noir.card.opacity(0.6))
+            } else if let computer = payload.computer, computer.role == role {
+                // Its seat can't be freed: nobody could ever sit in it.
+                Text(computer.label).font(.footnote).foregroundStyle(Noir.card.opacity(0.6))
             } else if payload.taken(role) {
                 if store.isDealer {
                     Button("Free seat") { Task { await store.free(role) } }

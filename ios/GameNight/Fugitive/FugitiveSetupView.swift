@@ -3,7 +3,8 @@ import SwiftUI
 /// Dealing a game of Fugitive — play.html's setup. Two names, and how it's
 /// played: each on their own phone (this device is the table), or this one
 /// device passed between them — or, with no internet, the same two ways
-/// with the game kept on this phone (OfflineTable).
+/// with the game kept on this phone (OfflineTable). Or one name against the
+/// computer: the server plays it online, OfflineTable plays it offline.
 struct FugitiveSetupView: View {
     var onDealt: (FugitivePayload) -> Void
     var onResume: (String) -> Void
@@ -14,8 +15,9 @@ struct FugitiveSetupView: View {
     var onRecords: () -> Void
 
     enum Mode: Equatable {
-        case phones, pass, offlinePass, nearby
-        var offline: Bool { self == .offlinePass || self == .nearby }
+        case phones, pass, computer, offlinePass, nearby, offlineComputer
+        var offline: Bool { self == .offlinePass || self == .nearby || self == .offlineComputer }
+        var solo: Bool { self == .computer || self == .offlineComputer }
     }
 
     @State private var fugitive: String
@@ -23,6 +25,10 @@ struct FugitiveSetupView: View {
     @State private var mode = Mode.phones
     /// Two phones offline: which seat this one takes.
     @State private var nearbyRole = FugitiveRole.fugitive
+    /// Against the computer: your name, your seat and how hard it plays.
+    @AppStorage("fugitive.solo.name") private var me = ""
+    @AppStorage("fugitive.solo.you") private var you = FugitiveRole.fugitive
+    @AppStorage("fugitive.solo.level") private var level = FugitiveAI.defaultLevel
     @State private var error: String?
     @State private var working = false
     @State private var resumable: FugitivePayload?
@@ -118,13 +124,25 @@ struct FugitiveSetupView: View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Who’s playing?").font(Noir.poster(28)).foregroundStyle(Noir.ink)
             // The regulars, with their faces: the first tap fills the
-            // Fugitive, the next the Marshal.
-            RegularsPicker(skip: [fugitive, marshal], onPick: fill, label: "Regulars — tap to fill in")
-                .foregroundStyle(Noir.ink)
-            nameRow(.fugitive, text: $fugitive)
-            nameRow(.marshal, text: $marshal)
+            // Fugitive, the next the Marshal — or, against the computer, just you.
+            if mode.solo {
+                RegularsPicker(skip: [me], onPick: { me = $0 }, label: "Regulars — tap to fill in")
+                    .foregroundStyle(Noir.ink)
+                if you == .fugitive {
+                    nameRow(.fugitive, text: $me, solo: true)
+                    computerRow
+                } else {
+                    computerRow
+                    nameRow(.marshal, text: $me, solo: true)
+                }
+            } else {
+                RegularsPicker(skip: [fugitive, marshal], onPick: fill, label: "Regulars — tap to fill in")
+                    .foregroundStyle(Noir.ink)
+                nameRow(.fugitive, text: $fugitive)
+                nameRow(.marshal, text: $marshal)
+            }
             Button {
-                (fugitive, marshal) = (marshal, fugitive)
+                if mode.solo { you = you.other } else { (fugitive, marshal) = (marshal, fugitive) }
                 Sound.shared.play(.flick, volume: 0.5)
             } label: {
                 Label("Swap roles", systemImage: "arrow.up.arrow.down")
@@ -136,6 +154,8 @@ struct FugitiveSetupView: View {
             VStack(alignment: .leading, spacing: 8) {
                 modeRow(.phones, "On our own phones", "This screen is the table. Scan its code on each phone and sit down.")
                 modeRow(.pass, "Pass this device between us", "Hands are hidden while it changes hands.")
+                modeRow(.computer, "Against the computer",
+                        "On your own. Easy plays plainly; Hard bluffs, and deduces as well as the notepad. Not counted in the records.")
                 Text("NO INTERNET — ON A PLANE")
                     .font(Noir.type(11)).kerning(1.2)
                     .foregroundStyle(Noir.ink.opacity(0.55))
@@ -151,6 +171,8 @@ struct FugitiveSetupView: View {
                     }
                     .pickerStyle(.segmented)
                 }
+                modeRow(.offlineComputer, "Against the computer, offline",
+                        "On your own, with the computer playing on this phone. Not counted in the records.")
             }
 
             Button {
@@ -170,7 +192,7 @@ struct FugitiveSetupView: View {
         .shadow(color: .black.opacity(0.4), radius: 10, y: 6)
     }
 
-    private func nameRow(_ role: FugitiveRole, text: Binding<String>) -> some View {
+    private func nameRow(_ role: FugitiveRole, text: Binding<String>, solo: Bool = false) -> some View {
         let shown = text.wrappedValue.trimmingCharacters(in: .whitespaces)
         return HStack(spacing: 12) {
             Mugshot(name: shown.isEmpty ? role.title : shown, role: role, size: 46)
@@ -179,15 +201,15 @@ struct FugitiveSetupView: View {
                 .padding(.horizontal, 7).padding(.vertical, 3)
                 .background(Noir.colour(role).opacity(0.25), in: RoundedRectangle(cornerRadius: 4))
                 .foregroundStyle(Noir.ink)
-            TextField("Name", text: text)
+            TextField(solo ? "Your name" : "Name", text: text)
                 .font(.body.weight(.semibold))
                 .foregroundStyle(Noir.ink)
                 .textInputAutocapitalization(.words)
                 .autocorrectionDisabled()
                 .focused($focused, equals: role)
-                .submitLabel(role == .fugitive ? .next : .go)
+                .submitLabel(role == .fugitive && !solo ? .next : .go)
                 .onSubmit {
-                    if role == .fugitive { focused = .marshal } else { Task { await deal() } }
+                    if role == .fugitive && !solo { focused = .marshal } else { Task { await deal() } }
                 }
                 .onChange(of: text.wrappedValue) { _, new in
                     if new.count > Self.maxName { text.wrappedValue = String(new.prefix(Self.maxName)) }
@@ -196,7 +218,27 @@ struct FugitiveSetupView: View {
                 .padding(.horizontal, 10).padding(.vertical, 9)
                 .background(Color.white.opacity(0.6), in: RoundedRectangle(cornerRadius: 8))
                 .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Noir.pen.opacity(0.2)))
-                .accessibilityLabel("\(role.title)’s name")
+                .accessibilityLabel(solo ? "Your name" : "\(role.title)’s name")
+        }
+    }
+
+    /// The computer's row: its face, and how hard it plays.
+    private var computerRow: some View {
+        let role = you.other
+        return HStack(spacing: 12) {
+            Mugshot(name: FugitiveComputer.name, role: role, size: 46)
+            Text(role.title.uppercased())
+                .font(Noir.type(12))
+                .padding(.horizontal, 7).padding(.vertical, 3)
+                .background(Noir.colour(role).opacity(0.25), in: RoundedRectangle(cornerRadius: 4))
+                .foregroundStyle(Noir.ink)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(FugitiveComputer.name).font(.body.weight(.semibold)).foregroundStyle(Noir.ink)
+                Picker("How hard the computer plays", selection: $level) {
+                    ForEach(FugitiveAI.Level.allCases) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
+            }
         }
     }
 
@@ -208,6 +250,9 @@ struct FugitiveSetupView: View {
     private func modeRow(_ choice: Mode, _ title: String, _ detail: String) -> some View {
         Button {
             mode = choice
+            // Your name against the computer starts as the last Fugitive's.
+            if choice.solo && me.trimmingCharacters(in: .whitespaces).isEmpty { me = fugitive }
+            error = nil
         } label: {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: mode == choice ? "largecircle.fill.circle" : "circle")
@@ -258,6 +303,7 @@ struct FugitiveSetupView: View {
 
     private func deal() async {
         guard !working else { return }
+        if mode.solo { return await dealSolo() }
         let f = fugitive.trimmingCharacters(in: .whitespacesAndNewlines)
         let m = marshal.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !f.isEmpty, !m.isEmpty else { error = "Both players need a name."; return }
@@ -289,6 +335,45 @@ struct FugitiveSetupView: View {
             onDealt(payload)
         } catch GameNightClient.Failure.unreachable {
             error = "No signal? Pick one of the offline ways to play, under “No internet”."
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    /// One name and a seat; the computer takes the other one — played by the
+    /// server online, by OfflineTable offline. This device sits in yours.
+    private func dealSolo() async {
+        let name = me.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { error = "Your name, please."; return }
+        // The server refuses it too: the two need telling apart.
+        guard Faces.fold(name) != Faces.fold(FugitiveComputer.name) else { error = "Pick a name that isn’t the computer’s."; return }
+        working = true
+        defer { working = false }
+        Sound.shared.play(.riffle)
+        do {
+            if mode.offline {
+                let table = OfflineTable.shared
+                let tokens = FugitiveTokens.offline
+                let payload = try table.create(you: you, name: name, level: level)
+                var device = FugitiveDevice(host: payload.hostToken)
+                device.setSeat(you, try await table.fugitiveClaim(code: payload.code, role: you).seatToken)
+                tokens.set(device, for: payload.code)
+                tokens.lastGame = payload.code
+                onOffline(payload.code)
+            } else {
+                let client = AppSettings.client
+                let tokens = FugitiveTokens()
+                let payload = try await client.fugitiveCreate(you: you, name: name, level: level)
+                var device = FugitiveDevice(host: payload.hostToken)
+                let sat = try await client.fugitiveClaim(code: payload.code, role: you)
+                device.setSeat(you, sat.seatToken)
+                tokens.set(device, for: payload.code)
+                tokens.lastGame = payload.code
+                // Your seat's view: the store asks with that token from now on.
+                onDealt(sat)
+            }
+        } catch GameNightClient.Failure.unreachable {
+            error = "No signal? Pick “Against the computer, offline”, under “No internet”."
         } catch {
             self.error = error.localizedDescription
         }

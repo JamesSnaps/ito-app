@@ -7,9 +7,10 @@ import Foundation
 enum OfflineUploads {
     private static var sending = false
 
-    /// Finished games the server hasn't had yet, oldest first.
+    /// Finished games the server hasn't had yet, oldest first. A game
+    /// against the computer never goes: the records are games between people.
     static func waiting(on shelf: OfflineShelf = .standard) -> [OfflineGame] {
-        shelf.all().filter { $0.finishedAt != nil && $0.upload == .notYet }.reversed()
+        shelf.all().filter { $0.finishedAt != nil && $0.upload == .notYet && $0.computer == nil }.reversed()
     }
 
     /// Sends what's waiting. Returns how many the server took.
@@ -52,12 +53,13 @@ enum OfflineUploads {
             playedAt: game.finishedAt.map { $0.formatted(.iso8601) })
     }
 
-    /// Games that are done with: sent (or refused) a week ago, or abandoned
+    /// Games that are done with: sent (or refused, or against the computer
+    /// and never to be sent) a week ago, or abandoned
     /// for a month. A finished game is never thrown away unsent.
     static func prune(_ shelf: OfflineShelf, now: Date = Date()) {
         for game in shelf.all() {
             let age = now.timeIntervalSince(game.finishedAt ?? game.createdAt)
-            let sent = game.upload != .notYet
+            let sent = game.upload != .notYet || game.computer != nil
             if (sent && age > 7 * 86_400) || (game.finishedAt == nil && age > 30 * 86_400) {
                 shelf.delete(game.code)
             }
