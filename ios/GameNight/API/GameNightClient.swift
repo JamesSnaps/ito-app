@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking  // URLSession, when the models are built on Linux
+#endif
 
 /// The Game Night server's JSON API — the same endpoints the web pages use,
 /// so the rules live once, on the server.

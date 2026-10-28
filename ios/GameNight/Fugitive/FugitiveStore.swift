@@ -70,7 +70,8 @@ final class FugitiveStore {
         return Array(repeating: nil, count: max(0, game.handCount(role) - (incomingBacks[role] ?? 0)))
     }
 
-    @ObservationIgnored private let client: GameNightClient
+    /// The server, this phone (offline) or a nearby host.
+    @ObservationIgnored let transport: any FugitiveTransport
     @ObservationIgnored private let tokens: FugitiveTokens
     @ObservationIgnored private var lastEvent: Int?
     @ObservationIgnored private var lastNudge: Int?
@@ -79,22 +80,23 @@ final class FugitiveStore {
     @ObservationIgnored private var animator: Task<Void, Never>?
     @ObservationIgnored private var pollTask: Task<Void, Never>?
 
-    init(code: String, client: GameNightClient = AppSettings.client, tokens: FugitiveTokens = FugitiveTokens()) {
+    init(code: String, transport: any FugitiveTransport = AppSettings.client) {
         self.code = code
-        self.client = client
-        self.tokens = tokens
+        self.transport = transport
+        self.tokens = transport.tokens
         self.device = tokens.held(for: code)
     }
 
     /// For a game this device was just handed in full (dealt, or checked on
     /// the way in), so the first frame isn't a spinner.
-    convenience init(payload: FugitivePayload, client: GameNightClient = AppSettings.client,
-                     tokens: FugitiveTokens = FugitiveTokens()) {
-        self.init(code: payload.code, client: client, tokens: tokens)
+    convenience init(payload: FugitivePayload, transport: any FugitiveTransport = AppSettings.client) {
+        self.init(code: payload.code, transport: transport)
         take(payload, askedAs: device.askingToken)
     }
 
     var game: FugitiveGame? { payload?.game }
+    /// What the invite QR opens; nil for a game kept on a phone.
+    var inviteURL: URL? { transport.inviteURL(code: code) }
     var isTable: Bool { device.seats.isEmpty }
     var isDealer: Bool { device.host != nil }
 
@@ -136,7 +138,7 @@ final class FugitiveStore {
         guard !busy, !gone else { return }
         let asked = askingToken
         do {
-            let fresh = try await client.fugitiveState(code: code, token: asked)
+            let fresh = try await transport.fugitiveState(code: code, token: asked)
             // Asked as someone the screen no longer shows (the folder opened,
             // a seat was taken): that answer is the wrong view of the game.
             if !busy, asked == askingToken { take(fresh, askedAs: asked) }
@@ -212,7 +214,7 @@ final class FugitiveStore {
         defer { busy = false }
         let move = FugitiveMove(type: kind, deck: deck, card: card, sprints: sprints, numbers: numbers, seq: game.seq)
         do {
-            take(try await client.fugitiveMove(code: code, move, token: token), askedAs: token)
+            take(try await transport.fugitiveMove(code: code, move, token: token), askedAs: token)
         } catch let failure as GameNightClient.Failure {
             if failure.status == 404 { gone = true; return }
             notice = failure.errorDescription
@@ -231,7 +233,7 @@ final class FugitiveStore {
         busy = true
         defer { busy = false }
         do {
-            let result = try await client.fugitiveClaim(code: code, role: role)
+            let result = try await transport.fugitiveClaim(code: code, role: role)
             if let token = result.seatToken {
                 device.setSeat(role, token)
                 device.pass = device.seats.count == 2
@@ -250,7 +252,7 @@ final class FugitiveStore {
         busy = true
         defer { busy = false }
         do {
-            let result = try await client.fugitiveRelease(code: code, role: role, token: host)
+            let result = try await transport.fugitiveRelease(code: code, role: role, token: host)
             if device.seat(role) != nil {
                 device.setSeat(role, nil)
                 tokens.set(device, for: code)
@@ -266,7 +268,7 @@ final class FugitiveStore {
         busy = true
         defer { busy = false }
         do {
-            follow(to: try await client.fugitiveRematch(code: code, token: host).code)
+            follow(to: try await transport.fugitiveRematch(code: code, token: host).code)
         } catch {
             notice = error.localizedDescription
         }

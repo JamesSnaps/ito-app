@@ -33,10 +33,16 @@ nonisolated struct FugitiveDevice: Codable, Equatable {
 
 struct FugitiveTokens {
     var defaults: UserDefaults = .standard
+    /// "" for games on the server, "offline." for games kept on a phone —
+    /// separate shelves, so an offline code can't collide with an online one.
+    var scope = ""
 
-    private static let devicesKey = "fugitive.devices"
+    static let offline = FugitiveTokens(scope: "offline.")
+
+    private var devicesKey: String { "fugitive.\(scope)devices" }
+    private var lastGameKey: String { "fugitive.\(scope)lastGame" }
+    /// Shared by both: the same two people play either way.
     private static let namesKey = "fugitive.lastNames"
-    private static let lastGameKey = "fugitive.lastGame"
 
     func held(for code: String) -> FugitiveDevice {
         devices[code] ?? FugitiveDevice()
@@ -47,7 +53,7 @@ struct FugitiveTokens {
         all[code] = device
         // Games end; don't keep every code this device ever saw.
         if all.count > 30, let oldest = all.keys.sorted().first, oldest != code { all[oldest] = nil }
-        write(all, Self.devicesKey)
+        write(all, devicesKey)
     }
 
     /// Last game's pair, so the same two aren't typed in every time.
@@ -57,11 +63,11 @@ struct FugitiveTokens {
     }
 
     var lastGame: String? {
-        get { defaults.string(forKey: Self.lastGameKey) }
-        nonmutating set { defaults.set(newValue, forKey: Self.lastGameKey) }
+        get { defaults.string(forKey: lastGameKey) }
+        nonmutating set { defaults.set(newValue, forKey: lastGameKey) }
     }
 
-    private var devices: [String: FugitiveDevice] { read([String: FugitiveDevice].self, Self.devicesKey) ?? [:] }
+    private var devices: [String: FugitiveDevice] { read([String: FugitiveDevice].self, devicesKey) ?? [:] }
 
     private func read<T: Decodable>(_ type: T.Type, _ key: String) -> T? {
         guard let data = defaults.data(forKey: key) else { return nil }

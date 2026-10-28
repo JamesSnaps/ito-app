@@ -785,7 +785,7 @@ private struct SeatsPanel: View {
         NoirPanel(title: "At the table") {
             ForEach(FugitiveRole.allCases) { role in row(role) }
             if store.isDealer, open, !g.isOver,
-               let qr = QRCode.image(AppSettings.client.fugitiveTableURL(code: payload.code).absoluteString) {
+               let qr = store.inviteURL.flatMap({ QRCode.image($0.absoluteString) }) {
                 VStack(spacing: 8) {
                     Image(uiImage: qr).interpolation(.none).resizable()
                         .frame(width: 170, height: 170)

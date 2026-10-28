@@ -128,7 +128,7 @@ nonisolated struct FugitiveMove: Codable, Equatable {
     let seq: Int
 }
 
-nonisolated struct FugitiveRematch: Decodable, Equatable {
+nonisolated struct FugitiveRematch: Codable, Equatable {
     let code: String
     let hostToken: String
 }
