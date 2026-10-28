@@ -400,6 +400,33 @@
 .fg-sprinting { transform: translateY(calc(var(--y) - 12px)) rotate(var(--r)) !important; }
 .fg-sprinting .fg-art { filter: drop-shadow(0 0 7px rgba(95, 179, 201, 0.95)); }
 .fg-dim .fg-art { filter: brightness(0.6) saturate(0.6); }
+.fg-off { opacity: 0.4; }
+.fg-fan-mine .fg-off[role="button"] { cursor: default; }
+.fg-fan-mine .fg-off[role="button"]:hover { transform: translateY(var(--y)) rotate(var(--r)); }
+/* The tag over a card while hiding, over the left of it: the part the next
+   card in the fan leaves showing. */
+.fg-chip {
+  position: absolute; top: -10px; left: 12%; z-index: 1;
+  display: inline-flex; align-items: center; gap: 2px;
+  min-width: 20px; height: 20px; padding: 0 6px; box-sizing: border-box; justify-content: center;
+  border-radius: 999px; font: 400 13px/1 var(--fg-poster); letter-spacing: 0.03em;
+  color: var(--fg-card); background: rgba(11, 17, 29, 0.92); border: 1.5px solid transparent;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4); pointer-events: none;
+}
+.fg-chip-shoe { width: 6px; height: 11px; fill: currentColor; }
+.fg-chip-reach, .fg-chip-hide { background: var(--fg-fugitive); color: var(--fg-ink); }
+.fg-chip-sprint { background: var(--fg-marshal); color: var(--fg-ink); }
+.fg-chip-needs { border-color: var(--fg-fugitive); }
+.fg-chip-steps { border-color: var(--fg-marshal); }
+.fg-hide-heading { margin: 0; font: 400 0.85rem var(--fg-type); letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-fugitive); }
+.fg-steps { display: inline-flex; padding: 3px; border-radius: 999px; background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(243, 234, 216, 0.14); }
+.fg-step {
+  border: 0; border-radius: 999px; padding: 7px 16px; background: transparent; cursor: pointer;
+  font: 400 0.95rem var(--fg-type); color: rgba(243, 234, 216, 0.8);
+}
+.fg-step:disabled { opacity: 0.45; cursor: default; }
+.fg-step-on.fg-step-hideout { background: var(--fg-fugitive); color: var(--fg-ink); }
+.fg-step-on.fg-step-sprint { background: var(--fg-marshal); color: var(--fg-ink); }
 
 .fg-controls { display: grid; gap: 8px; justify-items: center; }
 .fg-hint { margin: 0; text-align: center; color: var(--fg-card); font-size: 0.92rem; line-height: 1.45; max-width: 520px; }

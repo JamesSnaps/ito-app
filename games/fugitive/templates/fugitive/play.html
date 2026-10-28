@@ -245,7 +245,7 @@
           el('div', {class: 'fg-choice'}, [
             choice('phones', 'On our own phones', 'This screen is the table. Scan its code on each phone and sit down.'),
             choice('pass', 'Pass this device between us', 'Hands are hidden while it changes hands.'),
-            choice('computer', 'Against the computer', 'On your own. Easy plays plainly; Hard bluffs, and deduces as well as the notepad. Not counted in the records.')
+            choice('computer', 'Against the computer', 'On your own. Easy plays plainly; Hard bluffs, and deduces as well as the notepad. Kept in its own records, apart from games between people.')
           ]),
           el('button', {class: 'fg-btn fg-btn-fugitive fg-btn-wide', type: 'button', text: 'Deal', onclick: deal}),
           form.error ? el('div', {class: 'fg-error', text: form.error}) : null
@@ -295,7 +295,11 @@
     let device = readJSON(KEY) || {seats: {}};
     device.seats = device.seats || {};
     let shownAs = null;        // pass-and-play: whose hand the screen is showing
-    let pick = {card: null, sprints: new Set()};
+    // The hand while hiding: where to hide (`card`), the sprint cards to tuck
+    // under it, and which of those two a tap is for (`mode`). The app's
+    // FugitiveHiding.swift is the same logic.
+    const freshPick = () => ({card: null, sprints: new Set(), mode: 'hideout'});
+    let pick = freshPick();
     let guess = new Set();
     let lastSeq = null;
     let drawn = null;          // the payload last put on screen, as JSON
@@ -351,7 +355,7 @@
     // last one: cards flying from the decks, hideouts turning over.
     async function show(payload){
       if (payload.game.seq !== lastSeq) {
-        pick = {card: null, sprints: new Set()};
+        pick = freshPick();
         guess = new Set();
         lastSeq = payload.game.seq;
       }
@@ -704,8 +708,6 @@
       const faces = mine ? (g.hand || []) : null;
       const list = faces || Array.from({length: count}, () => null);
       const hiding = mine && role === 'fugitive' && g.turn === 'fugitive' && g.phase === 'fugitive_hide';
-      const last = g.hideouts[g.hideouts.length - 1].card;
-      const fp = c => g.footprints[String(c)] || 0;
       const spread = Math.min(7, 44 / Math.max(list.length, 1));
 
       const fan = el('div', {class: `fg-fan ${mine ? 'fg-fan-mine' : 'fg-fan-backs'} ${list.length ? '' : 'fg-fan-empty'}`},
@@ -713,18 +715,21 @@
           const mid = (list.length - 1) / 2;
           const attrs = {style: `--r:${(i - mid) * spread}deg; --y:${Math.pow(i - mid, 2) * 0.9}px; --i:${i}`};
           let cls = 'fg-fan-card';
+          let badge = null;
           if (hiding) {
-            const spare = (g.hand || []).filter(c => c !== n).reduce((a, c) => a + fp(c), 0);
-            const reachable = n > last && n - last - g.max_step <= spare;
+            badge = handBadge(g, n);
             if (pick.card === n) cls += ' fg-picked';
             else if (pick.sprints.has(n)) cls += ' fg-sprinting';
-            else if (!reachable && pick.card === null) cls += ' fg-dim';
+            else if (!canTapCard(g, n)) cls += ' fg-dim fg-off';
             Object.assign(attrs, {role: 'button', tabindex: 0, 'aria-pressed': pick.card === n || pick.sprints.has(n) ? 'true' : 'false',
-              'aria-label': `${n}${pick.card === null ? '' : pick.card === n ? ', hiding here' : ', sprint with it'}`,
+              'aria-disabled': cls.includes('fg-off') ? 'true' : 'false',
+              'aria-label': `${n}, ${badge ? badge.label : 'out of reach'}`,
               onclick: () => tapCard(n),
               onkeydown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tapCard(n); } }});
           }
-          return card(n, cls, attrs);
+          const face = card(n, cls, attrs);
+          if (badge) face.appendChild(badgeEl(badge));
+          return face;
         }));
 
       const name = el('div', {class: 'fg-plate-name'}, [mugshot(data.players[role], role, 38),
@@ -734,16 +739,98 @@
                 [name, fan]);
     }
 
+    // What a card would cost as the next hideout: 0 within the free reach,
+    // the footprints still needed, or null — behind the trail, or too far
+    // even with every other card sprinting.
+    function hideCost(g, n){
+      const last = g.hideouts[g.hideouts.length - 1].card;
+      if (n <= last) return null;
+      const short = n - last - g.max_step;
+      if (short <= 0) return 0;
+      const spare = (g.hand || []).filter(c => c !== n).reduce((a, c) => a + fp(g, c), 0);
+      return short <= spare ? short : null;
+    }
+    function fp(g, c){ return g.footprints[String(c)] || 0; }
+    function sprintSum(g){ return [...pick.sprints].reduce((a, c) => a + fp(g, c), 0); }
+
+    // Whether a tap on this card does anything in the step that's on.
+    function canTapCard(g, n){
+      if (pick.card === n) return true;
+      return pick.mode === 'hideout' ? hideCost(g, n) !== null : fp(g, n) > 0;
+    }
+
+    // The tag over a card: its cost while choosing a hideout, its footprints
+    // while sprinting, and what it's been chosen for.
+    function handBadge(g, n){
+      if (pick.card === n) return {kind: 'hide', text: 'HIDE', label: 'hiding here'};
+      const steps = fp(g, n);
+      const s = k => `${k} footprint${k === 1 ? '' : 's'}`;
+      if (pick.sprints.has(n)) return {kind: 'sprint', text: `+${steps}`, shoe: true, label: `sprinting, ${s(steps)}`};
+      if (pick.mode === 'sprint') return steps ? {kind: 'steps', text: `+${steps}`, shoe: true, label: `sprint for ${s(steps)}`} : null;
+      const cost = hideCost(g, n);
+      if (cost === null) return null;
+      return cost === 0 ? {kind: 'reach', text: '✓', label: 'in reach'}
+                        : {kind: 'needs', text: `+${cost}`, shoe: true, label: `needs ${s(cost)} more`};
+    }
+    function badgeEl(b){
+      const shoe = b.shoe ? `<svg class="fg-chip-shoe" viewBox="-4 -1 8 16" aria-hidden="true">${footprint(0, 0, false)}</svg>` : '';
+      return el('span', {class: `fg-chip fg-chip-${b.kind}`, 'aria-hidden': 'true', html: shoe},
+                [el('span', {text: b.text})]);
+    }
+
     function tapCard(n){
-      const fp = c => data.game.footprints[String(c)] || 0;
-      if (pick.card === null || pick.card === n) {
-        pick.card = pick.card === n ? null : n;
+      const g = data.game;
+      if (!canTapCard(g, n)) return;
+      if (pick.card === n) {
+        // The hideout again: start over.
+        pick = freshPick();
+      } else if (pick.mode === 'hideout') {
+        // Another card moves the hideout; it never turns into a sprint.
+        pick.card = n;
         pick.sprints.delete(n);
-      } else if (fp(n) > 0) {
+        const last = g.hideouts[g.hideouts.length - 1].card;
+        // Out of reach as it stands, so sprinting is the only way there.
+        if (n > last + g.max_step + sprintSum(g)) pick.mode = 'sprint';
+      } else {
         pick.sprints.has(n) ? pick.sprints.delete(n) : pick.sprints.add(n);
       }
       Sound.play('flick');
       rerender();
+    }
+
+    function hideHint(g){
+      const last = g.hideouts[g.hideouts.length - 1].card;
+      const free = last + g.max_step;
+      if (pick.card === null) {
+        if (!(g.hand || []).some(n => hideCost(g, n) !== null)) {
+          return `Nothing in your hand reaches on from ${last}${g.first_turn ? ' — stop at one.' : ' — lie low and draw a card.'}`;
+        }
+        return `From ${last} you reach ${free} for free (✓). A card marked +N needs N footprints from sprint cards.`;
+      }
+      const used = sprintSum(g);
+      const tally = pick.sprints.size
+        ? `reach ${free} + ${used} from ${[...pick.sprints].sort((a, b) => a - b).join(', ')} = ${free + used}`
+        : `reach ${free}`;
+      if (pick.card > free + used) {
+        const short = pick.card - free - used;
+        return `${pick.card} needs ${short} more footprint${short === 1 ? '' : 's'} · ${tally}. Tap cards to sprint with them.`;
+      }
+      if (pick.mode === 'hideout') {
+        return pick.sprints.size ? `Hide at ${pick.card} · ${tally}.`
+                                 : `Hide at ${pick.card}. Switch to Sprint to tuck cards under it as a bluff.`;
+      }
+      return `Hide at ${pick.card} · ${tally}. Tap cards to add or take them off.`;
+    }
+
+    // Which step a tap in the hand is for.
+    function hideSteps(){
+      const step = (mode, text) => el('button', {type: 'button',
+        class: `fg-step ${pick.mode === mode ? `fg-step-on fg-step-${mode}` : ''}`,
+        'aria-pressed': pick.mode === mode ? 'true' : 'false',
+        disabled: mode === 'sprint' && pick.card === null,
+        onclick: () => { pick.mode = mode; rerender(); }, text});
+      return el('div', {class: 'fg-steps', role: 'group', 'aria-label': 'What a tap on a card does'},
+                [step('hideout', '1 · Hideout'), step('sprint', '2 · Sprint')]);
     }
 
     function fugitiveControls(){
@@ -752,14 +839,12 @@
       if (g.phase === 'fugitive_draw') return el('div', {class: 'fg-controls'}, [el('p', {class: 'fg-hint', text: 'Tap a deck to draw.'})]);
       if (g.phase !== 'fugitive_hide') return null;
       const last = g.hideouts[g.hideouts.length - 1].card;
-      const fp = c => g.footprints[String(c)] || 0;
-      const reach = last + g.max_step + [...pick.sprints].reduce((a, c) => a + fp(c), 0);
-      let hint;
-      if (pick.card === null) hint = `From ${last} you can reach ${last + g.max_step}. Pick a card to hide at; then tap others to sprint further.`;
-      else if (pick.card <= last) hint = `Hideouts go up — pick something above ${last}.`;
-      else if (pick.card > reach) hint = `${pick.card} needs ${pick.card - reach} more footprint${pick.card - reach > 1 ? 's' : ''} — tap cards to sprint with them.`;
-      else hint = pick.sprints.size ? `Sprinting with ${[...pick.sprints].sort((a, b) => a - b).join(', ')}.` : 'Ready.';
+      const reach = last + g.max_step + sprintSum(g);
       const ok = pick.card !== null && pick.card > last && pick.card <= reach;
+      // The first turn places two hideouts, one at a time.
+      const heading = g.first_turn
+        ? el('p', {class: 'fg-hide-heading', text: g.hides_left >= 2 ? 'First turn · hideout 1 of 2' : 'First turn · hideout 2 of 2, or stop at one'})
+        : null;
       const buttons = [el('button', {class: 'fg-btn fg-btn-fugitive', type: 'button', disabled: !ok,
         text: ok ? `Hide at ${pick.card}` : 'Hide', onclick: () => send({type: 'hide', card: pick.card, sprints: [...pick.sprints]})})];
       if (g.first_turn && g.hides_left === 1) {
@@ -768,7 +853,8 @@
         buttons.push(el('button', {class: 'fg-btn fg-btn-quiet', type: 'button',
           text: g.deck_counts.some(n => n > 0) ? 'Lie low — draw a card' : 'Lie low', onclick: () => send({type: 'pass'})}));
       }
-      return el('div', {class: 'fg-controls'}, [el('p', {class: 'fg-hint', text: hint}), el('div', {class: 'fg-actions'}, buttons)]);
+      return el('div', {class: 'fg-controls'}, [heading, hideSteps(), el('p', {class: 'fg-hint', text: hideHint(g)}),
+                                                el('div', {class: 'fg-actions'}, buttons)]);
     }
 
     function marshalControls(){

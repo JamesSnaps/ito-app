@@ -155,7 +155,7 @@ struct FugitiveSetupView: View {
                 modeRow(.phones, "On our own phones", "This screen is the table. Scan its code on each phone and sit down.")
                 modeRow(.pass, "Pass this device between us", "Hands are hidden while it changes hands.")
                 modeRow(.computer, "Against the computer",
-                        "On your own. Easy plays plainly; Hard bluffs, and deduces as well as the notepad. Not counted in the records.")
+                        "On your own. Easy plays plainly; Hard bluffs, and deduces as well as the notepad. Kept in its own records, apart from games between people.")
                 Text("NO INTERNET — ON A PLANE")
                     .font(Noir.type(11)).kerning(1.2)
                     .foregroundStyle(Noir.ink.opacity(0.55))
@@ -172,7 +172,7 @@ struct FugitiveSetupView: View {
                     .pickerStyle(.segmented)
                 }
                 modeRow(.offlineComputer, "Against the computer, offline",
-                        "On your own, with the computer playing on this phone. Not counted in the records.")
+                        "On your own, with the computer playing on this phone. Added to its own records once there’s signal.")
             }
 
             Button {
