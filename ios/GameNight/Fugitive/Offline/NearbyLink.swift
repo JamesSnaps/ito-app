@@ -62,10 +62,18 @@ final class NearbyHost: NSObject {
 
     func start(code: String, hostName: String, players: String) {
         guard self.code != code else { return }
-        stop()
-        let peer = MCPeerID(displayName: NearbyService.peerName(hostName))
-        let session = MCSession(peer: peer, securityIdentity: nil, encryptionPreference: .required)
-        session.delegate = self
+        // A rematch is a new code on the same link: keep the session, so the
+        // other phone stays connected and follows the game's `next` itself.
+        advertiser?.stopAdvertisingPeer()
+        let session: MCSession
+        if let existing = self.session {
+            session = existing
+        } else {
+            session = MCSession(peer: MCPeerID(displayName: NearbyService.peerName(hostName)),
+                                securityIdentity: nil, encryptionPreference: .required)
+            session.delegate = self
+        }
+        let peer = session.myPeerID
         let advertiser = MCNearbyServiceAdvertiser(
             peer: peer, discoveryInfo: ["code": code, "players": String(players.prefix(80))],
             serviceType: NearbyService.type)
@@ -164,11 +172,16 @@ final class NearbyGuest: NSObject {
 
     private(set) var hosts: [Host] = []
     private(set) var status: Status = .idle
+    /// Why the last join didn't work, for the join sheet.
+    private(set) var problem: String?
 
     @ObservationIgnored private var me: MCPeerID?
     @ObservationIgnored private var session: MCSession?
     @ObservationIgnored private var browser: MCNearbyServiceBrowser?
     @ObservationIgnored private var wanted: Host?
+    /// Was playing with `wanted` — so a dropped link is worth chasing.
+    @ObservationIgnored private var wasConnected = false
+    @ObservationIgnored private var retries = 0
     @ObservationIgnored private var pending: [UUID: CheckedContinuation<NearbyResponse, any Error>] = [:]
 
     /// The table's way to the host. Make one per game screen.
@@ -198,6 +211,8 @@ final class NearbyGuest: NSObject {
     func join(_ host: Host) {
         guard let browser, let session else { return }
         wanted = host
+        wasConnected = false
+        problem = nil
         status = .connecting(host)
         browser.invitePeer(host.peer.id, to: session, withContext: nil, timeout: 20)
     }
@@ -212,6 +227,8 @@ final class NearbyGuest: NSObject {
         session = nil
         me = nil
         wanted = nil
+        wasConnected = false
+        retries = 0
         hosts = []
         status = .idle
     }
@@ -241,27 +258,47 @@ final class NearbyGuest: NSObject {
         switch state {
         case .connected:
             status = .connected(wanted)
+            wasConnected = true
+            retries = 0
         case .connecting:
             if case .connected = status { return }
             status = .connecting(wanted)
         case .notConnected:
-            status = .lost(wanted)
             for continuation in pending.values { continuation.resume(throwing: NearbyService.lostTouch) }
             pending = [:]
-            // Try again straight away; `found` rejoins when it reappears.
-            if let browser, let session {
-                browser.invitePeer(peer.id, to: session, withContext: nil, timeout: 20)
+            guard wasConnected else {
+                // Never got in: the invitation was turned down or timed out.
+                self.wanted = nil
+                status = .looking
+                problem = "Couldn’t join \(wanted.name)’s game — try again, with the phones close together."
+                return
             }
+            status = .lost(wanted)
+            retryLater(peer)
         @unknown default:
             break
+        }
+    }
+
+    /// A dropped link, tried again every couple of seconds for a while —
+    /// `found` also rejoins if the host turns up as a new peer.
+    private func retryLater(_ peer: PeerRef) {
+        guard retries < 15 else { return }
+        retries += 1
+        Task {
+            try? await Task.sleep(for: .seconds(2))
+            guard case .lost(let host) = self.status, host.peer == peer,
+                  let browser = self.browser, let session = self.session else { return }
+            browser.invitePeer(peer.id, to: session, withContext: nil, timeout: 10)
         }
     }
 
     fileprivate func found(_ host: Host) {
         hosts.removeAll { $0.id == host.id }
         hosts.append(host)
-        // The host we were playing came back (a new peer, the same game).
-        if case .lost(let old) = status, old.name == host.name, old.code == host.code, let browser, let session {
+        // The host we were playing came back as a new peer. By name, not
+        // code: after a rematch it's advertising the new game's code.
+        if case .lost(let old) = status, old.name == host.name, let browser, let session {
             wanted = host
             status = .connecting(host)
             browser.invitePeer(host.peer.id, to: session, withContext: nil, timeout: 20)

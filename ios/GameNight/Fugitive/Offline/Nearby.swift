@@ -81,7 +81,9 @@ final class NearbyTransport: FugitiveTransport {
         self.exchange = exchange
     }
 
-    var tokens: FugitiveTokens { .offline }
+    /// Its own shelf: seats in other phones' games mustn't touch this
+    /// phone's own offline games, or their resume.
+    var tokens: FugitiveTokens { .nearby }
     func inviteURL(code: String) -> URL? { nil }
 
     func fugitiveState(code: String, token: String?) async throws -> FugitivePayload {

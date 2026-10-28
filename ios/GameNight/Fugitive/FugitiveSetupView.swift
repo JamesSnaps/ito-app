@@ -91,6 +91,8 @@ struct FugitiveSetupView: View {
             }
         }
         .task {
+            // The offline game first: it needs no signal, so it mustn't wait for any.
+            await checkOfflineResume()
             await Faces.shared.load()
             await checkResume()
         }
@@ -316,7 +318,7 @@ struct FugitiveSetupView: View {
 
     /// The last game is only offered back once it's confirmed to still be
     /// going: a dead code offered up is worse than no offer.
-    private func checkResume() async {
+    private func checkOfflineResume() async {
         let offline = FugitiveTokens.offline
         if let code = offline.lastGame,
            let payload = try? await OfflineTable.shared.fugitiveState(code: code, token: offline.held(for: code).askingToken) {
@@ -324,6 +326,9 @@ struct FugitiveSetupView: View {
         } else {
             resumableOffline = nil
         }
+    }
+
+    private func checkResume() async {
         let tokens = FugitiveTokens()
         guard let code = tokens.lastGame else { resumable = nil; return }
         do {

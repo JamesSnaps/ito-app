@@ -15,13 +15,17 @@ struct OfflineFugitiveScreen: View {
         FugitiveTableScreen(store: store)
             .overlay(alignment: .top) {
                 if store.device.seats.count == 1 {
-                    NearbyBadge(text: host.connected.isEmpty
-                                ? "Waiting for the other phone — “Join a nearby game” on theirs"
-                                : "Connected to \(host.connected.joined(separator: ", "))",
-                                warning: host.connected.isEmpty)
+                    if let problem = host.problem {
+                        NearbyBadge(text: problem, warning: true)
+                    } else {
+                        NearbyBadge(text: host.connected.isEmpty
+                                    ? "Waiting for the other phone — “Join a nearby game” on theirs"
+                                    : "Connected to \(host.connected.joined(separator: ", "))",
+                                    warning: host.connected.isEmpty)
+                    }
                 }
             }
-            .onAppear(perform: advertise)
+            .onAppear { advertise() }
             // A rematch is a new game, with a new code to advertise.
             .onChange(of: store.code) { advertise() }
             .onDisappear { host.stop() }
@@ -106,6 +110,8 @@ struct NearbyJoinSheet: View {
                         }
                         if case .connecting(let host) = guest.status {
                             Text("Joining \(host.name)’s game…").font(Noir.type(14)).foregroundStyle(Noir.card)
+                        } else if let problem = guest.problem {
+                            Text(problem).font(.footnote.weight(.semibold)).foregroundStyle(Noir.manila)
                         }
                     }
                     .padding(20)

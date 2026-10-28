@@ -20,7 +20,10 @@ public protocol MCSessionDelegate: NSObjectProtocol {
 open class MCSession: NSObject {
     public weak var delegate: (any MCSessionDelegate)?
     public var connectedPeers: [MCPeerID] { [] }
-    public init(peer myPeerID: MCPeerID, securityIdentity identity: [Any]?, encryptionPreference: MCEncryptionPreference) {}
+    public let myPeerID: MCPeerID
+    public init(peer myPeerID: MCPeerID, securityIdentity identity: [Any]?, encryptionPreference: MCEncryptionPreference) {
+        self.myPeerID = myPeerID
+    }
     open func send(_ data: Data, toPeers peerIDs: [MCPeerID], with mode: MCSessionSendDataMode) throws {}
     open func disconnect() {}
 }

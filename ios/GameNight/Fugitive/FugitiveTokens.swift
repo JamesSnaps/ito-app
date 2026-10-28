@@ -38,6 +38,8 @@ struct FugitiveTokens {
     var scope = ""
 
     static let offline = FugitiveTokens(scope: "offline.")
+    /// Seats in games other phones are keeping.
+    static let nearby = FugitiveTokens(scope: "nearby.")
 
     private var devicesKey: String { "fugitive.\(scope)devices" }
     private var lastGameKey: String { "fugitive.\(scope)lastGame" }
