@@ -78,6 +78,7 @@ private final class FixtureToken {}
         #expect(stats.computer?.gamesPlayed == 1)
         let ana = try #require(stats.computerLeaderboard?.first)
         #expect(ana.name == "Ana" && ana.games == 1 && ana.marshalEasyGames == 1 && ana.hardGames == 0)
+        #expect(FugitiveRecordsView.played(stats) == "1 game between people · 1 against the computer")
         let solo = try #require(stats.computer?.recent.first)
         #expect(solo.role == .marshal && solo.level == "easy")
         #expect(FugitiveRecordsView.headline(solo) == (solo.won ? "Ana beat the computer as Marshal"

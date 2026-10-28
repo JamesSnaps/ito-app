@@ -27,7 +27,7 @@ struct FugitiveRecordsView: View {
                             .font(.footnote).foregroundStyle(Noir.miss)
                     }
                     if let stats {
-                        Text("\(stats.gamesPlayed) game\(stats.gamesPlayed == 1 ? "" : "s") played")
+                        Text(Self.played(stats))
                             .font(Noir.type(15)).foregroundStyle(Noir.card.opacity(0.75))
                         let columns = sizeClass == .regular
                             ? AnyLayout(HStackLayout(alignment: .top, spacing: 16))
@@ -137,6 +137,14 @@ struct FugitiveRecordsView: View {
                 }
             }
         }
+    }
+
+    /// The line above the records: both kinds of game, once there are any
+    /// against the computer — "0 games played" over a panel of them misleads.
+    static func played(_ stats: FugitiveStats) -> String {
+        let people = "\(stats.gamesPlayed) game\(stats.gamesPlayed == 1 ? "" : "s")"
+        guard let solo = stats.computer?.gamesPlayed, solo > 0 else { return "\(people) played" }
+        return "\(people) between people · \(solo) against the computer"
     }
 
     static func levels(_ row: FugitiveStats.ComputerRow) -> String {
