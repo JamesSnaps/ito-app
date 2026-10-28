@@ -70,8 +70,10 @@ struct FugitiveTableScreen: View {
                 // hand showed through it.
                 // Sideways, Hide sits in the table's right-hand column instead.
                 if !landscape { VStack { Spacer(); HideBar(store: store) } }
-                if landscape, showingPanels, let payload = store.payload {
+                // Not over a game that's gone: its last payload is still in the store.
+                if landscape, showingPanels, !store.gone, let payload = store.payload {
                     LandscapePanels(store: store, payload: payload, showing: $showingPanels)
+                        .transition(.move(edge: .trailing))
                 }
                 if store.game?.phase == .manhunt { SirenWash() }
                 if store.flyingAway { PlaneAway() }
@@ -88,7 +90,7 @@ struct FugitiveTableScreen: View {
         .toolbarBackground(Noir.night, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {
-            if heightClass == .compact {
+            if heightClass == .compact, !store.gone {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showingPanels.toggle() } label: { Image(systemName: "sidebar.right") }
                         .accessibilityLabel(showingPanels ? "Hide the seats and case notes" : "Show the seats and case notes")
@@ -907,7 +909,6 @@ private struct LandscapePanels: View {
             .frame(width: 360)
             .background(Noir.night.ignoresSafeArea())
             .overlay(alignment: .leading) { Rectangle().fill(Noir.line).frame(width: 1) }
-            .transition(.move(edge: .trailing))
         }
     }
 }
