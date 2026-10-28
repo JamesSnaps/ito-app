@@ -694,7 +694,8 @@ private struct RoomCodeSheet: View {
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Noir.night.ignoresSafeArea())
-        .presentationDetents([.large, .medium])
+        // Large only: at medium the QR and Done fell below the fold.
+        .presentationDetents([.large])
         .preferredColorScheme(.dark)
     }
 }
@@ -707,7 +708,8 @@ struct HideBar: View {
     let store: FugitiveStore
 
     static func shown(_ store: FugitiveStore) -> FugitiveGame? {
-        guard let game = store.game, game.turn == .fugitive, game.viewerRole == .fugitive,
+        // Not over a game that's gone: its last payload is still in the store.
+        guard !store.gone, let game = store.game, game.turn == .fugitive, game.viewerRole == .fugitive,
               game.phase == .fugitiveHide, store.folderFor == nil else { return nil }
         return game
     }
