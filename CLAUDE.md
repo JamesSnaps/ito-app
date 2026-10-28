@@ -740,7 +740,13 @@ phones side by side.
   Nothing to license or download. `.ambient` session: follows the silent
   switch and mixes with music. Toggle in Settings and in the table toolbar.
 - **iPad layouts are their own, not a stretched phone.** Hub: game tiles
-  side by side, Join beside the title, one gold button at a time. New game
+  side by side, Join beside the title, one gold button at a time. Up to
+  1280pt wide, three across from 1100pt and two-and-one below that, in a
+  `Grid` so a row's tiles end level (app 1.8.2: capped at 1000 with three
+  across, a tile's two half-width buttons were too narrow and "Records"
+  broke over two lines). Every tile is one button across, then Records and
+  Rules — ito's Records is the server's stats page — and the buttons are
+  one line each. New game
   and Join: a centred column. Records: two columns. Table: mats capped at
   the height two rows of cards need and centred, cards up to 112pt, so two
   players don't sit in a sea of empty felt.
