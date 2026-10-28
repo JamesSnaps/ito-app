@@ -82,6 +82,18 @@ nonisolated struct FugitiveHiding: Equatable {
         return game.hidesLeft >= 2 ? "First turn · hideout 1 of 2" : "First turn · hideout 2 of 2, or stop at one"
     }
 
+    /// The way out of hiding, under Hide: stopping after one hideout on the
+    /// first turn, or lying low later — which draws from the lowest deck
+    /// that still has cards (2nd edition), not one you choose, so it says
+    /// which. Nil when there's no way out (the first hideout must go down).
+    static func passLabel(_ game: FugitiveGame) -> String? {
+        if game.firstTurn { return game.hidesLeft == 1 ? "Done — one is enough" : nil }
+        guard let lowest = game.deckCounts.firstIndex(where: { $0 > 0 }),
+              game.decks.indices.contains(lowest), let lo = game.decks[lowest].first, let hi = game.decks[lowest].last
+        else { return "Lie low" }
+        return "Lie low · draw from \(lo)–\(hi)"
+    }
+
     func hint(_ game: FugitiveGame) -> String {
         let free = Self.freeReach(game)
         guard let pick else {

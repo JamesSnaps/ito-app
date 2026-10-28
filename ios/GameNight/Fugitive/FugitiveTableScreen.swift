@@ -15,6 +15,7 @@ struct FugitiveTableScreen: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var soundOn = Sound.enabled
     @State private var rules: WebPage?
+    @State private var showingCode = false
 
     var body: some View {
         GeometryReader { geo in
@@ -34,6 +35,7 @@ struct FugitiveTableScreen: View {
                                 }
                                 .padding(20)
                             }
+                            .safeAreaInset(edge: .bottom, spacing: 0) { HideBar.room(store) }
                             ScrollView {
                                 SidePanels(store: store, payload: payload).padding(.vertical, 20)
                             }
@@ -51,11 +53,16 @@ struct FugitiveTableScreen: View {
                             .frame(maxWidth: 720)
                             .frame(maxWidth: .infinity)
                         }
+                        .safeAreaInset(edge: .bottom, spacing: 0) { HideBar.room(store) }
                     }
                 } else {
                     ProgressView("Shuffling…").tint(Noir.card).foregroundStyle(Noir.card)
                 }
 
+                // Drawn over the table rather than as the scroll view's inset:
+                // on iOS 26 the inset gets the scroll edge effect, and the
+                // hand showed through it.
+                VStack { Spacer(); HideBar(store: store) }
                 if store.game?.phase == .manhunt { SirenWash() }
                 if store.flyingAway { PlaneAway() }
                 if let stamp = store.stamp { InkStamp(stamp: stamp).id(stamp.id) }
@@ -85,11 +92,15 @@ struct FugitiveTableScreen: View {
                 }
                 .accessibilityLabel(soundOn ? "Sounds on" : "Sounds off")
             }
-            ToolbarItem(placement: .topBarTrailing) {
-                Text(store.code)
-                    .font(Noir.type(16)).kerning(2.5)
-                    .foregroundStyle(Noir.fugitive)
-                    .accessibilityLabel("Room code \(store.code.map(String.init).joined(separator: " "))")
+            // The room code behind an icon, not as text squeezed in beside
+            // the others: it's wanted when someone joins, not all game. A
+            // game kept on this phone has no code anyone else can use.
+            if let url = store.inviteURL {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showingCode = true } label: { Image(systemName: "qrcode") }
+                        .accessibilityLabel("Room code \(store.code.map(String.init).joined(separator: " "))")
+                        .sheet(isPresented: $showingCode) { RoomCodeSheet(code: store.code, url: url) }
+                }
             }
         }
         .sheet(item: $rules) { page in SafariView(url: page.url).ignoresSafeArea() }
@@ -300,6 +311,10 @@ private struct Fan: View {
         let items = cards.enumerated().map { i, n in Item(id: n.map { "c\($0)" } ?? "b\(i)", number: n, index: i) }
         let n = items.count
         let spread = min(7, 44 / Double(max(n, 1)))
+        // Read here, in body, so a change to it redraws the fan. Read only
+        // inside ForEach's content, it isn't tracked, and a switch of step
+        // left the badges showing the last one.
+        let choice = store.hiding
         GeometryReader { geo in
             let step = n > 1 ? min(cardWidth * 0.64, (geo.size.width - cardWidth) / CGFloat(n - 1)) : 0
             ZStack {
@@ -308,7 +323,7 @@ private struct Fan: View {
                 }
                 ForEach(items) { item in
                     let d = CGFloat(item.index) - CGFloat(n - 1) / 2
-                    card(item)
+                    card(item, choice)
                         .rotationEffect(.degrees(Double(d) * spread), anchor: .bottom)
                         .offset(x: d * step, y: d * d * 0.9)
                         .offset(y: dealtIn ? 0 : -260)
@@ -323,16 +338,15 @@ private struct Fan: View {
         }
         .frame(height: cardWidth * 1.4 + 26)
         .animation(.spring(response: 0.4, dampingFraction: 0.8), value: cards)
-        .animation(.spring(response: 0.25, dampingFraction: 0.75), value: store.pick)
-        .animation(.spring(response: 0.25, dampingFraction: 0.75), value: store.sprints)
+        .animation(.spring(response: 0.25, dampingFraction: 0.75), value: choice)
     }
 
-    @ViewBuilder private func card(_ item: Item) -> some View {
+    @ViewBuilder private func card(_ item: Item, _ choice: FugitiveHiding) -> some View {
         if hiding, let number = item.number {
-            let picked = store.pick == number
-            let sprinting = store.sprints.contains(number)
-            let badge = badge(number, picked: picked, sprinting: sprinting)
-            let dim = !picked && !sprinting && !store.hiding.canTap(number, in: game)
+            let picked = choice.pick == number
+            let sprinting = choice.sprints.contains(number)
+            let badge = badge(number, choice, picked: picked, sprinting: sprinting)
+            let dim = !picked && !sprinting && !choice.canTap(number, in: game)
             Button { store.tap(number) } label: {
                 FugitiveCard(number: number, width: cardWidth)
                     .overlay {
@@ -359,11 +373,11 @@ private struct Fan: View {
 
     /// What the card shows it would do: its cost as a hideout while choosing
     /// one, its footprints while sprinting, and what it's been chosen for.
-    private func badge(_ number: Int, picked: Bool, sprinting: Bool) -> HandBadge.Kind? {
+    private func badge(_ number: Int, _ choice: FugitiveHiding, picked: Bool, sprinting: Bool) -> HandBadge.Kind? {
         if picked { return .hide }
         let steps = game.steps(number)
         if sprinting { return .sprint(steps) }
-        switch store.hiding.mode {
+        switch choice.mode {
         case .hideout:
             switch FugitiveHiding.cost(number, in: game) {
             case .inReach: return .inReach
@@ -451,14 +465,18 @@ private struct Trail: View {
         let tuck = cardWidth * 0.24
         let deepest = max(g.hideouts.map(\.sprintCount).max() ?? 0, showSlot ? store.sprints.count : 0)
         let hints = store.assist && g.candidates != nil
+        // Read here, in body: read only inside ForEach's content, a hideout
+        // landing wasn't tracked, and it stayed invisible until something
+        // else redrew the trail — after a first-turn hideout, nothing did.
+        let landing = store.landing
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: cardWidth * 0.22) {
                     ForEach(Array(g.hideouts.enumerated()), id: \.offset) { i, hideout in
                         Stop(hideout: hideout, found: hideout.revealed && i > 0 && hideout.card != 42,
                              hint: hint(g, i), width: cardWidth)
-                            .offset(y: store.landing.contains(i) ? 170 : 0)
-                            .opacity(store.landing.contains(i) ? 0 : 1)
+                            .offset(y: landing.contains(i) ? 170 : 0)
+                            .opacity(landing.contains(i) ? 0 : 1)
                     }
                     if showSlot { Slot(store: store, width: cardWidth) }
                     Color.clear.frame(width: 1, height: 1).id("end")
@@ -642,31 +660,97 @@ private struct FugitiveControls: View {
                     }
                     HidingSteps(store: store)
                     ControlHint(text: store.hiding.hint(game))
-                    HStack(spacing: 10) {
-                        Button {
-                            Task { await store.hide() }
-                        } label: {
-                            Text(store.canHide ? "Hide at \(store.pick ?? 0)" : "Hide")
-                        }
-                        .buttonStyle(NoirButtonStyle(fill: Noir.fugitive))
-                        .disabled(!store.canHide || store.busy || store.animating)
-                        if game.firstTurn && game.hidesLeft == 1 {
-                            Button("Done — one is enough") { Task { await store.pass() } }
-                                .buttonStyle(NoirButtonStyle(fill: nil))
-                                .disabled(store.busy || store.animating)
-                        } else if !game.firstTurn {
-                            Button(game.deckCounts.contains { $0 > 0 } ? "Lie low — draw a card" : "Lie low") {
-                                Task { await store.pass() }
-                            }
-                            .buttonStyle(NoirButtonStyle(fill: nil))
-                            .disabled(store.busy || store.animating)
-                        }
-                    }
+                    // Hide and the way out are in HideBar, pinned to the bottom.
                 }
             }
         }
     }
 
+}
+
+/// The room's code, big, and its invite QR: what the toolbar's QR icon opens.
+private struct RoomCodeSheet: View {
+    let code: String
+    let url: URL
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing: 18) {
+            Text("ROOM CODE").font(Noir.type(14)).kerning(2).foregroundStyle(Noir.card.opacity(0.7))
+            Text(code).font(Noir.poster(64)).kerning(8).foregroundStyle(Noir.fugitive)
+                .accessibilityLabel(code.map(String.init).joined(separator: " "))
+            if let qr = QRCode.image(url.absoluteString) {
+                Image(uiImage: qr).interpolation(.none).resizable()
+                    .frame(width: 200, height: 200)
+                    .padding(12)
+                    .background(Noir.card, in: RoundedRectangle(cornerRadius: 14))
+                    .accessibilityLabel("QR code for game \(code)")
+            }
+            Text("Scan to open this game, or enter the code under “Join with a code”.")
+                .font(.footnote).foregroundStyle(Noir.card.opacity(0.75))
+                .multilineTextAlignment(.center)
+            Button("Done") { dismiss() }.buttonStyle(NoirButtonStyle(fill: nil))
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Noir.night.ignoresSafeArea())
+        // Large only: at medium the QR and Done fell below the fold.
+        .presentationDetents([.large])
+        .preferredColorScheme(.dark)
+    }
+}
+
+/// While hiding, Hide and the way out of it sit in a bar pinned to the
+/// bottom of the screen. Below the hand and the hint, Hide was off-screen
+/// on a phone, and it wasn't clear a chosen hideout still had to be
+/// confirmed; the way out was a second half-width button that wrapped.
+struct HideBar: View {
+    let store: FugitiveStore
+
+    static func shown(_ store: FugitiveStore) -> FugitiveGame? {
+        // Not over a game that's gone: its last payload is still in the store.
+        guard !store.gone, let game = store.game, game.turn == .fugitive, game.viewerRole == .fugitive,
+              game.phase == .fugitiveHide, store.folderFor == nil else { return nil }
+        return game
+    }
+
+    /// Room at the end of the scroll for the bar drawn over it, so the last
+    /// of the table can still be scrolled clear of it.
+    @ViewBuilder static func room(_ store: FugitiveStore) -> some View {
+        if let game = shown(store) {
+            Color.clear.frame(height: FugitiveHiding.passLabel(game) == nil ? 78 : 116)
+        }
+    }
+
+    var body: some View {
+        if let game = Self.shown(store) {
+            VStack(spacing: 4) {
+                Button {
+                    Task { await store.hide() }
+                } label: {
+                    Text(store.pick.map { "Hide at \($0)" } ?? "Choose a hideout")
+                }
+                .buttonStyle(NoirButtonStyle(fill: Noir.fugitive))
+                .disabled(!store.canHide || store.busy || store.animating)
+                if let pass = FugitiveHiding.passLabel(game) {
+                    Button {
+                        Task { await store.pass() }
+                    } label: {
+                        Text(pass).font(Noir.type(15)).foregroundStyle(Noir.card.opacity(0.9))
+                            .padding(.vertical, 8).frame(maxWidth: .infinity)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(store.busy || store.animating)
+                }
+            }
+            .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 4)
+            .frame(maxWidth: 720)
+            .frame(maxWidth: .infinity)
+            .background(Noir.night.ignoresSafeArea(edges: .bottom))
+            .overlay(alignment: .top) { Rectangle().fill(Noir.line).frame(height: 1) }
+        }
+    }
 }
 
 /// Which step a tap in the hand is for: where to hide, or sprint cards.

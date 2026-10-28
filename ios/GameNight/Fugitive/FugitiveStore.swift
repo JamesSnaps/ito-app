@@ -197,7 +197,7 @@ final class FugitiveStore {
 
     private func send(_ kind: FugitiveMove.Kind, deck: Int? = nil, card: Int? = nil,
                       sprints: [Int]? = nil, numbers: [Int]? = nil) async {
-        guard !busy, !animating, let game, let role = game.viewerRole, let token = device.seat(role) else { return }
+        guard !busy, !animating, !gone, let game, let role = game.viewerRole, let token = device.seat(role) else { return }
         busy = true
         defer { busy = false }
         let move = FugitiveMove(type: kind, deck: deck, card: card, sprints: sprints, numbers: numbers, seq: game.seq)

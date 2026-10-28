@@ -833,6 +833,25 @@ read in full; not in the repo).
   - One logic in two places: `FugitiveHiding.swift` (tested in
     `FugitiveHidingTests`, on Linux too) and `hideCost`/`canTapCard`/
     `tapCard`/`hideHint` in play.html. Change one, change the other.
+  - **Hide and its way out are pinned to the bottom of the screen**
+    (v1.13.1, app 1.7.1) — below the hand and the hint, Hide was off-screen
+    on a phone. "Choose a hideout" until one is picked; the way out is a
+    plain line under it, not a squashed half-width button. iOS draws the bar
+    *over* the table (`HideBar`), with `safeAreaInset` only reserving room:
+    as the scroll view's inset it got iOS 26's scroll edge effect and the
+    hand showed through. The web bar is `position: fixed` with a spacer.
+  - **Lie low names its deck** ("Lie low · draw from 4–14"): not hiding
+    draws from the lowest deck with cards, not one you choose (2nd edition,
+    `_hide_move`) — the turn's ordinary draw is the one from any deck.
+- **iOS: read observable state in `body`, not only inside `ForEach`.** The
+  trail's `landing` and the hand's hiding choice were read only inside
+  `ForEach` content, which SwiftUI didn't track — a hideout stayed invisible
+  after it landed until something else redrew the trail (after a first-turn
+  hideout nothing did, so it looked lost), and the badges kept the last
+  step. Both are read in `body` and passed down now.
+- **The room code is a QR icon in the iOS table's toolbar**, opening a sheet
+  with the code large and the invite QR; it used to be text squeezed in
+  beside the icons. A game kept on the phone shows no code.
 - **The Marshal's notepad is paper**: lined, a red margin, handwriting from
   the device's own fonts. Your cards and seen sprints are struck in pen,
   wrong single guesses in pencil, finds circled green, picks circled red.
