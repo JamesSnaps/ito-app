@@ -270,6 +270,15 @@ def ios_fixtures(c):
         role, move = random_move(live, rng)
         assert send(c, code, seats[role], move).status_code == 200
     out["fugitive_game_over"] = state(c, code)
+    # And one against the computer, so the records carry a row of each kind.
+    from games.fugitive import game as fugitive_game
+    from test_fugitive_ai import play_against, solo_game
+    delay, fugitive_game.COMPUTER_DELAY = fugitive_game.COMPUTER_DELAY, 0
+    try:
+        solo, token = solo_game(c, you="marshal", level="easy")
+        play_against(c, solo["code"], token, "marshal", seed=3)
+    finally:
+        fugitive_game.COMPUTER_DELAY = delay
     out["fugitive_stats"] = c.get("/fugitive/api/stats").get_json()
     made = c.post("/api/profiles", json={"name": "Ana"}).get_json()
     out["profile_created"] = made

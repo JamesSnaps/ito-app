@@ -24,7 +24,9 @@ screen so nobody sees the other's hand.
 Or one of the seats is the computer (ai.py). Its seat token is made here and
 never leaves the server; it plays from that seat's view only, one move at a
 time, whenever anyone looks at the table and the last move has had
-COMPUTER_DELAY to play out on screen. Games against it aren't recorded.
+COMPUTER_DELAY to play out on screen. Games against it are recorded apart
+from the games between people (`record["computer"]`): how each person has
+done against it, by seat and level, never on the leaderboard.
 """
 
 import copy
@@ -237,7 +239,22 @@ def parse_players(body):
 
 
 def blank_stats():
+    return {"games_played": 0, "players": {}, "recent": [], "computer": blank_computer_stats()}
+
+
+def blank_computer_stats():
     return {"games_played": 0, "players": {}, "recent": []}
+
+
+def blank_computer_player(name):
+    """One person's games against the computer: by the seat they played and
+    the computer's level."""
+    row = {"name": name, "games": 0, "wins": 0}
+    for role in ROLES:
+        for level in ai.LEVELS:
+            row[f"{role}_{level}_games"] = 0
+            row[f"{role}_{level}_wins"] = 0
+    return row
 
 
 def blank_player(name):
@@ -258,6 +275,7 @@ def load_stats():
     stored = stats.read(GAME_ID, blank_stats())
     merged = blank_stats()
     merged.update(stored if isinstance(stored, dict) else {})
+    merged["computer"] = {**blank_computer_stats(), **(merged.get("computer") or {})}
     return merged
 
 
@@ -273,6 +291,23 @@ def leaderboard(record):
     return rows
 
 
+def computer_leaderboard(record):
+    """Against the computer: wins on hard first — beating easy a hundred
+    times shouldn't outrank beating hard once — then all wins, then the
+    better win rate."""
+    rows = []
+    for player in (record.get("computer") or {}).get("players", {}).values():
+        row = {**blank_computer_player(player["name"]), **player}
+        games = row["games"]
+        for level in ai.LEVELS:
+            row[f"{level}_games"] = sum(row[f"{role}_{level}_games"] for role in ROLES)
+            row[f"{level}_wins"] = sum(row[f"{role}_{level}_wins"] for role in ROLES)
+        row["win_rate"] = round(100 * row["wins"] / games) if games else 0
+        rows.append(row)
+    rows.sort(key=lambda p: (p["hard_wins"], p["wins"], p["win_rate"]), reverse=True)
+    return rows
+
+
 def worth_recording(game):
     """Dealt and abandoned before anyone moved isn't a game anybody played."""
     return not (game["reason"] == "resigned" and len(game["hideouts"]) <= 1)
@@ -281,15 +316,20 @@ def worth_recording(game):
 def record_if_finished(room):
     """Recorded by the server the moment the game ends, once — there's no
     page to post it, and nothing to trust a page about anyway. A game
-    against the computer never is: the records are games between people."""
+    against the computer goes in its own records, not the leaderboard."""
     game = room.state["game"]
     if game["phase"] != "game_over" or game["recorded"]:
         return
-    if room.state.get("computer") or not worth_recording(game):
+    if not worth_recording(game):
         game["recorded"] = True
         return
+    computer = room.state.get("computer")
     try:
-        stats.update(GAME_ID, lambda stored: add_result(stored, room.state["players"], game))
+        if computer:
+            stats.update(GAME_ID, lambda stored: add_computer_result(
+                stored, room.state["players"], computer, game))
+        else:
+            stats.update(GAME_ID, lambda stored: add_result(stored, room.state["players"], game))
     except DataUnavailable:
         # stats.json is damaged and refuses writes. The game stays saved
         # and unrecorded, and is tried again on the next look at the table.
@@ -331,6 +371,37 @@ def add_result(stored, names, game, at=None):
     return record
 
 
+def add_computer_result(stored, names, computer, game, at=None):
+    """The records with one game against the computer added, under the
+    person's name only — the computer has no row of its own."""
+    record = stored if isinstance(stored, dict) else {}
+    played = {**blank_computer_stats(), **(record.get("computer") or {})}
+    role = engine._other(computer["role"])
+    level = computer["level"]
+    won = game["winner"] == role
+    name = names[role]
+    key = name.casefold()
+    player = {**blank_computer_player(name), **played["players"].get(key, {})}
+    player["name"] = name
+    player["games"] += 1
+    player[f"{role}_{level}_games"] += 1
+    if won:
+        player["wins"] += 1
+        player[f"{role}_{level}_wins"] += 1
+    played["players"] = {**played["players"], key: player}
+    played["games_played"] += 1
+    played["recent"] = [{
+        "at": at or datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "name": name,
+        "role": role,
+        "level": level,
+        "won": won,
+        "reason": game["reason"],
+        "hideouts": len(game["hideouts"]) - 1,
+    }, *played["recent"]][:RECENT_GAMES]
+    return {**record, "computer": played}
+
+
 # --- pages ----------------------------------------------------------------
 
 @bp.route("/")
@@ -366,7 +437,8 @@ def rules_view():
 def stats_view():
     record = load_stats()
     return render_template("fugitive/stats.html", game=GAME, back=back_link(),
-                           record=record, rows=leaderboard(record))
+                           record=record, rows=leaderboard(record),
+                           computer_rows=computer_leaderboard(record))
 
 
 # --- API ------------------------------------------------------------------
@@ -539,10 +611,11 @@ def api_rematch(code):
 
 @bp.route("/api/stats")
 def api_stats():
-    """The record, plus the leaderboard in the order the records page shows it."""
+    """The record, plus both leaderboards in the order the records page shows them."""
     record = load_stats()
     record.pop("offline_ids", None)
-    return jsonify({**record, "leaderboard": leaderboard(record)})
+    return jsonify({**record, "leaderboard": leaderboard(record),
+                    "computer_leaderboard": computer_leaderboard(record)})
 
 
 # --- games played offline -------------------------------------------------
@@ -552,6 +625,12 @@ def api_stats():
 # is replayed here through engine.py: only a game the real rules accept, to
 # the end, is recorded. The app is trusted no further than that — the same
 # trust as everywhere else on this public router.
+#
+# A game against the computer also sends the computer's seat, level and seed,
+# and every one of the computer's moves has to be the one ai.py would have
+# made from that seed — so a phone can't claim a win over a computer that
+# played along. The Swift AI makes the same choices as ai.py (pinned by
+# tests/test_fugitive_ai.py), which is what makes this check possible.
 
 OFFLINE_ID = re.compile(r"^[A-Za-z0-9-]{8,64}$")
 MAX_OFFLINE_MOVES = 1000
@@ -560,14 +639,31 @@ MAX_OFFLINE_MOVES = 1000
 OFFLINE_IDS_KEPT = 500
 
 
+def parse_offline_computer(wanted):
+    """{"role", "level", "seed"} from an upload's `computer`, None for two
+    people. Raises ValueError."""
+    if wanted is None:
+        return None
+    computer, error = parse_computer({"computer": wanted})
+    seed = wanted.get("seed") if isinstance(wanted, dict) else None
+    if error or not engine._is_int(seed) or not 0 <= seed <= 0xFFFFFFFF:
+        raise ValueError(error or "the computer's seed is missing")
+    return {**computer, "seed": seed}
+
+
 def replay_offline(body):
-    """(players, game, played_at) for an uploaded offline game, or raises
-    ValueError with a sentence saying what's wrong with it."""
+    """(players, computer, game, played_at) for an uploaded offline game, or
+    raises ValueError with a sentence saying what's wrong with it."""
     if not isinstance(body, dict):
         raise ValueError("expected an object")
     if not isinstance(body.get("id"), str) or not OFFLINE_ID.match(body["id"]):
         raise ValueError("the game needs an id")
-    players, error = parse_players(body.get("players"))
+    computer = parse_offline_computer(body.get("computer"))
+    names = body.get("players")
+    if computer and isinstance(names, dict):
+        # Whatever the phone called it, the computer's seat is the computer.
+        names = {**names, computer["role"]: COMPUTER_NAME}
+    players, error = parse_players(names)
     if error:
         raise ValueError(error)
     decks = body.get("decks")
@@ -583,13 +679,26 @@ def replay_offline(body):
     for number, step in enumerate(moves, start=1):
         if not isinstance(step, dict) or step.get("role") not in ROLES or not isinstance(step.get("move"), dict):
             raise ValueError(f"move {number} isn't a move")
+        expected = None
+        if computer and step["role"] == computer["role"]:
+            # What ai.py makes of the same view and seed, played on a copy;
+            # the phone's move has to leave the game in the same place.
+            expected = copy.deepcopy(game)
+            try:
+                choice = ai.choose(seat_view(game, computer["role"]), computer["level"],
+                                   ai.move_rng(computer["seed"], game["seq"]))
+                engine.apply(expected, computer["role"], choice)
+            except (IllegalMove, ValueError):
+                raise ValueError(f"move {number} isn't the computer's to make") from None
         try:
             engine.apply(game, step["role"], dict(step["move"]))
         except IllegalMove as refusal:
             raise ValueError(f"move {number} breaks the rules: {refusal}") from None
+        if expected is not None and game != expected:
+            raise ValueError(f"move {number} isn't the move the computer would have made")
     if game["phase"] != "game_over":
         raise ValueError("that game isn't finished")
-    return players, game, played_at(body.get("played_at"))
+    return players, computer, game, played_at(body.get("played_at"))
 
 
 def played_at(value):
@@ -611,7 +720,7 @@ def api_offline():
     game already recorded (a retried upload) or one nobody played."""
     body = request.get_json(silent=True)
     try:
-        players, game, at = replay_offline(body)
+        players, computer, game, at = replay_offline(body)
     except ValueError as problem:
         return jsonify({"error": str(problem)}), 400
     if not worth_recording(game):
@@ -624,7 +733,10 @@ def api_offline():
         if body["id"] in seen:
             outcome["recorded"] = False
             return record
-        record = add_result(record, players, game, at)
+        if computer:
+            record = add_computer_result(record, players, computer, game, at)
+        else:
+            record = add_result(record, players, game, at)
         record["offline_ids"] = (seen + [body["id"]])[-OFFLINE_IDS_KEPT:]
         outcome["recorded"] = True
         return record

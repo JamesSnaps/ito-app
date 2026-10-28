@@ -230,6 +230,75 @@ def test_only_a_legal_finished_game_is_recorded():
     assert c.get("/fugitive/api/stats").get_json()["games_played"] == 0
 
 
+def computer_upload(seed, you="marshal", level="hard", game_id="offline-game-ai-01"):
+    """An offline game against the computer as the app sends it: the
+    computer's moves are ai.py's from the game's seed, the person's random."""
+    from games.fugitive import ai
+    from games.fugitive.game import seat_view
+
+    rng = random.Random(seed)
+    decks = []
+    for lo, hi in DECKS:
+        cards = list(range(lo, hi + 1))
+        rng.shuffle(cards)
+        decks.append(cards)
+    state = new_game(rng, decks=decks)
+    computer = {"role": "fugitive" if you == "marshal" else "marshal", "level": level, "seed": seed * 7919}
+    moves = []
+    for _ in range(1000):
+        if state["phase"] == "game_over":
+            break
+        role = turn(state)
+        if role == computer["role"]:
+            move = ai.choose(seat_view(state, role), level, ai.move_rng(computer["seed"], state["seq"]))
+        else:
+            role, move = random_move(state, rng)
+        moves.append({"role": role, "move": {**move, "seq": state["seq"]}})
+        apply(state, role, copy.deepcopy(move))
+    return {"id": game_id, "players": {you: "Ana", computer["role"]: "Computer"},
+            "decks": decks, "moves": moves, "computer": computer}, state
+
+
+def test_an_offline_game_against_the_computer_is_recorded_apart_once():
+    c = client()
+    body, final = computer_upload(11)
+    assert c.post("/fugitive/api/offline", json=body).get_json() == {"recorded": True}
+    assert c.post("/fugitive/api/offline", json=body).get_json() == {"recorded": False}
+    record = c.get("/fugitive/api/stats").get_json()
+    assert record["games_played"] == 0 and record["computer"]["games_played"] == 1
+    [ana] = record["computer_leaderboard"]
+    assert ana["marshal_hard_games"] == 1 and ana["wins"] == int(final["winner"] == "marshal")
+
+
+def test_an_offline_win_the_computer_didnt_play_along_with_is_refused():
+    c = client()
+    body, _ = computer_upload(12)
+    # A legal move, just not the one the computer would have made.
+    forged = copy.deepcopy(body)
+    state = new_game(None, decks=forged["decks"])
+    number = None
+    for index, step in enumerate(forged["moves"], start=1):
+        if step["role"] == "fugitive" and step["move"]["type"] == "draw":
+            others = [d for d in range(len(DECKS)) if d != step["move"]["deck"] and state["decks"][d]]
+            if others:
+                step["move"]["deck"], number = others[0], index
+                break
+        apply(state, step["role"], copy.deepcopy(step["move"]))
+    assert number, "the computer never drew with a choice of decks"
+    res = c.post("/fugitive/api/offline", json=forged)
+    assert res.status_code == 400
+    assert res.get_json()["error"] == f"move {number} isn't the move the computer would have made"
+    # The same game under another seed isn't the computer's either.
+    reseeded = {**body, "computer": {**body["computer"], "seed": body["computer"]["seed"] + 1}}
+    assert c.post("/fugitive/api/offline", json=reseeded).status_code == 400
+    for broken in ({**body, "computer": {"role": "fugitive", "level": "hard"}},
+                   {**body, "computer": {**body["computer"], "level": "impossible"}},
+                   {**body, "computer": {**body["computer"], "seed": -1}},
+                   {**body, "computer": "yes"}):
+        assert c.post("/fugitive/api/offline", json=broken).status_code == 400, broken
+    assert c.get("/fugitive/api/stats").get_json()["computer"]["games_played"] == 0
+
+
 def test_a_game_given_up_before_anyone_moved_isnt_recorded():
     c = client()
     body = {**upload_body(6), "moves": [{"role": "marshal", "move": {"type": "resign"}}]}

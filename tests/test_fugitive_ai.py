@@ -190,12 +190,48 @@ def play_against(c, code, token, you, seed):
 
 
 @pytest.mark.parametrize("you", engine.ROLES)
-def test_a_game_against_the_computer_plays_out_and_is_not_recorded(no_delay, you):
+def test_a_game_against_the_computer_is_recorded_apart_from_the_leaderboard(no_delay, you):
     c = client()
     made, token = solo_game(c, you=you)
     finished = play_against(c, made["code"], token, you, seed=4)
     assert finished["recorded"] and finished["reason"] != "resigned"
-    assert c.get("/fugitive/api/stats").get_json()["games_played"] == 0
+    record = c.get("/fugitive/api/stats").get_json()
+    # Not a game between people: the leaderboard never hears of it.
+    assert record["games_played"] == 0 and record["leaderboard"] == []
+    played = record["computer"]
+    assert played["games_played"] == 1
+    won = finished["winner"] == you
+    assert played["recent"][0] == {**played["recent"][0], "name": "Ana", "role": you,
+                                   "level": "hard", "won": won}
+    [ana] = record["computer_leaderboard"]
+    assert ana["name"] == "Ana" and ana["games"] == 1 and ana["wins"] == int(won)
+    assert ana[f"{you}_hard_games"] == 1 and ana[f"{you}_hard_wins"] == int(won)
+    assert ana["hard_wins"] == int(won) and ana["hard_games"] == 1 and ana["easy_games"] == 0
+    # The computer has no row of its own.
+    assert "computer" not in played["players"]
+    page = c.get("/fugitive/stats").get_data(as_text=True)
+    assert "Against the computer" in page and "Ana" in page and "No games yet" not in page
+
+
+def test_the_computer_records_rank_wins_on_hard_first():
+    from games.fugitive.game import add_computer_result, computer_leaderboard
+
+    def finished(winner):
+        return {"winner": winner, "reason": "caught", "hideouts": [0, 3]}
+
+    record = {}
+    for _ in range(3):  # Ben beats easy three times
+        record = add_computer_result(record, {"fugitive": "Computer", "marshal": "Ben"},
+                                     {"role": "fugitive", "level": "easy"}, finished("marshal"))
+    record = add_computer_result(record, {"fugitive": "ana", "marshal": "Computer"},
+                                 {"role": "marshal", "level": "hard"}, finished("fugitive"))
+    record = add_computer_result(record, {"fugitive": "Ana", "marshal": "Computer"},
+                                 {"role": "marshal", "level": "hard"}, finished("marshal"))
+    rows = computer_leaderboard(record)
+    assert [r["name"] for r in rows] == ["Ana", "Ben"]
+    assert rows[0]["games"] == 2 and rows[0]["fugitive_hard_wins"] == 1 and rows[0]["win_rate"] == 50
+    assert rows[1]["marshal_easy_wins"] == 3 and rows[1]["hard_wins"] == 0
+    assert record["computer"]["games_played"] == 5
 
 
 def test_the_computer_is_shown_only_its_own_seats_view(no_delay, monkeypatch):

@@ -578,6 +578,8 @@
 .fg-page { max-width: 640px; margin: 0 auto; line-height: 1.55; }
 .fg-page h2 { color: var(--text); font: 400 1.6rem var(--fg-poster); letter-spacing: 0.05em; margin-top: 24px; }
 .fg-page table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+/* The split under a total: wins by seat, against the computer. */
+.fg-page .fg-split { display: block; font-size: 0.72rem; opacity: 0.65; white-space: nowrap; }
 .fg-page th, .fg-page td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--fg-line); }
 .fg-page th { color: var(--muted-2); font-weight: 600; }
 .fg-num-cell { text-align: right; font-variant-numeric: tabular-nums; }

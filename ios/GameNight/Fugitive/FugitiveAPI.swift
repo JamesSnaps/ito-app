@@ -84,9 +84,17 @@ nonisolated struct OfflineUploadBody: Encodable {
     let decks: [[Int]]
     let moves: [Step]
     let playedAt: String?
+    /// A game against the computer: its seat, level and seed. Left out for two people.
+    var computer: Computer? = nil
+
+    nonisolated struct Computer: Encodable, Equatable {
+        let role: FugitiveRole
+        let level: String
+        let seed: UInt32
+    }
 
     enum CodingKeys: String, CodingKey {
-        case id, players, decks, moves
+        case id, players, decks, moves, computer
         case playedAt = "played_at"
     }
 }

@@ -1,4 +1,53 @@
 {
+ "computer": {
+  "games_played": 1,
+  "players": {
+   "ana": {
+    "fugitive_easy_games": 0,
+    "fugitive_easy_wins": 0,
+    "fugitive_hard_games": 0,
+    "fugitive_hard_wins": 0,
+    "games": 1,
+    "marshal_easy_games": 1,
+    "marshal_easy_wins": 0,
+    "marshal_hard_games": 0,
+    "marshal_hard_wins": 0,
+    "name": "Ana",
+    "wins": 0
+   }
+  },
+  "recent": [
+   {
+    "at": "2026-10-28T13:05:09+00:00",
+    "hideouts": 10,
+    "level": "easy",
+    "name": "Ana",
+    "reason": "escaped",
+    "role": "marshal",
+    "won": false
+   }
+  ]
+ },
+ "computer_leaderboard": [
+  {
+   "easy_games": 1,
+   "easy_wins": 0,
+   "fugitive_easy_games": 0,
+   "fugitive_easy_wins": 0,
+   "fugitive_hard_games": 0,
+   "fugitive_hard_wins": 0,
+   "games": 1,
+   "hard_games": 0,
+   "hard_wins": 0,
+   "marshal_easy_games": 1,
+   "marshal_easy_wins": 0,
+   "marshal_hard_games": 0,
+   "marshal_hard_wins": 0,
+   "name": "Ana",
+   "win_rate": 0,
+   "wins": 0
+  }
+ ],
  "games_played": 1,
  "leaderboard": [
   {
