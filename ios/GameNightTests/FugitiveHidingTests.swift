@@ -31,6 +31,8 @@ import Testing
         #expect(costs[11] == .needs(8))
         #expect(costs[17] == .outOfReach && costs[18] == .outOfReach && costs[42] == .outOfReach)
         #expect(FugitiveHiding.heading(game) == "First turn · hideout 1 of 2")
+        // The first hideout has to go down: no way out yet.
+        #expect(FugitiveHiding.passLabel(game) == nil)
     }
 
     @Test func aSecondCardMovesTheHideoutInsteadOfBecomingASprint() async throws {
@@ -73,6 +75,20 @@ import Testing
         #expect(first.hand == [42])
         #expect(FugitiveHiding.heading(first) == "First turn · hideout 2 of 2, or stop at one")
         #expect(FugitiveHiding().hint(first) == "Nothing in your hand reaches on from 11 — stop at one.")
+        #expect(FugitiveHiding.passLabel(first) == "Done — one is enough")
+
+        // Round to the Fugitive's next turn: lying low there draws from the
+        // lowest deck with cards — 4–14, and says so.
+        var game = try await table.fugitiveMove(code: code, FugitiveMove(type: .pass, seq: first.seq), token: token).game
+        let marshal = try #require(try await table.fugitiveClaim(code: code, role: .marshal).seatToken)
+        for _ in 0..<2 {
+            game = try await table.fugitiveMove(code: code, FugitiveMove(type: .draw, deck: 2, seq: game.seq), token: marshal).game
+        }
+        game = try await table.fugitiveMove(code: code, FugitiveMove(type: .guess, numbers: [5], seq: game.seq), token: marshal).game
+        game = try await table.fugitiveMove(code: code, FugitiveMove(type: .draw, deck: 1, seq: game.seq), token: token).game
+        #expect(game.phase == .fugitiveHide && !game.firstTurn)
+        #expect(FugitiveHiding.heading(game) == nil)
+        #expect(FugitiveHiding.passLabel(game) == "Lie low · draw from 4–14")
     }
 
     @Test func aHideoutInReachCanStillHaveABluffTuckedUnderIt() async throws {

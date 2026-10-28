@@ -418,6 +418,19 @@
 .fg-chip-sprint { background: var(--fg-marshal); color: var(--fg-ink); }
 .fg-chip-needs { border-color: var(--fg-fugitive); }
 .fg-chip-steps { border-color: var(--fg-marshal); }
+.fg-hidebar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+  padding: 12px 16px calc(6px + env(safe-area-inset-bottom));
+  background: rgba(11, 17, 29, 0.95); border-top: 1px solid rgba(243, 234, 216, 0.14);
+}
+.fg-hidebar-in { display: grid; gap: 2px; max-width: 520px; margin: 0 auto; }
+.fg-hidebar .fg-btn { width: 100%; }
+.fg-pass {
+  border: 0; background: none; padding: 9px; cursor: pointer;
+  font: 400 0.95rem var(--fg-type); color: rgba(243, 234, 216, 0.9);
+}
+.fg-pass:hover { text-decoration: underline; }
+.fg-hidebar-space { height: 120px; }
 .fg-hide-heading { margin: 0; font: 400 0.85rem var(--fg-type); letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-fugitive); }
 .fg-steps { display: inline-flex; padding: 3px; border-radius: 999px; background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(243, 234, 216, 0.14); }
 .fg-step {

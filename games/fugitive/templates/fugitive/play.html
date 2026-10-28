@@ -845,16 +845,30 @@
       const heading = g.first_turn
         ? el('p', {class: 'fg-hide-heading', text: g.hides_left >= 2 ? 'First turn · hideout 1 of 2' : 'First turn · hideout 2 of 2, or stop at one'})
         : null;
-      const buttons = [el('button', {class: 'fg-btn fg-btn-fugitive', type: 'button', disabled: !ok,
-        text: ok ? `Hide at ${pick.card}` : 'Hide', onclick: () => send({type: 'hide', card: pick.card, sprints: [...pick.sprints]})})];
-      if (g.first_turn && g.hides_left === 1) {
-        buttons.push(el('button', {class: 'fg-btn fg-btn-quiet', type: 'button', text: 'Done — one is enough', onclick: () => send({type: 'pass'})}));
-      } else if (!g.first_turn) {
-        buttons.push(el('button', {class: 'fg-btn fg-btn-quiet', type: 'button',
-          text: g.deck_counts.some(n => n > 0) ? 'Lie low — draw a card' : 'Lie low', onclick: () => send({type: 'pass'})}));
-      }
+      // Hide and the way out sit in a bar pinned to the bottom of the screen:
+      // below the hand and the hint, Hide was off-screen on a phone, and it
+      // wasn't clear a chosen hideout still had to be confirmed. The spacer
+      // keeps the page's end clear of it.
+      const bar = [el('button', {class: 'fg-btn fg-btn-fugitive', type: 'button', disabled: !ok,
+        text: pick.card === null ? 'Choose a hideout' : `Hide at ${pick.card}`,
+        onclick: () => send({type: 'hide', card: pick.card, sprints: [...pick.sprints]})})];
+      const pass = passLabel(g);
+      if (pass) bar.push(el('button', {class: 'fg-pass', type: 'button', text: pass, onclick: () => send({type: 'pass'})}));
       return el('div', {class: 'fg-controls'}, [heading, hideSteps(), el('p', {class: 'fg-hint', text: hideHint(g)}),
-                                                el('div', {class: 'fg-actions'}, buttons)]);
+                                                el('div', {class: 'fg-hidebar'}, [el('div', {class: 'fg-hidebar-in'}, bar)]),
+                                                el('div', {class: 'fg-hidebar-space'})]);
+    }
+
+    // The way out of hiding: stopping after one hideout on the first turn, or
+    // lying low later — which draws from the lowest deck that still has cards
+    // (2nd edition), not one you choose, so it says which. Null when the
+    // first hideout still has to go down.
+    function passLabel(g){
+      if (g.first_turn) return g.hides_left === 1 ? 'Done — one is enough' : null;
+      const lowest = g.deck_counts.findIndex(n => n > 0);
+      if (lowest < 0) return 'Lie low';
+      const [lo, hi] = [g.decks[lowest][0], g.decks[lowest][g.decks[lowest].length - 1]];
+      return `Lie low · draw from ${lo}–${hi}`;
     }
 
     function marshalControls(){
