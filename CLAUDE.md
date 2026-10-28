@@ -5,7 +5,8 @@
 **Game Night** — a hub for companion web apps to physical board games.
 It holds three: *ito* (cooperative, secret-number ordering game),
 *Flip 7* (push-your-luck card game) and *Fugitive* (two-player
-hidden-movement card game, played entirely on the app — see its section).
+hidden-movement card game, played entirely on the app, against a person or
+the computer — see its section).
 `/` is the menu — it used to redirect straight to ito when ito was the
 only game.
 
@@ -746,6 +747,7 @@ read in full; not in the repo).
 - **Records** are per player and per role (Fugitive wins, Marshal wins,
   Manhunt catches). A game resigned before the Fugitive's first hideout
   isn't recorded — nobody played it.
+  Nor is a game against the computer (see below).
 - **No admin routes**, so nothing new for the Authelia rule in the docker repo.
 - **iOS is native since app 1.2.0** (see "Fugitive on iOS" below), and the
   AASA file claims `/fugitive/play/*`.
@@ -815,6 +817,60 @@ read in full; not in the repo).
   opening deal is played when the folder is first opened, not behind it —
   cards in flight are drawn above everything and showed through it.
 - No images and no URLs in `fugitive.js` (a test checks).
+
+### Fugitive against the computer (v1.11.0)
+
+One person can play alone, as either role: setup's third choice, "Against
+the computer", takes your name, a seat (Swap roles) and Easy or Hard.
+
+- **The computer is on the server** (`games/fugitive/ai.py`, beside
+  engine.py), so the web table and the app's online play get it alike.
+  `ai.choose(seen, level, rng)` is its whole interface, and `seen` is
+  `game.seat_view(state, role)` — exactly what that seat's phone is sent,
+  the Marshal's with `candidates`. It never sees the state, so it can't
+  cheat; a test spies on every call and checks that.
+- **It plays through the same path as a person.** The room keeps
+  `computer: {role, level, seed}` and gives its seat a token nobody is ever
+  handed (so the seat reads taken, can't be claimed, and can't be freed).
+  `computer_moves(room)` runs on every look at the table (`GET /state`):
+  if it's the computer's turn and `COMPUTER_DELAY` (1.5s) has passed since
+  the last move (`moved_at`), it applies *one* move with `engine.apply` on a
+  copy, bumping `seq` like any move. No timers or threads — the 1s poll is
+  the clock, a restart picks up where it was, and a Marshal's two draws and
+  a guess land a beat apart so the table plays each one out. A move the
+  rules refuse (a bug) makes it resign rather than hang the table.
+- **Not recorded.** The records are games between people; a game against
+  the computer is marked recorded without touching stats.json. The payload
+  carries `computer: {role, level}` only when there is one, so the iOS
+  fixtures' shape didn't change.
+- **A rematch swaps the computer's seat too**, with a fresh seed.
+- **Two levels.** Easy: the Fugitive hides on the lowest card it reaches
+  with the fewest sprints, never bluffs; the Marshal draws anywhere and guesses one number from
+  anything the notepad leaves open. Hard: the Fugitive picks at random among
+  its cheapest options (no sprint, then sprints with dead cards — those
+  below the new hideout — then live ones), sometimes tucks a spare dead card
+  under as a bluff (`BLUFF_IN_3`), and draws from the deck the trail is
+  heading into; the Marshal draws where hideouts could be, guesses every
+  pinned hideout at once (candidates never rule out the truth, so they're
+  certain), else one number from the narrowest hideout. Both play 42 the
+  moment it's reachable, and the Manhunt is always played out (letting go
+  can never beat a guess). Over 1,000 computer-v-computer games: Hard v
+  Hard ~47% Fugitive wins, Easy Fugitive v Hard Marshal ~21%, Hard
+  Fugitive v Easy Marshal ~74%.
+- **Its randomness is `Mulberry32`, not `random`** — fugitive.js's
+  mulberry32 (and the app's `Seeded`) with the seed taken raw — and every
+  draw is an integer pick, so a Swift port can choose identically. The
+  per-move generator is `move_rng(seed, seq)`; the seed is secret (or the
+  computer's moves could be worked out from the code), from SystemRandom.
+- **Offline is next, not here.** On a plane there's no server, so the iOS
+  app needs `FugitiveAI.swift`, a line-for-line port played by
+  `OfflineTable` the way `game.py` plays ai.py. It's pinned already:
+  `tests/test_fugitive_ai.py` writes `Fixtures/fugitive_ai_games.json`
+  (every level pairing, and each level against a random player, with the
+  decks, the seed and every move — the computer's marked) and fails if
+  ai.py stops choosing that way. **Change ai.py → rewrite the fixture
+  (`WRITE_IOS_FIXTURES=1 pytest tests -q -k ai_scripts`) → make the Swift
+  agree** once the port exists. The app's setup has no "vs computer" yet.
 
 ## Player profiles (added v1.8.0)
 

@@ -20,6 +20,11 @@ request here gets the view for whoever its token says is asking:
 One device can hold the host token and both seats. That's pass-and-play:
 the page asks as whichever player's turn it is, behind a "pass it over"
 screen so nobody sees the other's hand.
+
+Or one of the seats is the computer (ai.py). Its seat token is made here and
+never leaves the server; it plays from that seat's view only, one move at a
+time, whenever anyone looks at the table and the last move has had
+COMPUTER_DELAY to play out on screen. Games against it aren't recorded.
 """
 
 import copy
@@ -38,7 +43,7 @@ from core.jsonfile import DataUnavailable
 from core.paths import game_data_dir
 from core.qr import svg as qr_svg
 from core.rooms import IDLE_TIMEOUT, require_room, rooms
-from games.fugitive import engine
+from games.fugitive import ai, engine
 from games.fugitive.engine import IllegalMove
 from games.registry import GameSpec
 
@@ -49,6 +54,11 @@ bp = Blueprint(GAME_ID, __name__, url_prefix="/fugitive", template_folder="templ
 MAX_NAME = 20
 RECENT_GAMES = 10
 ROLES = engine.ROLES
+COMPUTER_NAME = "Computer"
+# Seconds between a move and the computer's next one: long enough for the
+# table to play the last move out (a draw's flight, a hideout sliding in, a
+# NOT HERE stamp) before the next one lands. Tests set it to 0.
+COMPUTER_DELAY = 1.5
 
 # The decks are the secret; shuffles have to be unguessable.
 _rng = random.SystemRandom()
@@ -121,24 +131,86 @@ def identify(room, token):
     return None, None
 
 
+def seat_view(game, viewer):
+    """What `viewer` is sent: the engine's view, plus the Marshal's notepad
+    help. That's worked out from the Marshal's own view, so it can't tell
+    them anything they couldn't have deduced on paper. The computer is
+    handed exactly this, so it knows no more than a person in its chair."""
+    seen = engine.view(game, viewer)
+    if viewer == "marshal" and seen["phase"] != "game_over":
+        seen["candidates"] = engine.candidates(seen)
+    return seen
+
+
 def payload(room, token=None):
     """The game as this token may see it, plus who's sitting where — whether
     a seat is taken, never by which token — and who the token belongs to,
-    which is how a phone notices its seat was freed."""
+    which is how a phone notices its seat was freed. A game against the
+    computer also says which seat it's in, and at what level."""
     kind, role = identify(room, token)
-    seen = engine.view(room.state["game"], role if kind == "seat" else "table")
-    # The Marshal's notepad help. Worked out from the Marshal's own view, so
-    # it can't tell them anything they couldn't have deduced on paper.
-    if role == "marshal" and seen["phase"] != "game_over":
-        seen["candidates"] = engine.candidates(seen)
-    return {
+    out = {
         "code": room.code,
         "players": dict(room.state["players"]),
         "seats": {r: {"taken": bool(room.state["seats"][r])} for r in ROLES},
         "you": {"role": kind, "seat": role},
-        "game": seen,
+        "game": seat_view(room.state["game"], role if kind == "seat" else "table"),
         "next": room.state.get("next"),
     }
+    computer = room.state.get("computer")
+    if computer:
+        out["computer"] = {"role": computer["role"], "level": computer["level"]}
+    return out
+
+
+# --- the computer ---------------------------------------------------------
+
+def parse_computer(body):
+    """{"role", "level"} from a new game's `computer`, None for two people.
+    Returns (computer, error)."""
+    wanted = body.get("computer") if isinstance(body, dict) else None
+    if wanted is None:
+        return None, None
+    if not isinstance(wanted, dict) or wanted.get("role") not in ROLES:
+        return None, "the computer needs a seat: fugitive or marshal"
+    level = wanted.get("level", ai.DEFAULT_LEVEL)
+    if level not in ai.LEVELS:
+        return None, "the computer plays easy or hard"
+    return {"role": wanted["role"], "level": level}, None
+
+
+def computer_seat(computer):
+    """The room's record of the computer: its seat, level and the secret seed
+    its choices come from (secret, or its moves could be worked out ahead)."""
+    return {**computer, "seed": _rng.getrandbits(32)}
+
+
+def computer_moves(room):
+    """Make the computer's move, if it's its turn and the last move has had
+    time to play out. One move per look — a Marshal's two draws and a guess
+    land a beat apart, as a person's would. Returns whether it moved."""
+    computer = room.state.get("computer")
+    game = room.state["game"]
+    role = computer and computer["role"]
+    if not computer or engine.turn(game) != role:
+        return False
+    if time.time() - room.state.get("moved_at", 0) < COMPUTER_DELAY:
+        return False
+    trial = copy.deepcopy(game)
+    try:
+        move = ai.choose(seat_view(game, role), computer["level"],
+                         ai.move_rng(computer["seed"], game["seq"]))
+        engine.apply(trial, role, move)
+    except (IllegalMove, ValueError):
+        # A bug, which the random-game tests exist to stop. Giving up beats
+        # a table stuck on the computer's turn for good.
+        current_app.logger.exception("Fugitive computer stuck in %s; it resigns", room.code)
+        trial = copy.deepcopy(game)
+        engine.apply(trial, role, {"type": "resign"})
+    room.state["game"] = trial
+    room.state["moved_at"] = time.time()
+    record_if_finished(room)
+    save_room(room)
+    return True
 
 
 def require_game(code):
@@ -208,11 +280,12 @@ def worth_recording(game):
 
 def record_if_finished(room):
     """Recorded by the server the moment the game ends, once — there's no
-    page to post it, and nothing to trust a page about anyway."""
+    page to post it, and nothing to trust a page about anyway. A game
+    against the computer never is: the records are games between people."""
     game = room.state["game"]
     if game["phase"] != "game_over" or game["recorded"]:
         return
-    if not worth_recording(game):
+    if room.state.get("computer") or not worth_recording(game):
         game["recorded"] = True
         return
     try:
@@ -263,14 +336,16 @@ def add_result(stored, names, game, at=None):
 @bp.route("/")
 def landing():
     """Who's playing, and deal. The game itself lives at play_view."""
-    return render_template("fugitive/play.html", game=GAME, code=None, max_name=MAX_NAME)
+    return render_template("fugitive/play.html", game=GAME, code=None, max_name=MAX_NAME,
+                           computer_name=COMPUTER_NAME)
 
 
 @bp.route("/play/<code>")
 def play_view(code):
     """The table. What it shows depends on the tokens this device holds."""
     room = require_game(code)
-    return render_template("fugitive/play.html", game=GAME, code=room.code, max_name=MAX_NAME)
+    return render_template("fugitive/play.html", game=GAME, code=room.code, max_name=MAX_NAME,
+                           computer_name=COMPUTER_NAME)
 
 
 def back_link():
@@ -298,17 +373,29 @@ def stats_view():
 
 @bp.route("/api/play", methods=["POST"])
 def api_create():
-    players, error = parse_players(request.get_json(silent=True))
+    """Deal. Two names, or one name and `computer: {role, level}` for a game
+    against the computer, which takes the other seat under its own name."""
+    body = request.get_json(silent=True)
+    computer, error = parse_computer(body)
+    if computer:
+        body = {**body, computer["role"]: COMPUTER_NAME}
+    players, error = (None, error) if error else parse_players(body)
     if error:
         return jsonify({"error": error}), 400
 
     def state():
-        return {
+        made = {
             "game": engine.new_game(_rng),
             "players": players,
             "host_token": secrets.token_urlsafe(12),
             "seats": {role: None for role in ROLES},
+            "moved_at": time.time(),
         }
+        if computer:
+            made["computer"] = computer_seat(computer)
+            # Taken, by a token nobody is ever given.
+            made["seats"][computer["role"]] = secrets.token_urlsafe(12)
+        return made
 
     room = rooms.create(GAME_ID, state)
     with room.lock:
@@ -323,6 +410,7 @@ def api_create():
 def api_state(code):
     room = require_game(code)
     with room.lock:
+        computer_moves(room)
         game = room.state["game"]
         # A finished game that couldn't be recorded gets another go whenever
         # anyone looks at the table.
@@ -372,6 +460,8 @@ def api_release(code, role):
     with room.lock:
         if identify(room, request_token())[0] != "host":
             return jsonify({"error": "Only the device that dealt can free a seat."}), 403
+        if (room.state.get("computer") or {}).get("role") == role:
+            return jsonify({"error": "The computer keeps its seat — start a new game instead."}), 400
         room.state["seats"][role] = None
         save_room(room)
         return jsonify(payload(room, request_token()))
@@ -403,6 +493,7 @@ def api_move(code):
         except engine.IllegalMove as err:
             return jsonify({"error": str(err), **payload(room, token)}), 400
         room.state["game"] = trial
+        room.state["moved_at"] = time.time()
         record_if_finished(room)
         save_room(room)
         return jsonify(payload(room, token))
@@ -428,9 +519,15 @@ def api_rematch(code):
                 "seats": {"fugitive": old["seats"]["marshal"], "marshal": old["seats"]["fugitive"]},
                 "host_token": old["host_token"],
             }
+            computer = old.get("computer")
 
             def state():
-                return {"game": engine.new_game(_rng), **copy.deepcopy(carried)}
+                made = {"game": engine.new_game(_rng), **copy.deepcopy(carried), "moved_at": time.time()}
+                if computer:
+                    # The computer swaps roles too, with a fresh seed.
+                    made["computer"] = computer_seat({"role": engine._other(computer["role"]),
+                                                      "level": computer["level"]})
+                return made
 
             fresh = rooms.create(GAME_ID, state)
             with fresh.lock:

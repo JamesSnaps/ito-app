@@ -42,6 +42,10 @@
   const ROLE_NAMES = {fugitive: 'Fugitive', marshal: 'Marshal'};
   // Last game's two names, so the same pair isn't typed in every time.
   const NAMES_KEY = 'fugitive:names';
+  // A game against the computer: your name, your seat and its level.
+  const SOLO_KEY = 'fugitive:solo';
+  const COMPUTER_NAME = {{ computer_name|tojson }};
+  const LEVEL_NAMES = {easy: 'Easy', hard: 'Hard'};
   const ASSIST_KEY = 'fugitive:assist';
   // What this device holds in a game: {host, seats: {fugitive, marshal},
   // pass, at}. Pass-and-play is a device holding both seats.
@@ -105,11 +109,32 @@
 
   if (!CODE) {
     const saved = readJSON(NAMES_KEY) || {};
-    const form = {fugitive: saved.fugitive || '', marshal: saved.marshal || '', mode: 'phones', error: null};
+    const solo = readJSON(SOLO_KEY) || {};
+    const form = {fugitive: saved.fugitive || '', marshal: saved.marshal || '', mode: solo.on ? 'computer' : 'phones',
+                  me: solo.name || saved.fugitive || '', you: solo.you === 'marshal' ? 'marshal' : 'fugitive',
+                  level: LEVEL_NAMES[solo.level] ? solo.level : 'hard', error: null};
     let busy = false;
+    const other = role => role === 'fugitive' ? 'marshal' : 'fugitive';
+
+    // One name and a seat; the computer takes the other one.
+    async function dealSolo(){
+      const me = form.me.trim();
+      if (!me) { form.error = 'Your name, please.'; return renderSetup(); }
+      busy = true;
+      Sound.play('riffle');
+      const made = await post(CREATE_URL, {[form.you]: me, computer: {role: other(form.you), level: form.level}});
+      if (!made.ok) { busy = false; form.error = made.data.error || 'Couldn’t deal — try again.'; return renderSetup(); }
+      writeJSON(SOLO_KEY, {on: true, name: me, you: form.you, level: form.level});
+      const sat = await post(`${API(made.data.code)}/seats/${form.you}/claim`);
+      const device = {host: made.data.host_token, seats: {}, pass: false, at: Date.now()};
+      if (sat.ok) device.seats[form.you] = sat.data.seat_token;
+      writeJSON(GAME_PREFIX + made.data.code, device);
+      location.href = tableUrl(made.data.code);
+    }
 
     async function deal(){
       if (busy) return;
+      if (form.mode === 'computer') return dealSolo();
       const fugitive = form.fugitive.trim(), marshal = form.marshal.trim();
       if (!fugitive || !marshal) { form.error = 'Both players need a name.'; return renderSetup(); }
       busy = true;
@@ -117,6 +142,7 @@
       const made = await post(CREATE_URL, {fugitive, marshal});
       if (!made.ok) { busy = false; form.error = made.data.error || 'Couldn’t deal — try again.'; return renderSetup(); }
       writeJSON(NAMES_KEY, {fugitive, marshal});
+      writeJSON(SOLO_KEY, {...solo, on: false});
       const device = {host: made.data.host_token, seats: {}, pass: form.mode === 'pass', at: Date.now()};
       if (device.pass) {
         for (const role of ['fugitive', 'marshal']) {
@@ -141,10 +167,44 @@
       ]);
     }
 
+    // Your row in a game against the computer.
+    function meRow(){
+      const role = form.you;
+      const face = mugshot(form.me || ROLE_NAMES[role], role, 44);
+      const input = el('input', {
+        type: 'text', maxlength: MAX_NAME, value: form.me, placeholder: 'Your name',
+        autocomplete: 'off', 'aria-label': 'Your name',
+        oninput: e => { form.me = e.target.value; face.innerHTML = mugshotSVG(e.target.value || ROLE_NAMES[role], role); },
+        onkeydown: e => { if (e.key === 'Enter') deal(); }
+      });
+      return el('div', {class: 'fg-name-row'}, [
+        face, el('span', {class: `fg-role-tag fg-role-${role}`, text: ROLE_NAMES[role]}), input
+      ]);
+    }
+
+    // The computer's row: its face, and how hard it plays.
+    function computerRow(){
+      const role = other(form.you);
+      return el('div', {class: 'fg-name-row'}, [
+        mugshot(COMPUTER_NAME, role, 44),
+        el('span', {class: `fg-role-tag fg-role-${role}`, text: ROLE_NAMES[role]}),
+        el('div', {class: 'fg-computer'}, [
+          el('span', {class: 'fg-computer-name', text: COMPUTER_NAME}),
+          el('div', {class: 'fg-levels', role: 'radiogroup', 'aria-label': 'How hard the computer plays'},
+            Object.keys(LEVEL_NAMES).map(level => el('button', {
+              class: `fg-level ${form.level === level ? 'fg-level-on' : ''}`, type: 'button',
+              role: 'radio', 'aria-checked': form.level === level ? 'true' : 'false',
+              text: LEVEL_NAMES[level],
+              onclick: () => { form.level = level; renderSetup(); }
+            })))
+        ])
+      ]);
+    }
+
     function choice(value, title, detail){
       return el('label', {}, [
         el('input', {type: 'radio', name: 'mode', value, checked: form.mode === value,
-                     onchange: () => { form.mode = value; }}),
+                     onchange: () => { form.mode = value; form.error = null; renderSetup(); }}),
         el('span', {}, [el('strong', {text: title}), el('span', {class: 'fg-muted', text: detail})])
       ]);
     }
@@ -155,29 +215,37 @@
         el('div', {class: 'fg-card fg-hero-card', style: {'--tilt': '0deg'}, html: backSVG()}),
         el('div', {class: 'fg-card fg-hero-card', style: {'--tilt': '12deg'}, html: cardSVG(42, 0)})
       ]);
+      const computer = form.mode === 'computer';
+      // The regulars, with their faces: the first tap fills the Fugitive,
+      // the next the Marshal — or, against the computer, just you.
+      const picker = computer
+        ? GN.picker(name => { form.me = name; renderSetup(); }, [form.me], 'Regulars — tap to fill in')
+        : GN.picker(name => {
+            if (!form.fugitive.trim()) form.fugitive = name;
+            else if (!form.marshal.trim() && GN.fold(form.fugitive) !== GN.fold(name)) form.marshal = name;
+            else form.fugitive = name;
+            renderSetup();
+          }, [form.fugitive, form.marshal], 'Regulars — tap to fill in');
+      const rows = computer
+        ? (form.you === 'fugitive' ? [meRow(), computerRow()] : [computerRow(), meRow()])
+        : [nameRow('fugitive'), nameRow('marshal')];
       app.replaceChildren(el('div', {class: 'fg-setup'}, [
         hero,
         el('p', {class: 'fg-lede', text: 'One runs, one hunts. The Fugitive lays a trail of face-down hideouts from the cell at 0 to the plane out at 42; the Marshal guesses numbers to turn them over.'}),
         el('div', {id: 'resume'}),
         el('div', {class: 'fg-panel fg-paper'}, [
           el('h2', {text: 'Who’s playing?'}),
-          // The regulars, with their faces: the first tap fills the
-          // Fugitive, the next the Marshal.
-          GN.picker(name => {
-            if (!form.fugitive.trim()) form.fugitive = name;
-            else if (!form.marshal.trim() && GN.fold(form.fugitive) !== GN.fold(name)) form.marshal = name;
-            else form.fugitive = name;
-            renderSetup();
-          }, [form.fugitive, form.marshal], 'Regulars — tap to fill in'),
-          nameRow('fugitive'),
-          nameRow('marshal'),
+          picker,
+          ...rows,
           el('button', {class: 'fg-btn fg-btn-quiet', type: 'button', text: '⇅ Swap roles', onclick: () => {
-            [form.fugitive, form.marshal] = [form.marshal, form.fugitive];
+            if (computer) form.you = other(form.you);
+            else [form.fugitive, form.marshal] = [form.marshal, form.fugitive];
             renderSetup();
           }}),
           el('div', {class: 'fg-choice'}, [
             choice('phones', 'On our own phones', 'This screen is the table. Scan its code on each phone and sit down.'),
-            choice('pass', 'Pass this device between us', 'Hands are hidden while it changes hands.')
+            choice('pass', 'Pass this device between us', 'Hands are hidden while it changes hands.'),
+            choice('computer', 'Against the computer', 'On your own. Easy plays plainly; Hard bluffs, and deduces as well as the notepad. Not counted in the records.')
           ]),
           el('button', {class: 'fg-btn fg-btn-fugitive fg-btn-wide', type: 'button', text: 'Deal', onclick: deal}),
           form.error ? el('div', {class: 'fg-error', text: form.error}) : null
@@ -801,7 +869,9 @@
         const mine = !!device.seats[role];
         const taken = data.seats[role].taken;
         let right;
+        const bot = data.computer && data.computer.role === role;
         if (mine) right = el('span', {class: 'fg-muted', text: 'This device'});
+        else if (bot) right = el('span', {class: 'fg-muted', text: `Computer · ${LEVEL_NAMES[data.computer.level] || ''}`});
         else if (taken) {
           right = device.host
             ? el('button', {class: 'fg-btn fg-btn-quiet fg-btn-small', type: 'button', text: 'Free seat', onclick: () => freeSeat(role)})

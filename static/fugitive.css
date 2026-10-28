@@ -184,6 +184,28 @@
 }
 .fg-choice input { margin-top: 3px; width: auto; }
 .fg-choice strong { display: block; }
+/* Against the computer: its name, then Easy | Hard — below it on a phone. */
+.fg-computer {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 10px;
+}
+.fg-computer-name { font: 400 1.25rem var(--fg-poster); letter-spacing: 0.05em; }
+.fg-levels { display: flex; flex: none; border: 1px solid var(--fg-line); border-radius: 10px; overflow: hidden; }
+.fg-level {
+  font: 600 0.9rem var(--font-ui);
+  padding: 10px 14px;
+  border: 0;
+  background: var(--fg-bg);
+  color: var(--muted-2);
+  cursor: pointer;
+}
+.fg-level + .fg-level { border-left: 1px solid var(--fg-line); }
+.fg-level-on { background: var(--fg-marshal); color: var(--fg-ink); }
 
 /* --- the room --------------------------------------------------------- */
 
