@@ -12,6 +12,9 @@ struct HubView: View {
         case ito(String)
         case fugitiveNew, fugitiveRecords
         case fugitiveTable(String)
+        /// An offline game kept on this phone; one kept on a nearby phone.
+        case fugitiveOffline(String)
+        case fugitiveNearby(String)
         /// "You", with a sign-in code when a link or QR brought it.
         case you(String?)
     }
@@ -134,6 +137,8 @@ struct HubView: View {
             .navigationDestination(for: Route.self, destination: destination)
             .task(id: path.isEmpty) {
                 if path.isEmpty {
+                    // Offline games waiting for a signal go home quietly.
+                    Task { await OfflineUploads.sendWaiting() }
                     await Faces.shared.load()
                     await checkResume()
                 }
@@ -179,6 +184,8 @@ struct HubView: View {
         case .fugitiveNew:
             FugitiveSetupView(onDealt: { go(.fugitive($0)) },
                               onResume: { path = [.fugitiveTable($0)] },
+                              onOffline: { path = [.fugitiveOffline($0)] },
+                              onNearby: { path = [.fugitiveNearby($0)] },
                               onRecords: { path.append(.fugitiveRecords) })
         case .fugitiveRecords:
             FugitiveRecordsView()
@@ -188,6 +195,10 @@ struct HubView: View {
             } else {
                 FugitiveTableScreen(store: FugitiveStore(code: code))
             }
+        case .fugitiveOffline(let code):
+            OfflineFugitiveScreen(code: code)
+        case .fugitiveNearby(let code):
+            NearbyFugitiveScreen(code: code)
         case .you(let code):
             YouScreen(linkCode: code)
         }

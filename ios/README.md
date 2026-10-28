@@ -16,6 +16,16 @@ cd ios && xcodegen             # after any change to project.yml or new files
 open GameNight.xcodeproj
 ```
 
+Fugitive also plays with no internet (1.3.0): the rules are a Swift port
+of `games/fugitive/engine.py`, pinned to it by scripted games, and finished
+games are sent home to be recorded when there's signal. See `../CLAUDE.md`
+→ "Offline Fugitive". The non-UI Swift — models, client, offline engine,
+nearby play — also builds and tests on Linux (CI runs it):
+
+```bash
+ios/LinuxTests/run.sh          # Docker, swift:6.2 image
+```
+
 Fugitive's card faces are PNGs rendered from the web's own drawing code
 (`static/fugitive.js`), so the two can't drift by hand. After changing the
 card art or `TWO_FOOTPRINTS`, render them again (needs Node and the
@@ -97,6 +107,10 @@ Then in App Store Connect → TestFlight:
   > topic display reached by a room code. Fugitive: "Start a game", two
   > names, "Pass this device between us", Deal. The camera is used to scan
   > room QR codes and, optionally, for a profile photo on "You" (top left).
+  > Fugitive also plays with no internet: choose "Pass this phone, offline"
+  > in setup; or on two phones, "Two phones side by side, offline" on one
+  > and "Join a nearby game" on the other — that asks for local network
+  > access, which is only used to find the other phone.
 
 The server has to be running a version with the app's API before a build
 goes out — the app talks to production by default: v1.6.1 for Flip 7, v1.8.2

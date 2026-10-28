@@ -15,7 +15,7 @@ nonisolated enum FugitiveRole: String, Codable, CaseIterable, Identifiable {
     var title: String { self == .fugitive ? "Fugitive" : "Marshal" }
 }
 
-nonisolated struct FugitivePayload: Decodable, Equatable {
+nonisolated struct FugitivePayload: Codable, Equatable {
     let code: String
     let players: [String: String]
     let seats: [String: FugitiveSeat]
@@ -35,18 +35,18 @@ nonisolated struct FugitivePayload: Decodable, Equatable {
     func taken(_ role: FugitiveRole) -> Bool { seats[role.rawValue]?.taken ?? false }
 }
 
-nonisolated struct FugitiveSeat: Decodable, Equatable {
+nonisolated struct FugitiveSeat: Codable, Equatable {
     let taken: Bool
 }
 
-nonisolated struct FugitiveYou: Decodable, Equatable {
+nonisolated struct FugitiveYou: Codable, Equatable {
     /// "host", "seat", or nil for a token that's nobody's.
     let role: String?
     let seat: FugitiveRole?
 }
 
-nonisolated struct FugitiveGame: Decodable, Equatable {
-    enum Phase: String, Decodable {
+nonisolated struct FugitiveGame: Codable, Equatable {
+    enum Phase: String, Codable {
         case fugitiveDraw = "fugitive_draw"
         case fugitiveHide = "fugitive_hide"
         case marshalDraw = "marshal_draw"
@@ -88,7 +88,7 @@ nonisolated struct FugitiveGame: Decodable, Equatable {
     var myTurn: Bool { turn != nil && turn == viewerRole }
 }
 
-nonisolated struct Hideout: Decodable, Equatable {
+nonisolated struct Hideout: Codable, Equatable {
     /// Nil while face down to this viewer.
     let card: Int?
     /// Public: you can count the cards tucked beneath a hideout.
@@ -97,7 +97,7 @@ nonisolated struct Hideout: Decodable, Equatable {
     let revealed: Bool
 }
 
-nonisolated struct FugitiveEvent: Decodable, Equatable, Identifiable {
+nonisolated struct FugitiveEvent: Codable, Equatable, Identifiable {
     let id: Int
     /// drew | hid | passed | guessed | manhunt | game_over
     let kind: String
@@ -115,8 +115,8 @@ nonisolated struct FugitiveEvent: Decodable, Equatable, Identifiable {
 
 /// A move, as `POST /fugitive/api/play/<code>/move` takes it. Fields that
 /// don't apply are left out, not sent as null.
-nonisolated struct FugitiveMove: Encodable, Equatable {
-    enum Kind: String, Encodable {
+nonisolated struct FugitiveMove: Codable, Equatable {
+    enum Kind: String, Codable {
         case draw, hide, pass, guess, resign
         case letGo = "let_go"
     }
@@ -128,7 +128,7 @@ nonisolated struct FugitiveMove: Encodable, Equatable {
     let seq: Int
 }
 
-nonisolated struct FugitiveRematch: Decodable, Equatable {
+nonisolated struct FugitiveRematch: Codable, Equatable {
     let code: String
     let hostToken: String
 }
@@ -157,43 +157,4 @@ nonisolated struct FugitiveStats: Decodable, Equatable {
     let gamesPlayed: Int
     let leaderboard: [Row]
     let recent: [Recent]
-}
-
-extension GameNightClient {
-    static let fugitiveHeader = "X-Fugitive-Token"
-
-    func fugitiveCreate(fugitive: String, marshal: String) async throws -> FugitivePayload {
-        try await send("POST", "fugitive/api/play", body: ["fugitive": fugitive, "marshal": marshal])
-    }
-
-    func fugitiveState(code: String, token: String?) async throws -> FugitivePayload {
-        try await send("GET", "fugitive/api/play/\(code)", token: token, tokenHeader: Self.fugitiveHeader)
-    }
-
-    func fugitiveMove(code: String, _ move: FugitiveMove, token: String) async throws -> FugitivePayload {
-        try await send("POST", "fugitive/api/play/\(code)/move", body: move, token: token, tokenHeader: Self.fugitiveHeader)
-    }
-
-    func fugitiveClaim(code: String, role: FugitiveRole) async throws -> FugitivePayload {
-        try await send("POST", "fugitive/api/play/\(code)/seats/\(role.rawValue)/claim")
-    }
-
-    func fugitiveRelease(code: String, role: FugitiveRole, token: String) async throws -> FugitivePayload {
-        try await send("POST", "fugitive/api/play/\(code)/seats/\(role.rawValue)/release",
-                       token: token, tokenHeader: Self.fugitiveHeader)
-    }
-
-    func fugitiveRematch(code: String, token: String) async throws -> FugitiveRematch {
-        try await send("POST", "fugitive/api/play/\(code)/rematch", token: token, tokenHeader: Self.fugitiveHeader)
-    }
-
-    func fugitiveStats() async throws -> FugitiveStats {
-        try await send("GET", "fugitive/api/stats")
-    }
-
-    /// The table's web address — what the invite QR points at, so a phone
-    /// without the app can still sit down.
-    func fugitiveTableURL(code: String) -> URL {
-        baseURL.appendingPathComponent("fugitive/play/\(code)")
-    }
 }
