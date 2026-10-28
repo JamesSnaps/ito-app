@@ -39,7 +39,7 @@ struct FugitiveTableScreen: View {
                         HStack(alignment: .top, spacing: 18) {
                             ScrollView {
                                 VStack(spacing: 14) {
-                                    StatusTag(payload: payload, holding: !store.turning.isEmpty)
+                                    StatusTag(payload: payload, holding: store.revealing)
                                     Desk(store: store, payload: payload, cardWidth: cardWidth, controls: false)
                                 }
                                 .padding(20)
@@ -62,7 +62,7 @@ struct FugitiveTableScreen: View {
                     } else {
                         ScrollView {
                             VStack(spacing: 14) {
-                                StatusTag(payload: payload, holding: !store.turning.isEmpty)
+                                StatusTag(payload: payload, holding: store.revealing)
                                 Desk(store: store, payload: payload, cardWidth: cardWidth)
                                 SidePanels(store: store, payload: payload)
                             }
@@ -939,7 +939,7 @@ private struct LandscapeTable: View {
             VStack(spacing: 8) {
             ScrollView {
                 VStack(spacing: 10) {
-                    StatusTag(payload: payload, compact: true, holding: !store.turning.isEmpty)
+                    StatusTag(payload: payload, compact: true, holding: store.revealing)
                     // A guessing Marshal can't draw, and the notepad needs
                     // the room: the decks are back for the next draw.
                     if !guessing { Decks(store: store, game: g, cardWidth: cardWidth * 0.6, compact: true) }
@@ -1116,9 +1116,12 @@ private struct Notepad: View {
         let marks = noted(g)
         VStack(alignment: .leading, spacing: compact ? 4 : 10) {
             HStack {
-                Text("\(payload.name(.marshal))’s notes").font(Noir.hand(compact ? 20 : 26)).foregroundStyle(Noir.pen)
-                    .lineLimit(1).minimumScaleFactor(0.7)
-                Spacer(minLength: 6)
+                // Sideways the row holds two switches, so the title gives way.
+                if !compact {
+                    Text("\(payload.name(.marshal))’s notes").font(Noir.hand(26)).foregroundStyle(Noir.pen)
+                        .lineLimit(1).minimumScaleFactor(0.7)
+                    Spacer(minLength: 6)
+                }
                 // Your own pencil: a tap crosses a number out, or clears it.
                 Picker("A tap on the notepad", selection: $store.marking) {
                     Text(guessing ? "Guess" : "Look").tag(false)

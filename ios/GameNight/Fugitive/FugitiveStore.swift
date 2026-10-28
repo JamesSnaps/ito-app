@@ -70,6 +70,9 @@ final class FugitiveStore {
     /// Hideouts found by a guess but not yet turned over on the trail: a
     /// guess of several numbers turns them one at a time, not all at once.
     private(set) var turning: Set<Int> = []
+    /// From a successful guess arriving until its last card has turned and
+    /// been stamped: the banner holds a catch back until then.
+    private(set) var revealing = false
     /// Cards drawn but still on their way: faces this viewer will see, and
     /// how many backs each hand is still owed.
     private(set) var incomingCards: Set<Int> = []
@@ -336,7 +339,10 @@ final class FugitiveStore {
         // Whatever the new entries put on the table waits for its animation.
         for event in fresher {
             if event.kind == "hid", let index = event.index { landing.insert(index) }
-            if event.kind == "guessed", event.hit == true { turning.formUnion(event.revealed ?? []) }
+            if event.kind == "guessed", event.hit == true {
+                turning.formUnion(event.revealed ?? [])
+                revealing = true
+            }
             if event.kind == "drew", let role = event.role {
                 if role == fresh.game.viewerRole, let card = event.card {
                     incomingCards.insert(card)
@@ -375,6 +381,7 @@ final class FugitiveStore {
         queue = []
         landing = []
         turning = []
+        revealing = false
         incomingCards = []
         incomingBacks = [:]
         Task { await refresh() }
@@ -452,6 +459,7 @@ final class FugitiveStore {
                     await show(found.count > 1 ? "Found · \(k + 1) of \(found.count)" : "Found", .found, for: 0.75)
                 }
                 if found.isEmpty { await show("Found", .found, for: 1.0) }
+                revealing = false
             } else {
                 sound.play(.miss)
                 shakes += 1
