@@ -53,13 +53,13 @@ enum OfflineUploads {
             playedAt: game.finishedAt.map { $0.formatted(.iso8601) })
     }
 
-    /// Games that are done with: sent (or refused, or against the computer
-    /// and never to be sent) a week ago, or abandoned
-    /// for a month. A finished game is never thrown away unsent.
+    /// Games that are done with: sent (or refused, or finished against the
+    /// computer and never to be sent) a week ago, or abandoned for a month —
+    /// one against the computer too. A finished game is never thrown away unsent.
     static func prune(_ shelf: OfflineShelf, now: Date = Date()) {
         for game in shelf.all() {
             let age = now.timeIntervalSince(game.finishedAt ?? game.createdAt)
-            let sent = game.upload != .notYet || game.computer != nil
+            let sent = game.upload != .notYet || (game.computer != nil && game.finishedAt != nil)
             if (sent && age > 7 * 86_400) || (game.finishedAt == nil && age > 30 * 86_400) {
                 shelf.delete(game.code)
             }

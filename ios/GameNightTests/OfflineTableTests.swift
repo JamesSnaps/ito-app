@@ -205,4 +205,22 @@ import Testing
         let left = shelf.all()
         #expect(left.count == 1 && left[0].upload == .notYet && left[0].finishedAt != nil)
     }
+
+    @Test func aComputerGameIsKeptAsLongAsAnyOtherUntilItsFinished() throws {
+        let shelf = OfflineShelf(folder: folder)
+        let table = OfflineTable(shelf: shelf)
+        let tenDays = Date(timeIntervalSinceNow: -10 * 86_400)
+        var codes: [String: String] = [:]
+        for finished in [true, false] {
+            let code = try table.create(you: .fugitive, name: "Ana", level: .easy).code
+            var game = try #require(shelf.load(code))
+            game.createdAt = tenDays
+            game.finishedAt = finished ? tenDays : nil
+            try shelf.save(game)
+            codes[finished ? "finished" : "playing"] = code
+        }
+        OfflineUploads.prune(shelf)
+        // Finished: nothing to send, so it goes after a week. Still going: a month, like any other.
+        #expect(shelf.all().map(\.code) == [codes["playing"]])
+    }
 }

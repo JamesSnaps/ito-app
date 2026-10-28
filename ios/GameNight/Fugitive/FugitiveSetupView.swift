@@ -278,7 +278,7 @@ struct FugitiveSetupView: View {
         } label: {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(offline ? "Back to the offline game" : "Back to the table").font(Noir.poster(22))
+                    Text(game.game.isOver ? "See how it ended" : offline ? "Back to the offline game" : "Back to the table").font(Noir.poster(22))
                     Text("\(game.name(.fugitive)) v \(game.name(.marshal)) · \(offline ? "on this phone" : "room \(game.code)")")
                         .font(.footnote).lineLimit(1)
                 }
@@ -402,12 +402,19 @@ struct FugitiveSetupView: View {
     }
 
     /// The last game is only offered back once it's confirmed to still be
-    /// going: a dead code offered up is worse than no offer.
+    /// going: a dead code offered up is worse than no offer. A game against
+    /// the computer stays on offer once it's over: asking for it is a read,
+    /// and a read is when the computer moves, so this very check can be what
+    /// ends it — hiding it then would lose the result unseen.
+    private func offered(_ payload: FugitivePayload) -> FugitivePayload? {
+        payload.game.isOver && payload.computer == nil ? nil : payload
+    }
+
     private func checkOfflineResume() async {
         let offline = FugitiveTokens.offline
         if let code = offline.lastGame,
            let payload = try? await OfflineTable.shared.fugitiveState(code: code, token: offline.held(for: code).askingToken) {
-            resumableOffline = payload.game.isOver ? nil : payload
+            resumableOffline = offered(payload)
         } else {
             resumableOffline = nil
         }
@@ -418,7 +425,7 @@ struct FugitiveSetupView: View {
         guard let code = tokens.lastGame else { resumable = nil; return }
         do {
             let payload = try await AppSettings.client.fugitiveState(code: code, token: tokens.held(for: code).askingToken)
-            resumable = payload.game.isOver ? nil : payload
+            resumable = offered(payload)
         } catch let failure as GameNightClient.Failure where failure.status == 404 {
             tokens.lastGame = nil
             resumable = nil
