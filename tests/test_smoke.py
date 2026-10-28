@@ -90,7 +90,10 @@ def test_host_and_player_pages_render():
     c = client()
     code = new_room(c)
     assert c.get(f"/ito/host/{code}").status_code == 200
-    assert c.get(f"/ito/play/{code}").status_code == 200
+    player = c.get(f"/ito/play/{code}")
+    assert player.status_code == 200
+    # The installed app has no browser chrome: the display needs its own way out.
+    assert 'class="display-leave" href="/"' in player.get_data(as_text=True)
     assert c.get("/ito/rules").status_code == 200
     assert c.get("/ito/stats").status_code == 200
 

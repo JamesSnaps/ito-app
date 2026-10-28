@@ -13,7 +13,12 @@
   <div class="display-round" id="round">Waiting for the host</div>
   {{ topic_card('card') }}
   <div class="display-waiting" id="waiting">The host is picking a topic&hellip;</div>
-  <div class="display-footer">Room {{ code }}</div>
+  {# A way out, kept as quiet as the room code beside it: this page is cast
+     to TVs, but in the installed app there's no browser chrome to leave by. #}
+  <div class="display-footer">
+    <a class="display-leave" href="{{ url_for('hub') }}" aria-label="Leave the room, back to {{ app_name }}">&larr; {{ app_name }}</a>
+    <span>Room {{ code }}</span>
+  </div>
 
   {{ card_script() }}
   <script>

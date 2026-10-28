@@ -54,7 +54,9 @@ problem.
   build step, no framework. Player page polls
   `/ito/api/<code>/state` every 2s.
 - Single container via `Dockerfile` + `docker-compose.yml`.
-- Smoke tests in `tests/test_smoke.py` (`pytest tests -q`).
+- Smoke tests in `tests/test_smoke.py` (`pytest tests -q`). CI runs the whole
+  suite on every PR (`.github/workflows/tests.yml`) and again on main
+  before publishing the image.
 - Flip 7's scorekeeper is one page of client-side JS plus its own
   `static/flip7.css`; its state never reaches the server. Play mode is the
   opposite — the game runs in `games/flip7/engine.py` on the server.
@@ -419,7 +421,9 @@ why everything here is shaped around a JSON API.
 - `viewport-fit=cover`, so body padding and the sticky bars use
   `env(safe-area-inset-*)`. Anything new pinned to an edge needs the same.
 - **Every page needs its own way back** — standalone mode has no browser
-  chrome. `join.html` and ito's landing gained one for this.
+  chrome. `join.html` and ito's landing gained one for this; ito's player
+  display has a quiet "← Game Night" in its footer (v1.9.1) — it's cast to
+  TVs, so it stays as small as the room code beside it.
 
 ### Flip 7 records (added v1.3.0)
 
@@ -898,8 +902,6 @@ one thing besides the games that `app.py` registers), `templates/me.html`
 - Not yet tried on a device: signing in through Authelia from the
   installed app (it affects the ito host pages — iOS opens an off-scope
   login in a sheet, and the cookie may not come back with it).
-- ito's player display (`/ito/play/<code>`) has no way back, which is fine
-  in a browser tab and a dead end in the installed app.
 - A device that's both the dealer and a seat must only treat an answer to
   its *seat* token as news about its seat: a move made as the dealer comes
   back with `you.role == "host"`. Getting this wrong dropped the seat of a
