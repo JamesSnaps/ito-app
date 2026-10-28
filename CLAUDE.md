@@ -811,6 +811,28 @@ read in full; not in the repo).
   bursts for paper, sines for thuds and chimes. Browsers only start audio
   after a tap, so the first tap anywhere unlocks it; the bar has a mute
   toggle (`fugitive:sound`).
+- **Hiding is two steps, said out loud** (v1.13.0, app 1.7.0): a
+  "1 · Hideout / 2 · Sprint" switch above the hint says what a tap in the
+  hand does. It used to be implied by tap order — the first card was the
+  hideout and every later one a sprint — so a player picking their *second*
+  first-turn hideout (2, then 11) silently sprinted with it instead.
+  - **Choosing a hideout**, each card shows its cost: a gold ✓ inside the
+    free reach (last hideout + 3), "+N" for the footprints it would need
+    from sprint cards, faded and untappable if even the whole hand can't get
+    there. Another card *moves* the hideout; it never becomes a sprint.
+  - **Picking one out of reach switches to Sprint** by itself — sprinting is
+    the only way there. Sprint is still there by hand for a hideout in
+    reach: tucking a spare card under one is a real bluff (the hard computer
+    does it), so cards are never greyed out for not being needed. In Sprint
+    every card shows "+1"/"+2"; only 42 (no footprints) is faded.
+  - The hint is a running total ("Hide at 7 · reach 3 + 4 from 1, 2, 17 =
+    7"), the first turn says "hideout 1 of 2" / "2 of 2, or stop at one",
+    and a hand that can't reach anything says so rather than explaining ✓.
+  - Every card but 42 has at least one footprint (`footprints()`), so every
+    card can sprint. Tapping the hideout again starts over.
+  - One logic in two places: `FugitiveHiding.swift` (tested in
+    `FugitiveHidingTests`, on Linux too) and `hideCost`/`canTapCard`/
+    `tapCard`/`hideHint` in play.html. Change one, change the other.
 - **The Marshal's notepad is paper**: lined, a red margin, handwriting from
   the device's own fonts. Your cards and seen sprints are struck in pen,
   wrong single guesses in pencil, finds circled green, picks circled red.

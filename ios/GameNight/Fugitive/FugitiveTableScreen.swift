@@ -331,7 +331,8 @@ private struct Fan: View {
         if hiding, let number = item.number {
             let picked = store.pick == number
             let sprinting = store.sprints.contains(number)
-            let dim = !picked && !sprinting && store.pick == nil && !store.reachable(number)
+            let badge = badge(number, picked: picked, sprinting: sprinting)
+            let dim = !picked && !sprinting && !store.hiding.canTap(number, in: game)
             Button { store.tap(number) } label: {
                 FugitiveCard(number: number, width: cardWidth)
                     .overlay {
@@ -340,21 +341,100 @@ private struct Fan: View {
                                 .strokeBorder(picked ? Noir.fugitive : Noir.marshal, lineWidth: 3)
                         }
                     }
+                    .overlay(alignment: .top) {
+                        // Over the left of the card: the part the next card in the fan leaves showing.
+                        if let badge { HandBadge(badge: badge).offset(x: -cardWidth * 0.17, y: -9) }
+                    }
                     .offset(y: picked ? -22 : sprinting ? -12 : 0)
-                    .opacity(dim ? 0.45 : 1)
+                    .opacity(dim ? 0.35 : 1)
             }
             .buttonStyle(PaperPress())
-            .disabled(store.busy || store.animating)
-            .accessibilityLabel(cardLabel(number, picked: picked))
+            .disabled(store.busy || store.animating || dim)
+            .accessibilityLabel(cardLabel(number, badge: badge))
             .accessibilityAddTraits(picked || sprinting ? .isSelected : [])
         } else {
             FugitiveCard(number: item.number, width: cardWidth)
         }
     }
 
-    private func cardLabel(_ number: Int, picked: Bool) -> String {
-        guard store.pick != nil else { return "\(number)" }
-        return picked ? "\(number), hiding here" : "\(number), sprint with it"
+    /// What the card shows it would do: its cost as a hideout while choosing
+    /// one, its footprints while sprinting, and what it's been chosen for.
+    private func badge(_ number: Int, picked: Bool, sprinting: Bool) -> HandBadge.Kind? {
+        if picked { return .hide }
+        let steps = game.steps(number)
+        if sprinting { return .sprint(steps) }
+        switch store.hiding.mode {
+        case .hideout:
+            switch FugitiveHiding.cost(number, in: game) {
+            case .inReach: return .inReach
+            case .needs(let n): return .needs(n)
+            case .outOfReach: return nil
+            }
+        case .sprint:
+            return steps > 0 ? .steps(steps) : nil
+        }
+    }
+
+    private func cardLabel(_ number: Int, badge: HandBadge.Kind?) -> String {
+        switch badge {
+        case .hide: return "\(number), hiding here"
+        case .sprint(let n): return "\(number), sprinting, \(n) footprint\(n == 1 ? "" : "s")"
+        case .inReach: return "\(number), in reach"
+        case .needs(let n): return "\(number), needs \(n) more footprint\(n == 1 ? "" : "s")"
+        case .steps(let n): return "\(number), sprint for \(n) footprint\(n == 1 ? "" : "s")"
+        case nil: return "\(number), out of reach"
+        }
+    }
+}
+
+/// The tag over a card in the Fugitive's hand while hiding.
+private struct HandBadge: View {
+    enum Kind: Equatable {
+        case inReach, needs(Int), steps(Int), hide, sprint(Int)
+    }
+    let badge: Kind
+
+    var body: some View {
+        HStack(spacing: 2) {
+            switch badge {
+            case .inReach:
+                Image(systemName: "checkmark").font(.system(size: 9, weight: .black))
+            case .hide:
+                Text("HIDE")
+            case .needs(let n), .steps(let n), .sprint(let n):
+                Image(systemName: "shoeprints.fill").font(.system(size: 8))
+                Text("+\(n)")
+            }
+        }
+        .font(Noir.poster(13))
+        .foregroundStyle(filled ? Noir.ink : Noir.card)
+        .padding(.horizontal, badge == .inReach ? 4 : 5)
+        .frame(minWidth: 20, minHeight: 20)
+        .background(Capsule().fill(fill))
+        .overlay(Capsule().strokeBorder(edge, lineWidth: 1.5))
+        .shadow(color: .black.opacity(0.4), radius: 2, y: 1)
+        .accessibilityHidden(true)
+    }
+
+    private var filled: Bool {
+        switch badge {
+        case .inReach, .hide, .sprint: true
+        case .needs, .steps: false
+        }
+    }
+    private var fill: Color {
+        switch badge {
+        case .inReach, .hide: Noir.fugitive
+        case .sprint: Noir.marshal
+        case .needs, .steps: Noir.night.opacity(0.92)
+        }
+    }
+    private var edge: Color {
+        switch badge {
+        case .steps: Noir.marshal
+        case .needs: Noir.fugitive
+        default: .clear
+        }
     }
 }
 
@@ -557,7 +637,11 @@ private struct FugitiveControls: View {
                 ControlHint(text: "Tap a deck to draw.")
             } else if game.phase == .fugitiveHide {
                 VStack(spacing: 10) {
-                    ControlHint(text: hint)
+                    if let heading = FugitiveHiding.heading(game) {
+                        Text(heading.uppercased()).font(Noir.type(13)).foregroundStyle(Noir.fugitive)
+                    }
+                    HidingSteps(store: store)
+                    ControlHint(text: store.hiding.hint(game))
                     HStack(spacing: 10) {
                         Button {
                             Task { await store.hide() }
@@ -583,17 +667,38 @@ private struct FugitiveControls: View {
         }
     }
 
-    private var hint: String {
-        let last = game.lastHideout
-        guard let pick = store.pick else {
-            return "From \(last) you can reach \(last + game.maxStep). Pick a card to hide at; then tap others to sprint further."
+}
+
+/// Which step a tap in the hand is for: where to hide, or sprint cards.
+private struct HidingSteps: View {
+    let store: FugitiveStore
+
+    var body: some View {
+        HStack(spacing: 0) {
+            step(.hideout, "1 · Hideout")
+            step(.sprint, "2 · Sprint")
         }
-        if pick <= last { return "Hideouts go up — pick something above \(last)." }
-        if pick > store.reach {
-            let short = pick - store.reach
-            return "\(pick) needs \(short) more footprint\(short > 1 ? "s" : "") — tap cards to sprint with them."
+        .padding(3)
+        .background(Capsule().fill(Color.black.opacity(0.35)))
+        .overlay(Capsule().strokeBorder(Noir.line))
+        .animation(.easeOut(duration: 0.15), value: store.hiding.mode)
+    }
+
+    private func step(_ mode: FugitiveHiding.Mode, _ title: String) -> some View {
+        let on = store.hiding.mode == mode
+        return Button {
+            store.switchHiding(to: mode)
+        } label: {
+            Text(title)
+                .font(Noir.type(14))
+                .foregroundStyle(on ? Noir.ink : Noir.card.opacity(0.8))
+                .padding(.horizontal, 16).padding(.vertical, 7)
+                .background(Capsule().fill(on ? (mode == .hideout ? Noir.fugitive : Noir.marshal) : .clear))
         }
-        return store.sprints.isEmpty ? "Ready." : "Sprinting with \(store.sprints.sorted().map(String.init).joined(separator: ", "))."
+        .buttonStyle(.plain)
+        .disabled(mode == .sprint && store.pick == nil)
+        .opacity(mode == .sprint && store.pick == nil ? 0.45 : 1)
+        .accessibilityAddTraits(on ? .isSelected : [])
     }
 }
 

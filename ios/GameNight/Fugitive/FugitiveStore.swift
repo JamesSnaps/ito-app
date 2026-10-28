@@ -25,8 +25,10 @@ final class FugitiveStore {
     private(set) var shownAs: FugitiveRole?
 
     // Choosing, on this device.
-    var pick: Int?
-    var sprints: Set<Int> = []
+    /// Where the Fugitive is hiding and with which sprint cards, while choosing.
+    var hiding = FugitiveHiding()
+    var pick: Int? { hiding.pick }
+    var sprints: Set<Int> { hiding.sprints }
     var guesses: Set<Int> = []
     var assist: Bool = UserDefaults.standard.object(forKey: "fugitive.assist") as? Bool ?? true {
         didSet { UserDefaults.standard.set(assist, forKey: "fugitive.assist") }
@@ -152,33 +154,19 @@ final class FugitiveStore {
     // MARK: - choosing a hideout
 
     /// How far the Fugitive can reach with the sprint cards picked.
-    var reach: Int {
-        guard let game else { return 0 }
-        return game.lastHideout + game.maxStep + sprints.reduce(0) { $0 + game.steps($1) }
-    }
+    var reach: Int { game.map(hiding.reach) ?? 0 }
 
-    var canHide: Bool {
-        guard let game, let pick else { return false }
-        return pick > game.lastHideout && pick <= reach
-    }
+    var canHide: Bool { game.map(hiding.canHide) ?? false }
 
-    /// Could this card be reached at all, with the rest of the hand?
-    func reachable(_ card: Int) -> Bool {
-        guard let game, let hand = game.hand else { return false }
-        let spare = hand.filter { $0 != card }.reduce(0) { $0 + game.steps($1) }
-        return card > game.lastHideout && card - game.lastHideout - game.maxStep <= spare
-    }
-
-    /// The first card tapped is where to hide; any after it sprint.
+    /// A card in hand, in whichever step is on: where to hide, or a sprint.
     func tap(_ card: Int) {
-        guard let game else { return }
-        if pick == nil || pick == card {
-            pick = pick == card ? nil : card
-            sprints.remove(card)
-        } else if game.steps(card) > 0 {
-            if sprints.contains(card) { sprints.remove(card) } else { sprints.insert(card) }
-        }
+        guard let game, hiding.canTap(card, in: game) else { return }
+        hiding.tap(card, in: game)
         Sound.shared.play(.flick, volume: 0.6)
+    }
+
+    func switchHiding(to mode: FugitiveHiding.Mode) {
+        hiding.switchTo(mode)
     }
 
     func toggleGuess(_ number: Int) {
@@ -302,8 +290,7 @@ final class FugitiveStore {
             return
         }
         if fresh.game.seq != payload?.game.seq {
-            pick = nil
-            sprints = []
+            hiding = FugitiveHiding()
             guesses = []
         }
         let first = lastEvent == nil
