@@ -12,12 +12,16 @@ import SwiftUI
 struct FugitiveTableScreen: View {
     @State var store: FugitiveStore
     @Environment(\.horizontalSizeClass) private var sizeClass
+    /// Compact height: a phone held sideways, which gets its own layout.
+    @Environment(\.verticalSizeClass) private var heightClass
+    @State private var showingPanels = false
     @Environment(\.scenePhase) private var scenePhase
     @State private var soundOn = Sound.enabled
     @State private var rules: WebPage?
     @State private var showingCode = false
 
     var body: some View {
+        let landscape = heightClass == .compact
         GeometryReader { geo in
             let wide = sizeClass == .regular && geo.size.width > geo.size.height
             let cardWidth: CGFloat = sizeClass == .regular ? 72 : min(60, geo.size.width / 6.3)
@@ -26,7 +30,9 @@ struct FugitiveTableScreen: View {
                 if store.gone {
                     FugitiveGone()
                 } else if let payload = store.payload {
-                    if wide {
+                    if landscape {
+                        LandscapeTable(store: store, payload: payload, size: geo.size)
+                    } else if wide {
                         HStack(alignment: .top, spacing: 18) {
                             ScrollView {
                                 VStack(spacing: 14) {
@@ -62,7 +68,11 @@ struct FugitiveTableScreen: View {
                 // Drawn over the table rather than as the scroll view's inset:
                 // on iOS 26 the inset gets the scroll edge effect, and the
                 // hand showed through it.
-                VStack { Spacer(); HideBar(store: store) }
+                // Sideways, Hide sits in the table's right-hand column instead.
+                if !landscape { VStack { Spacer(); HideBar(store: store) } }
+                if landscape, showingPanels, let payload = store.payload {
+                    LandscapePanels(store: store, payload: payload, showing: $showingPanels)
+                }
                 if store.game?.phase == .manhunt { SirenWash() }
                 if store.flyingAway { PlaneAway() }
                 if let stamp = store.stamp { InkStamp(stamp: stamp).id(stamp.id) }
@@ -71,12 +81,19 @@ struct FugitiveTableScreen: View {
                 }
             }
             .animation(.easeInOut(duration: 0.25), value: store.folderFor)
+            .animation(.easeOut(duration: 0.22), value: showingPanels)
         }
         .navigationTitle(store.game?.myTurn == true ? "● Your turn" : store.inviteURL == nil ? "Fugitive · offline" : "Fugitive")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Noir.night, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {
+            if heightClass == .compact {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showingPanels.toggle() } label: { Image(systemName: "sidebar.right") }
+                        .accessibilityLabel(showingPanels ? "Hide the seats and case notes" : "Show the seats and case notes")
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button { rules = WebPage(url: AppSettings.client.webURL("/fugitive/rules")) } label: {
                     Image(systemName: "questionmark.circle")
@@ -252,6 +269,8 @@ private struct Plate: View {
     let role: FugitiveRole
     let mine: Bool
     let cardWidth: CGFloat
+    /// One line for the name and a tighter frame: a phone held sideways.
+    var compact = false
     /// The opening deal: off the table, then in one at a time.
     @State private var dealtIn = true
 
@@ -259,13 +278,19 @@ private struct Plate: View {
         let g = payload.game
         let count = g.handCount(role)
         let turn = g.turn == role && !g.isOver
-        VStack(spacing: 6) {
-            HStack(spacing: 10) {
-                Mugshot(name: payload.name(role), role: role, size: 40)
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(payload.name(role)).font(Noir.poster(24)).foregroundStyle(Noir.card)
+        VStack(spacing: compact ? 2 : 6) {
+            HStack(spacing: compact ? 8 : 10) {
+                Mugshot(name: payload.name(role), role: role, size: compact ? 26 : 40)
+                if compact {
+                    Text(payload.name(role)).font(Noir.poster(19)).foregroundStyle(Noir.card)
                     Text("\(role.title) · \(count) card\(count == 1 ? "" : "s")")
                         .font(Noir.type(12)).foregroundStyle(Noir.card.opacity(0.6))
+                } else {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(payload.name(role)).font(Noir.poster(24)).foregroundStyle(Noir.card)
+                        Text("\(role.title) · \(count) card\(count == 1 ? "" : "s")")
+                            .font(Noir.type(12)).foregroundStyle(Noir.card.opacity(0.6))
+                    }
                 }
                 Spacer()
                 if turn {
@@ -280,7 +305,7 @@ private struct Plate: View {
                 hiding: mine && role == .fugitive && g.turn == .fugitive && g.phase == .fugitiveHide,
                 cardWidth: cardWidth, dealtIn: dealtIn)
         }
-        .padding(12)
+        .padding(.horizontal, 12).padding(.vertical, compact ? 6 : 12)
         .background(Color.black.opacity(turn ? 0.34 : 0.22), in: RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14)
             .strokeBorder(turn ? Noir.colour(role).opacity(0.85) : Noir.line, lineWidth: turn ? 2 : 1))
@@ -588,6 +613,8 @@ struct Decks: View {
     let store: FugitiveStore
     let game: FugitiveGame
     let cardWidth: CGFloat
+    /// Just the icon under each pile, not its range: a phone held sideways.
+    var compact = false
 
     static let labels = ["4–14", "15–28", "29–41"]
     static let icons = ["figure.walk", "car.fill", "airplane"]
@@ -596,7 +623,7 @@ struct Decks: View {
         let canDraw = game.myTurn && (game.phase == .fugitiveDraw || game.phase == .marshalDraw)
             && !store.animating && !store.busy
         let colour = game.turn.map(Noir.colour) ?? Noir.card
-        HStack(spacing: 20) {
+        HStack(spacing: compact ? 16 : 20) {
             ForEach(game.deckCounts.indices, id: \.self) { i in
                 let n = game.deckCounts[i]
                 if canDraw && n > 0 {
@@ -614,7 +641,7 @@ struct Decks: View {
 
     private func pile(_ i: Int, _ n: Int, live: Color?) -> some View {
         let layers = min(4, (n + 3) / 4)
-        return VStack(spacing: 6) {
+        return VStack(spacing: compact ? 4 : 6) {
             ZStack {
                 if n == 0 {
                     RoundedRectangle(cornerRadius: cardWidth * 0.08)
@@ -638,9 +665,14 @@ struct Decks: View {
             }
             .shadow(color: (live ?? .clear).opacity(0.9), radius: live == nil ? 0 : 12)
             .scaleEffect(live == nil ? 1 : 1.05)
-            Label(Self.labels[i], systemImage: Self.icons[i])
-                .font(Noir.type(12))
-                .foregroundStyle(Noir.card.opacity(live == nil ? 0.6 : 1))
+            Group {
+                if compact {
+                    Image(systemName: Self.icons[i]).font(.system(size: 11))
+                } else {
+                    Label(Self.labels[i], systemImage: Self.icons[i]).font(Noir.type(12))
+                }
+            }
+            .foregroundStyle(Noir.card.opacity(live == nil ? 0.6 : 1))
         }
     }
 }
@@ -648,18 +680,26 @@ struct Decks: View {
 private struct FugitiveControls: View {
     let store: FugitiveStore
     let game: FugitiveGame
+    /// Sideways, the column is short: the heading loses "First turn" (the
+    /// banner above says it), and the hint shows only once a hideout is
+    /// picked — before then the badges on the cards say the same.
+    var compact = false
 
     var body: some View {
         if game.turn == .fugitive, game.viewerRole == .fugitive {
             if game.phase == .fugitiveDraw {
                 ControlHint(text: "Tap a deck to draw.")
             } else if game.phase == .fugitiveHide {
-                VStack(spacing: 10) {
+                VStack(spacing: compact ? 8 : 10) {
                     if let heading = FugitiveHiding.heading(game) {
-                        Text(heading.uppercased()).font(Noir.type(13)).foregroundStyle(Noir.fugitive)
+                        Text((compact ? heading.replacingOccurrences(of: "First turn · ", with: "") : heading).uppercased())
+                            .font(Noir.type(13)).foregroundStyle(Noir.fugitive)
+                            .multilineTextAlignment(.center)
                     }
                     HidingSteps(store: store)
-                    ControlHint(text: store.hiding.hint(game))
+                    if !compact || store.pick != nil {
+                        ControlHint(text: store.hiding.hint(game))
+                    }
                     // Hide and the way out are in HideBar, pinned to the bottom.
                 }
             }
@@ -723,7 +763,24 @@ struct HideBar: View {
     }
 
     var body: some View {
-        if let game = Self.shown(store) {
+        if Self.shown(store) != nil {
+            HideActions(store: store)
+            .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 4)
+            .frame(maxWidth: 720)
+            .frame(maxWidth: .infinity)
+            .background(Noir.night.ignoresSafeArea(edges: .bottom))
+            .overlay(alignment: .top) { Rectangle().fill(Noir.line).frame(height: 1) }
+        }
+    }
+}
+
+/// Hide, and the way out of hiding under it: the bar's contents, and the
+/// right-hand column's on a phone held sideways.
+struct HideActions: View {
+    let store: FugitiveStore
+
+    var body: some View {
+        if let game = HideBar.shown(store) {
             VStack(spacing: 4) {
                 Button {
                     Task { await store.hide() }
@@ -744,11 +801,113 @@ struct HideBar: View {
                     .disabled(store.busy || store.animating)
                 }
             }
-            .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 4)
-            .frame(maxWidth: 720)
-            .frame(maxWidth: .infinity)
-            .background(Noir.night.ignoresSafeArea(edges: .bottom))
-            .overlay(alignment: .top) { Rectangle().fill(Noir.line).frame(height: 1) }
+        }
+    }
+}
+
+/// A phone held sideways: the whole table on one screen. The trail across
+/// the top, the decks and your hand under it, and a column on the right for
+/// what you act on now — the turn's banner and the hiding controls, or the
+/// Marshal's notepad. The seats and case notes are a panel away, behind the
+/// toolbar's sidebar button. The portrait desk stacked everything in one
+/// long column; on the biggest iPhones, which are regular width sideways,
+/// it got the iPad's layout with a 370pt side column beside that column.
+private struct LandscapeTable: View {
+    let store: FugitiveStore
+    let payload: FugitivePayload
+    let size: CGSize
+
+    var body: some View {
+        let g = payload.game
+        let me = g.viewerRole
+        let across: FugitiveRole = me == .marshal ? .fugitive : .marshal
+        let near: FugitiveRole = me ?? .fugitive
+        // Cards sized so the opponent's line, the trail and the hand fit the
+        // height: two rows of cards at 1.4x their width, plus the chrome.
+        let cardWidth = max(36, min(62, (size.height - 150) / 3.1))
+        HStack(alignment: .top, spacing: 14) {
+            // Scrolls only if it has to (a trail deep in sprint cards).
+            ScrollView {
+                VStack(spacing: 6) {
+                    OpponentLine(payload: payload, role: across)
+                    Trail(store: store, payload: payload, cardWidth: cardWidth)
+                    Plate(store: store, payload: payload, role: near, mine: near == me, cardWidth: cardWidth, compact: true)
+                }
+                .padding(.vertical, 4)
+            }
+            .scrollBounceBehavior(.basedOnSize)
+            // The column: what to do now, scrolling if it must, with Hide and
+            // its way out pinned under it so they're never scrolled away.
+            VStack(spacing: 8) {
+            ScrollView {
+                VStack(spacing: 10) {
+                    StatusTag(payload: payload)
+                    Decks(store: store, game: g, cardWidth: cardWidth * 0.6, compact: true)
+                    if me == .fugitive { FugitiveControls(store: store, game: g, compact: true) }
+                    if me == .marshal {
+                        MarshalHint(game: g)
+                        Notepad(store: store, payload: payload)
+                    }
+                    if me == nil { SeatsPanel(store: store, payload: payload) }
+                }
+                .padding(.vertical, 6)
+            }
+            .scrollBounceBehavior(.basedOnSize)
+            HideActions(store: store).padding(.bottom, 4)
+            }
+            .frame(width: min(330, size.width * 0.38))
+        }
+        .padding(.horizontal, 10)
+    }
+}
+
+/// The other player, on one line above the trail when sideways.
+private struct OpponentLine: View {
+    let payload: FugitivePayload
+    let role: FugitiveRole
+
+    var body: some View {
+        let g = payload.game
+        let count = g.handCount(role)
+        HStack(spacing: 8) {
+            Mugshot(name: payload.name(role), role: role, size: 28)
+            Text(payload.name(role)).font(Noir.poster(20)).foregroundStyle(Noir.card)
+            Text("\(role.title) · \(count) card\(count == 1 ? "" : "s")")
+                .font(Noir.type(12)).foregroundStyle(Noir.card.opacity(0.6))
+            if g.turn == role && !g.isOver {
+                Text("THEIR MOVE").font(Noir.type(11)).kerning(1)
+                    .padding(.horizontal, 7).padding(.vertical, 3)
+                    .background(Noir.colour(role), in: RoundedRectangle(cornerRadius: 4))
+                    .foregroundStyle(Noir.ink)
+            }
+            Spacer(minLength: 0)
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// The seats and case notes, slid in from the right over a table held
+/// sideways. Tapping the table behind closes it.
+private struct LandscapePanels: View {
+    let store: FugitiveStore
+    let payload: FugitivePayload
+    @Binding var showing: Bool
+
+    var body: some View {
+        ZStack(alignment: .trailing) {
+            Color.black.opacity(0.35).ignoresSafeArea()
+                .onTapGesture { showing = false }
+            ScrollView {
+                VStack(spacing: 14) {
+                    SeatsPanel(store: store, payload: payload)
+                    CaseNotes(payload: payload)
+                }
+                .padding(14)
+            }
+            .frame(width: 360)
+            .background(Noir.night.ignoresSafeArea())
+            .overlay(alignment: .leading) { Rectangle().fill(Noir.line).frame(width: 1) }
+            .transition(.move(edge: .trailing))
         }
     }
 }

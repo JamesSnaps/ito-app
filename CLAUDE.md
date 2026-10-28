@@ -597,6 +597,24 @@ in-app Safari sheet rather than being rebuilt.
   installed version of the app, so claim a new one only once a build that
   handles it is on TestFlight.
 
+### Fugitive on a phone held sideways (app 1.8.1)
+
+- **Compact height gets its own layout** (`LandscapeTable`), chosen before
+  the iPad split: the biggest iPhones are regular width sideways, and used
+  to get the iPad's long desk column beside a 370pt panel column.
+- **One screen, nothing to scroll in normal play**: on the left the other
+  player on one line (`OpponentLine`), the trail, and your hand in a compact
+  plate at full width; on the right a column with the turn's banner, the
+  decks (`Decks(compact:)`: icons, no ranges), the hiding step and switch
+  (`FugitiveControls(compact:)`: the heading drops "First turn", and the
+  hint waits until a hideout is picked — before that the badges say it),
+  and Hide/Done pinned at its foot (`HideActions`, shared with portrait's
+  `HideBar`). The Marshal's column holds the notepad. Card width comes from
+  the height: two rows of cards plus the chrome.
+- **Seats and case notes are a panel away**: the toolbar's sidebar button
+  slides them in from the right over a dimmed table (`LandscapePanels`);
+  tapping the table closes it. Only shown sideways.
+
 ### Fugitive on iOS (app 1.2.0)
 
 - **Same server, same secrecy.** `FugitiveStore` is play.html in Swift: it
