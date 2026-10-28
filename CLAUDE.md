@@ -624,7 +624,7 @@ in-app Safari sheet rather than being rebuilt.
   tapping the table closes it. Only shown sideways. The panel stops at the
   navigation bar: run up under it, its edge cut through the centred title.
 
-### Fugitive on an iPad in landscape (app 1.8.3)
+### Fugitive on an iPad in landscape (app 1.8.3, 1.8.4)
 
 - **Cards are sized from the height** (`FugitiveTableScreen.deskCard`):
   about 5.2 card widths plus ~450pt of chrome, between 72 (what every iPad
@@ -635,12 +635,20 @@ in-app Safari sheet rather than being rebuilt.
   pinned over it. With bigger cards the bar covered the hand. The desk is
   `Desk(controls: false)` there; the panel also carries the "tap a deck"
   and Marshal hints on your turn.
-- **A hideout once didn't land on an iPad playing online** (25 in the case
-  notes, missing from the trail, the next turn under way). Not reproduced:
-  `everyHideoutLandsOverAWholeGame` plays a whole game against the offline
-  table, hiding on the card just drawn, and every hideout lands. If it comes
-  back, suspect the online timing (a poll and a move crossing), not the
-  trail.
+- **A hideout with sprint cards could stay invisible** (app 1.8.4): the
+  case notes had it, the trail didn't, until the next move redrew it. The
+  store cleared `landing` but SwiftUI missed that one change, so the trail
+  was left drawn with the stop held back — reproduced online on an iPad,
+  hiding with four or more sprint cards. The trail now also reads
+  `store.animating` and only holds a stop back while the table is still
+  playing out, so a settled table always shows every hideout.
+  `everyHideoutLandsOverAWholeGame` covers the store side.
+- **Reopening a dealt game kept the seat** (1.8.4): the hub kept the
+  payload a game was handed over with and reused it on every later open —
+  the dealer's view from the deal, which told the store this device's seat
+  had been freed ("You're no longer the Fugitive"). Handed-over payloads
+  are dropped back at the hub, and one is never read as news about a seat.
+- **The iPad's columns only scroll when they must** (`scrollBounceBehavior(.basedOnSize)`).
 
 ### Fugitive on iOS (app 1.2.0)
 

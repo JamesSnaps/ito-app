@@ -93,7 +93,9 @@ final class FugitiveStore {
     /// the way in), so the first frame isn't a spinner.
     convenience init(payload: FugitivePayload, transport: any FugitiveTransport = AppSettings.client) {
         self.init(code: payload.code, transport: transport)
-        take(payload, askedAs: device.askingToken)
+        // Asked by whoever handed it over (the dealer, usually), not with
+        // this device's own token — so it can't say a seat was freed.
+        take(payload, askedAs: nil)
     }
 
     var game: FugitiveGame? { payload?.game }
