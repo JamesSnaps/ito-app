@@ -32,6 +32,8 @@ struct HubView: View {
     @State private var webPage: WebPage?
     @State private var linkError: String?
     @Environment(\.horizontalSizeClass) private var sizeClass
+    /// The screen's width, for how many tiles go side by side on an iPad.
+    @State private var width: CGFloat = 0
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -55,67 +57,17 @@ struct HubView: View {
                             joinButton
                         }
 
-                        // Side by side wherever there's room for both — an iPad
-                        // either way up — stacked on a phone.
-                        let tiles = sizeClass == .regular
-                            ? AnyLayout(HStackLayout(alignment: .top, spacing: 20))
-                            : AnyLayout(VStackLayout(spacing: 16))
-                        tiles {
-                            GameTile(title: "Flip 7", accent: Theme.gold,
-                                     blurb: "Push your luck, bank your cards — first to 200 takes it. The app is the deck: it shuffles, deals and adds it all up.") {
-                                Flip7Art()
-                            } actions: {
-                                Button { path.append(.newGame) } label: {
-                                    Label("Start a game", systemImage: "suit.spade.fill")
-                                }
-                                .buttonStyle(FeltButtonStyle(kind: resumable == nil ? .gold : .ghost))
-                                HStack(spacing: 10) {
-                                    Button { path.append(.records) } label: { Label("Records", systemImage: "star") }
-                                    Button { open("/flip7/rules") } label: { Label("Rules", systemImage: "questionmark.circle") }
-                                }
-                                .buttonStyle(FeltButtonStyle(kind: .ghost))
-                            }
-                            GameTile(title: "Fugitive", accent: Noir.fugitive,
-                                     blurb: "One runs, one hunts — a trail of hideouts from the cell to the plane out at 42. Two players, on two phones or one passed across.") {
-                                FugitiveArt()
-                            } actions: {
-                                Button { path.append(.fugitiveNew) } label: {
-                                    Label("Start a game", systemImage: "figure.run")
-                                }
-                                // Flip 7's Start keeps the gold: one gold button at a time.
-                                .buttonStyle(FeltButtonStyle(kind: .ghost))
-                                HStack(spacing: 10) {
-                                    Button { path.append(.fugitiveRecords) } label: { Label("Records", systemImage: "star") }
-                                    Button { open("/fugitive/rules") } label: { Label("Rules", systemImage: "questionmark.circle") }
-                                }
-                                .buttonStyle(FeltButtonStyle(kind: .ghost))
-                            }
-                            GameTile(title: "ito", accent: Color(hex: 0x8F7BFF),
-                                     blurb: "Get the numbers in order without saying them. Host a room for the topic cards, or join with the host’s code to see them on this screen.") {
-                                ItoArt()
-                            } actions: {
-                                if let room = itoRoom {
-                                    Button { path.append(.itoHost(room)) } label: {
-                                        Label("Back to room \(room)", systemImage: "arrow.uturn.backward")
-                                    }
-                                    .buttonStyle(FeltButtonStyle(kind: .ghost))
-                                }
-                                HStack(spacing: 10) {
-                                    Button { path.append(.itoHost(nil)) } label: {
-                                        Label(itoRoom == nil ? "Host a room" : "New room", systemImage: "rectangle.on.rectangle")
-                                    }
-                                    Button { open("/ito/rules") } label: { Label("Rules", systemImage: "questionmark.circle") }
-                                }
-                                .buttonStyle(FeltButtonStyle(kind: .ghost))
-                            }
-                        }
+                        tiles
                     }
                     .padding(sizeClass == .regular ? 40 : 24)
-                    .frame(maxWidth: sizeClass == .regular ? 1000 : 560, alignment: .leading)
+                    // An iPad uses its width: at 1000 the tiles were too narrow
+                    // for their buttons, and the screen was mostly margin.
+                    .frame(maxWidth: sizeClass == .regular ? 1280 : 560, alignment: .leading)
                     .frame(maxWidth: .infinity)
                     .foregroundStyle(Theme.cream)
                 }
             }
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button { path.append(.you(nil)) } label: {
@@ -212,6 +164,101 @@ struct HubView: View {
         case .you(let code):
             YouScreen(linkCode: code)
         }
+    }
+
+    /// Stacked on a phone. On an iPad three across when each tile gets room
+    /// for its buttons (landscape), else two and one under — three across a
+    /// portrait iPad broke "Records" over two lines. A Grid, so the tiles in
+    /// a row are one height and their buttons line up.
+    @ViewBuilder private var tiles: some View {
+        if sizeClass != .regular {
+            VStack(spacing: 16) {
+                flip7Tile
+                fugitiveTile
+                itoTile
+            }
+        } else if width >= 1100 {
+            Grid(horizontalSpacing: 20) {
+                GridRow {
+                    flip7Tile
+                    fugitiveTile
+                    itoTile
+                }
+            }
+        } else {
+            Grid(horizontalSpacing: 20, verticalSpacing: 20) {
+                GridRow {
+                    flip7Tile
+                    fugitiveTile
+                }
+                GridRow {
+                    itoTile
+                    Color.clear.gridCellUnsizedAxes([.horizontal, .vertical])
+                }
+            }
+        }
+    }
+
+    // Every tile is the same shape: one button across, then Records and Rules.
+
+    private var flip7Tile: some View {
+        GameTile(title: "Flip 7", accent: Theme.gold,
+                 blurb: "Push your luck, bank your cards — first to 200 takes it. The app is the deck: it shuffles, deals and adds it all up.") {
+            Flip7Art()
+        } actions: {
+            Button { path.append(.newGame) } label: {
+                Label("Start a game", systemImage: "suit.spade.fill")
+            }
+            .buttonStyle(FeltButtonStyle(kind: resumable == nil ? .gold : .ghost))
+            moreRow(records: { path.append(.records) }, rules: "/flip7/rules")
+        }
+    }
+
+    private var fugitiveTile: some View {
+        GameTile(title: "Fugitive", accent: Noir.fugitive,
+                 blurb: "One runs, one hunts — a trail of hideouts from the cell to the plane out at 42. Two players, on two phones or one passed across.") {
+            FugitiveArt()
+        } actions: {
+            Button { path.append(.fugitiveNew) } label: {
+                Label("Start a game", systemImage: "figure.run")
+            }
+            // Flip 7's Start keeps the gold: one gold button at a time.
+            .buttonStyle(FeltButtonStyle(kind: .ghost))
+            moreRow(records: { path.append(.fugitiveRecords) }, rules: "/fugitive/rules")
+        }
+    }
+
+    private var itoTile: some View {
+        GameTile(title: "ito", accent: Color(hex: 0x8F7BFF),
+                 blurb: "Get the numbers in order without saying them. Host a room for the topic cards, or join with the host’s code to see them on this screen.") {
+            ItoArt()
+        } actions: {
+            Group {
+                if let room = itoRoom {
+                    HStack(spacing: 10) {
+                        Button { path.append(.itoHost(room)) } label: {
+                            Label("Back to \(room)", systemImage: "arrow.uturn.backward")
+                        }
+                        Button { path.append(.itoHost(nil)) } label: { Label("New room", systemImage: "plus") }
+                    }
+                } else {
+                    Button { path.append(.itoHost(nil)) } label: {
+                        Label("Host a room", systemImage: "rectangle.on.rectangle")
+                    }
+                }
+            }
+            .buttonStyle(FeltButtonStyle(kind: .ghost))
+            // ito's records are the server's stats page.
+            moreRow(records: { open("/ito/stats") }, rules: "/ito/rules")
+        }
+    }
+
+    private func moreRow(records: @escaping () -> Void, rules: String) -> some View {
+        HStack(spacing: 10) {
+            Button(action: records) { Label("Records", systemImage: "star") }
+            Button { open(rules) } label: { Label("Rules", systemImage: "questionmark.circle") }
+        }
+        .buttonStyle(FeltButtonStyle(kind: .ghost))
     }
 
     private var heading: some View {
@@ -385,10 +432,13 @@ private struct GameTile<Art: View, Actions: View>: View {
             Text(blurb).font(.subheadline).foregroundStyle(Theme.cream.opacity(0.75))
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
-            actions
+            // One line each: a label broken mid-word ("Record / s") made
+            // the buttons in a row different heights.
+            actions.lineLimit(1).minimumScaleFactor(0.8)
         }
         .padding(18)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        // Fills its Grid cell, so tiles side by side end level.
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .background(Theme.cream.opacity(0.06), in: RoundedRectangle(cornerRadius: 18))
         .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Theme.line))
     }

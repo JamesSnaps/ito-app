@@ -609,11 +609,20 @@ in-app Safari sheet rather than being rebuilt.
   (`FugitiveControls(compact:)`: the heading drops "First turn", and the
   hint waits until a hideout is picked — before that the badges say it),
   and Hide/Done pinned at its foot (`HideActions`, shared with portrait's
-  `HideBar`). The Marshal's column holds the notepad. Card width comes from
-  the height: two rows of cards plus the chrome.
+  `HideBar`), with a smaller banner (`StatusTag(compact:)`). Card width
+  comes from the height: two rows of cards plus the chrome.
+- **The Marshal's column is the notepad** (app 1.8.2): eleven numbers to a
+  row in smaller writing (`Notepad(compact:)`), so 1–41 is four rows, the
+  pencil-in switch shares the title's line, and Guess (with Let them go in
+  a Manhunt, side by side) is pinned at the column's foot (`GuessActions`,
+  which is also what sits under the portrait notepad). While guessing the
+  decks step out — nothing can be drawn — and there's no `MarshalHint`, as
+  the banner says it. Before this the notepad ran off the bottom and Guess
+  needed a scroll to find.
 - **Seats and case notes are a panel away**: the toolbar's sidebar button
   slides them in from the right over a dimmed table (`LandscapePanels`);
-  tapping the table closes it. Only shown sideways.
+  tapping the table closes it. Only shown sideways. The panel stops at the
+  navigation bar: run up under it, its edge cut through the centred title.
 
 ### Fugitive on iOS (app 1.2.0)
 
@@ -731,7 +740,13 @@ phones side by side.
   Nothing to license or download. `.ambient` session: follows the silent
   switch and mixes with music. Toggle in Settings and in the table toolbar.
 - **iPad layouts are their own, not a stretched phone.** Hub: game tiles
-  side by side, Join beside the title, one gold button at a time. New game
+  side by side, Join beside the title, one gold button at a time. Up to
+  1280pt wide, three across from 1100pt and two-and-one below that, in a
+  `Grid` so a row's tiles end level (app 1.8.2: capped at 1000 with three
+  across, a tile's two half-width buttons were too narrow and "Records"
+  broke over two lines). Every tile is one button across, then Records and
+  Rules — ito's Records is the server's stats page — and the buttons are
+  one line each. New game
   and Join: a centred column. Records: two columns. Table: mats capped at
   the height two rows of cards need and centred, cards up to 112pt, so two
   players don't sit in a sea of empty felt.
