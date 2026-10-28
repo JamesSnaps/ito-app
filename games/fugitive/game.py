@@ -26,6 +26,7 @@ import copy
 import json
 import os
 import random
+import re
 import secrets
 import time
 from datetime import datetime, timezone
@@ -38,6 +39,7 @@ from core.paths import game_data_dir
 from core.qr import svg as qr_svg
 from core.rooms import IDLE_TIMEOUT, require_room, rooms
 from games.fugitive import engine
+from games.fugitive.engine import IllegalMove
 from games.registry import GameSpec
 
 GAME_ID = "fugitive"
@@ -199,57 +201,61 @@ def leaderboard(record):
     return rows
 
 
+def worth_recording(game):
+    """Dealt and abandoned before anyone moved isn't a game anybody played."""
+    return not (game["reason"] == "resigned" and len(game["hideouts"]) <= 1)
+
+
 def record_if_finished(room):
     """Recorded by the server the moment the game ends, once — there's no
     page to post it, and nothing to trust a page about anyway."""
     game = room.state["game"]
     if game["phase"] != "game_over" or game["recorded"]:
         return
-    if game["reason"] == "resigned" and len(game["hideouts"]) <= 1:
-        # Dealt and abandoned before anyone moved: not a game anybody played.
+    if not worth_recording(game):
         game["recorded"] = True
         return
-    names = room.state["players"]
-    winner = game["winner"]
-    manhunt = any(e["kind"] == "manhunt" for e in game["log"])
-
-    def apply(stored):
-        record = blank_stats()
-        record.update(stored if isinstance(stored, dict) else {})
-        record["games_played"] += 1
-        for role in ROLES:
-            name = names[role]
-            key = name.casefold()
-            player = {**blank_player(name), **record["players"].get(key, {})}
-            # Keyed case-insensitively; the latest spelling wins the display name.
-            player["name"] = name
-            player["games"] += 1
-            player[f"{role}_games"] += 1
-            if role == winner:
-                player["wins"] += 1
-                player[f"{role}_wins"] += 1
-                if role == "marshal" and manhunt:
-                    player["manhunt_catches"] += 1
-            record["players"][key] = player
-        record["recent"].insert(0, {
-            "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            "fugitive": names["fugitive"],
-            "marshal": names["marshal"],
-            "winner": winner,
-            "reason": game["reason"],
-            "hideouts": len(game["hideouts"]) - 1,
-        })
-        del record["recent"][RECENT_GAMES:]
-        return record
-
     try:
-        stats.update(GAME_ID, apply)
+        stats.update(GAME_ID, lambda stored: add_result(stored, room.state["players"], game))
     except DataUnavailable:
         # stats.json is damaged and refuses writes. The game stays saved
         # and unrecorded, and is tried again on the next look at the table.
         current_app.logger.error("Fugitive game %s not recorded yet: stats unavailable", room.code)
         return
     game["recorded"] = True
+
+
+def add_result(stored, names, game, at=None):
+    """The records with one finished game added: per player and per role."""
+    winner = game["winner"]
+    manhunt = any(e["kind"] == "manhunt" for e in game["log"])
+    record = blank_stats()
+    record.update(stored if isinstance(stored, dict) else {})
+    record["games_played"] += 1
+    for role in ROLES:
+        name = names[role]
+        key = name.casefold()
+        player = {**blank_player(name), **record["players"].get(key, {})}
+        # Keyed case-insensitively; the latest spelling wins the display name.
+        player["name"] = name
+        player["games"] += 1
+        player[f"{role}_games"] += 1
+        if role == winner:
+            player["wins"] += 1
+            player[f"{role}_wins"] += 1
+            if role == "marshal" and manhunt:
+                player["manhunt_catches"] += 1
+        record["players"][key] = player
+    record["recent"].insert(0, {
+        "at": at or datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "fugitive": names["fugitive"],
+        "marshal": names["marshal"],
+        "winner": winner,
+        "reason": game["reason"],
+        "hideouts": len(game["hideouts"]) - 1,
+    })
+    del record["recent"][RECENT_GAMES:]
+    return record
 
 
 # --- pages ----------------------------------------------------------------
@@ -438,7 +444,96 @@ def api_rematch(code):
 def api_stats():
     """The record, plus the leaderboard in the order the records page shows it."""
     record = load_stats()
+    record.pop("offline_ids", None)
     return jsonify({**record, "leaderboard": leaderboard(record)})
+
+
+# --- games played offline -------------------------------------------------
+# The iOS app plays Fugitive with no signal (on a plane), with the rules in
+# Swift — a port of engine.py pinned to it by tests/test_fugitive_offline.py.
+# A finished game comes home later as its shuffled decks and its moves, and
+# is replayed here through engine.py: only a game the real rules accept, to
+# the end, is recorded. The app is trusted no further than that — the same
+# trust as everywhere else on this public router.
+
+OFFLINE_ID = re.compile(r"^[A-Za-z0-9-]{8,64}$")
+MAX_OFFLINE_MOVES = 1000
+# Ids of offline games already recorded, newest last, so a retried upload
+# isn't counted twice. A game is uploaded within days, not months.
+OFFLINE_IDS_KEPT = 500
+
+
+def replay_offline(body):
+    """(players, game, played_at) for an uploaded offline game, or raises
+    ValueError with a sentence saying what's wrong with it."""
+    if not isinstance(body, dict):
+        raise ValueError("expected an object")
+    if not isinstance(body.get("id"), str) or not OFFLINE_ID.match(body["id"]):
+        raise ValueError("the game needs an id")
+    players, error = parse_players(body.get("players"))
+    if error:
+        raise ValueError(error)
+    decks = body.get("decks")
+    if (not isinstance(decks, list) or len(decks) != len(engine.DECKS)
+            or not all(isinstance(d, list) and all(engine._is_int(c) for c in d) for d in decks)
+            or any(sorted(d) != list(range(lo, hi + 1)) for d, (lo, hi) in zip(decks, engine.DECKS))):
+        raise ValueError("those aren't Fugitive's three decks")
+    moves = body.get("moves")
+    if not isinstance(moves, list) or len(moves) > MAX_OFFLINE_MOVES:
+        raise ValueError("the moves need to be a list")
+
+    game = engine.new_game(None, decks=decks)
+    for number, step in enumerate(moves, start=1):
+        if not isinstance(step, dict) or step.get("role") not in ROLES or not isinstance(step.get("move"), dict):
+            raise ValueError(f"move {number} isn't a move")
+        try:
+            engine.apply(game, step["role"], dict(step["move"]))
+        except IllegalMove as refusal:
+            raise ValueError(f"move {number} breaks the rules: {refusal}") from None
+    if game["phase"] != "game_over":
+        raise ValueError("that game isn't finished")
+    return players, game, played_at(body.get("played_at"))
+
+
+def played_at(value):
+    """When the game ended, by the phone's clock — kept only if it reads as a
+    time and isn't in the future. Otherwise now, when it reached here."""
+    now = datetime.now(timezone.utc)
+    try:
+        when = datetime.fromisoformat(value)
+    except (TypeError, ValueError):
+        return now.isoformat(timespec="seconds")
+    if when.tzinfo is None or when > now:
+        return now.isoformat(timespec="seconds")
+    return when.astimezone(timezone.utc).isoformat(timespec="seconds")
+
+
+@bp.route("/api/offline", methods=["POST"])
+def api_offline():
+    """Record a game the app played offline. Answers {recorded}: false for a
+    game already recorded (a retried upload) or one nobody played."""
+    body = request.get_json(silent=True)
+    try:
+        players, game, at = replay_offline(body)
+    except ValueError as problem:
+        return jsonify({"error": str(problem)}), 400
+    if not worth_recording(game):
+        return jsonify({"recorded": False})
+    outcome = {}
+
+    def apply(stored):
+        record = stored if isinstance(stored, dict) else {}
+        seen = list(record.get("offline_ids") or [])
+        if body["id"] in seen:
+            outcome["recorded"] = False
+            return record
+        record = add_result(record, players, game, at)
+        record["offline_ids"] = (seen + [body["id"]])[-OFFLINE_IDS_KEPT:]
+        outcome["recorded"] = True
+        return record
+
+    stats.update(GAME_ID, apply)
+    return jsonify(outcome)
 
 
 GAME = GameSpec(
