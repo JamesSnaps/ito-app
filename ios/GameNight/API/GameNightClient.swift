@@ -8,8 +8,8 @@ import FoundationNetworking  // URLSession, when the models are built on Linux
 ///
 /// Flip 7 Play: reads are open; moves carry a token in `X-Flip7-Token`: the
 /// dealer's (moves for anyone) or a seat's (moves for that seat only).
-/// ito: the topic display is a public read; hosting stays in the browser,
-/// behind Authelia.
+/// ito: the topic display is a public read; the device that started a room
+/// drives it with the host token in `X-Ito-Token` (ItoHost.swift).
 struct GameNightClient {
     let baseURL: URL
     var session: URLSession = .shared
@@ -78,7 +78,7 @@ struct GameNightClient {
     }
 
     /// A page on the server, for the screens the app leaves to the web:
-    /// rules, ito hosting, a scorekeeper's board.
+    /// rules, ito's stats and topics, a scorekeeper's board.
     func webURL(_ path: String) -> URL {
         URL(string: path, relativeTo: baseURL)?.absoluteURL ?? baseURL
     }

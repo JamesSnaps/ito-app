@@ -1,0 +1,24 @@
+{
+ "categories": [
+  "family",
+  "everyone",
+  "action",
+  "summer",
+  "football",
+  "animals",
+  "geeks",
+  "halloween",
+  "work"
+ ],
+ "code": "RW94",
+ "current_category": null,
+ "current_high": null,
+ "current_low": null,
+ "current_topic": null,
+ "current_type": null,
+ "draw_id": 0,
+ "host_token": "kH7ridpUELLOthDK",
+ "round_number": 0,
+ "scored": false,
+ "used": []
+}

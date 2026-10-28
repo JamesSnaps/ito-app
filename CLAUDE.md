@@ -195,6 +195,27 @@ problem.
   name/pun ("Hier steppt der Bär", a German idiom) was renamed to
   "Animal Kingdom" with content adapted accordingly.
 
+### ito's host token (v1.10.0)
+
+- **The device that starts a room runs it.** `new_room_state` makes a
+  `host_token`; draw, result and reset need it in `X-Ito-Token` and 403
+  without it. `/state` never carries it (`_public_state` drops it), so the
+  code — read aloud across a table — lets you watch, not deal. A reset keeps
+  the token: a new session, the same host.
+- **Two ways to get one.** The web host page and room settings render it in
+  (`/ito/host/<code>` and `/ito/settings/<code>` stay behind Authelia, so
+  only someone signed in sees it); the app starts a room with
+  `POST /ito/api/rooms`, which answers the room, its token and the
+  drawable categories (also `GET /ito/api/categories` — names only; the
+  topics stay with Settings behind Authelia).
+- **That's what let draw/result/reset leave the Authelia rule** (docker
+  repo): the token is the gate now, as for Flip 7's board and play. Starting
+  a room is public — it costs nothing and ages out after 6h — and anyone who
+  starts one can record ito results, the same openness as Flip 7's records.
+  Topic editing and both stats resets stay behind Authelia.
+- Tests' `Client` (tests/test_smoke.py) sends the token for rooms it
+  started, so a test of what a draw does doesn't repeat the header.
+
 ## Flip 7 (added v1.2.0)
 
 - **The scorekeeper is scorekeeping only**, same narrow scope as ito: it
@@ -473,9 +494,9 @@ why everything here is shaped around a JSON API.
 ## iOS app (`ios/`, started alongside v1.6.0)
 
 A native SwiftUI front end to the same server: Flip 7 Play (dealer or
-seat), Fugitive (since app 1.2.0), both games' records, ito's topic display
-and player profiles. Rules pages, ito hosting
-and a scorekeeper's spectator board open the server's own pages in an
+seat), Fugitive (since app 1.2.0), both games' records, ito hosting (since
+app 1.4.0) and its topic display, and player profiles. Rules pages, ito's
+stats and a scorekeeper's spectator board open the server's own pages in an
 in-app Safari sheet rather than being rebuilt.
 
 - **The server is still the game.** The app holds no rules: it shows the
@@ -505,8 +526,8 @@ in-app Safari sheet rather than being rebuilt.
   Python suite if the API's keys drift.
 - **The Swift that doesn't need UIKit also builds on Linux**
   (`ios/LinuxTests`): a Swift package of symlinks to the app's models,
-  client, offline engine, offline table and nearby play, with the Xcode
-  project's settings (Swift 6.2, MainActor by default) and a
+  client, offline engine, offline table, nearby play and ito's host store,
+  with the Xcode project's settings (Swift 6.2, MainActor by default) and a
   signature-only MultipeerConnectivity stub. `./run.sh` runs it in the
   `swift:6.2` image; CI runs it on every PR touching `ios/` or Fugitive
   (`.github/workflows/swift-tests.yml`). The SwiftUI screens still only
@@ -529,9 +550,12 @@ in-app Safari sheet rather than being rebuilt.
 - **ito's card is drawn natively** from the same geometry as
   `ito/_card.html` — the scale line and the back's swirl are the SVG paths,
   ported point for point, and the deal is the same edge-on swap.
-- **ito hosting isn't native**: its host pages sit behind Authelia, which
-  a native app can't get through, so "Host a room" opens the web page.
-  Native hosting needs a token or OIDC decision first.
+- **ito hosting is native since app 1.4.0** (`ItoHostView` / `ItoHostStore`,
+  see "ito's host token" above): the web host page's card, category choice,
+  deck, swap and result question, the same three ways out of it. The invite
+  QR opens the web display. A code this device started — typed, scanned or a
+  link — opens the host screen rather than the display; the hub offers the
+  last hosted room back while it's open.
 - **Distribution is TestFlight with a public link** for family and
   friends — no App Store listing, which also sidesteps the App Store's
   likely objection to the "Flip 7" and "ito" trademarks. Builds expire after
@@ -555,8 +579,8 @@ in-app Safari sheet rather than being rebuilt.
   on the public Traefik router — Apple fetches it with no sign-in.
 - **The app talks to production by default**, so the server must be on a
   version with the app's endpoints (v1.6.1+; v1.8.2+ for app 1.2.0; v1.9.0+
-  for app 1.3.0's offline uploads — offline play itself needs no server)
-  before a build goes out.
+  for app 1.3.0's offline uploads — offline play itself needs no server;
+  v1.10.0+ for app 1.4.0's ito hosting) before a build goes out.
 - **`.dockerignore` keeps `ios/` out of the server image.**
 - **QR codes are scanned in the app** (`ScanSheet`, VisionKit's
   `DataScannerViewController`, QR only), from the hub's toolbar and the Join
@@ -872,12 +896,11 @@ one thing besides the games that `app.py` registers), `templates/me.html`
 - Flask dev server (`app.run(...)`) is fine for a living-room game but
   not hardened — swap to gunicorn if this ever needs to handle more
   than a handful of concurrent players.
-- No auth on host URLs in the app itself — knowing a room code is the
-  only gate there. In production Traefik puts `/ito/host`, `/ito/settings`,
-  `/ito/api/topics*`, `/ito/api/stats/reset`, `/flip7/api/stats/reset` and
-  `/ito/api/<code>/draw|result|reset` behind Authelia, so a guessed code
-  only lets someone watch a topic — not drive the game, edit topics or
-  wipe stats.
+- Driving an ito room needs its host token (v1.10.0), so a guessed code
+  only lets someone watch a topic. In production Traefik also puts
+  `/ito/host`, `/ito/settings`, `/ito/api/topics*`, `/ito/api/stats/reset`
+  and `/flip7/api/stats/reset` behind Authelia, so nobody without a sign-in
+  edits topics or wipes stats.
 - Room codes are throttled, not secret: `core/ratelimit.py` counts wrong
   guesses per IP (15 per 5 min, then 429). Two invariants worth keeping
   — only *failures* count (players poll every 2s), and a correct code
@@ -900,8 +923,9 @@ one thing besides the games that `app.py` registers), `templates/me.html`
 - iOS keeps a home-screen app's storage apart from Safari's. A scorekeeper
   game (or a Play token) from Safari won't be in the installed app.
 - Not yet tried on a device: signing in through Authelia from the
-  installed app (it affects the ito host pages — iOS opens an off-scope
-  login in a sheet, and the cookie may not come back with it).
+  installed web app (the home-screen one, not the iOS app — it affects the
+  ito host pages: iOS opens an off-scope login in a sheet, and the cookie
+  may not come back with it). The iOS app no longer needs it.
 - A device that's both the dealer and a seat must only treat an answer to
   its *seat* token as news about its seat: a move made as the dealer comes
   back with `you.role == "host"`. Getting this wrong dropped the seat of a
@@ -968,11 +992,14 @@ into `docker-compose.sh` as the `gamenight` group.
 
 - **Two Traefik routers on one host.** The host and admin surface goes
   through `auth@file` (Authelia): `/ito/host`, `/ito/settings`,
-  `/ito/api/topics*`, `/ito/api/stats/reset`, `/flip7/api/stats/reset` and
-  `/ito/api/<code>/draw|result|reset`. Everything else is public — the hub,
-  `/join`, the player and watch views, state polling, the Flip 7
-  scorekeeper and its record/board posts — because guests scan a QR to join
-  and can't have accounts. This is the only stack there that isn't wholly
+  `/ito/api/topics*`, `/ito/api/stats/reset` and `/flip7/api/stats/reset`.
+  Everything else is public — the hub, `/join`, the player and watch views,
+  state polling, the Flip 7 scorekeeper and its record/board posts, and
+  ito's room API (`/ito/api/rooms`, and draw/result/reset, which check the
+  host token themselves since v1.10.0) — because guests scan a QR to join
+  and can't have accounts. **Deploy order matters for a rule that loosens:**
+  the server that checks the token must be live before Traefik stops
+  checking the sign-in. This is the only stack there that isn't wholly
   behind Authelia — deliberate. A new host-only route needs adding to that
   rule in the docker repo (`docker-compose.gamenight.yml`).
 - **`ProxyFix` is required**, not optional. QR codes are built from

@@ -193,4 +193,7 @@ nonisolated struct ItoState: Decodable, Equatable {
     /// Bumped by every deal, a swapped card included — what the display
     /// keys its flip off.
     let drawId: Int
+    /// The round on the table has its result. A host asks for one before
+    /// dealing the next card.
+    let scored: Bool
 }

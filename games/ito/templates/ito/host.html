@@ -124,6 +124,8 @@
 {{ card_script() }}
 <script>
   const CODE = {{ code|tojson }};
+  // Draw, result and reset need it; /state doesn't.
+  const HOST = { 'Content-Type': 'application/json', 'X-Ito-Token': {{ host_token|tojson }} };
   const deal = makeDealer('card');
   let selectedCategory = "";
   let lastRound = null;
@@ -221,7 +223,7 @@
   async function drawCard(reroll) {
     const res = await fetch(`/ito/api/${CODE}/draw`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: HOST,
       body: JSON.stringify({ category: selectedCategory || null, reroll: !!reroll })
     });
     const data = await res.json().catch(() => ({}));
@@ -268,7 +270,7 @@
     try {
       await fetch(`/ito/api/${CODE}/result`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: HOST,
         body: JSON.stringify({ outcome })
       });
     } finally {

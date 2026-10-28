@@ -253,7 +253,8 @@ EVENT_KEYS = {"id", "kind", "role", "deck", "card", "index", "sprints", "numbers
 def ios_fixtures(c):
     """One scripted game, captured the way the app sees it: the deal (the
     dealer's view), the Fugitive choosing a hideout, the Marshal guessing
-    with the notepad's help, the end, the records — plus profiles."""
+    with the notepad's help, the end, the records — plus profiles and an ito
+    room hosted from the app."""
     rng = random.Random(7)
     game, seats = seated_game(c)
     code = game["code"]
@@ -274,6 +275,11 @@ def ios_fixtures(c):
     out["profile_created"] = made
     out["profile_link"] = c.post("/api/profiles/me/link", headers={"X-Profile-Token": made["token"]}).get_json()
     out["profiles"] = c.get("/api/profiles").get_json()
+    # ito, hosted from the app: the room it starts, and a card dealt in it.
+    room = c.post("/ito/api/rooms").get_json()
+    out["ito_created"] = room
+    out["ito_drawn"] = c.post(f"/ito/api/{room['code']}/draw", json={},
+                              headers={"X-Ito-Token": room["host_token"]}).get_json()
     return out
 
 
@@ -300,7 +306,7 @@ def merge(a, b):
 
 
 def test_the_ios_app_fugitive_fixtures_still_match_the_api():
-    """ios/GameNightTests/Fixtures/fugitive_*.json and profile*.json are
+    """ios/GameNightTests/Fixtures/fugitive_*.json, profile*.json and ito_*.json are
     real responses the Swift models are tested against, captured by
     `ios_fixtures`. iOS tests don't run in CI, so a change to the API's
     shape is caught here. To capture them again after a deliberate change:

@@ -76,6 +76,7 @@
 
 <script>
   const CODE = {{ code|tojson }};   // null when opened without a room
+  const HOST_TOKEN = {{ host_token|tojson }};   // runs the room; null without one
   const status = document.getElementById('add-status');
 
   document.getElementById('add-btn').addEventListener('click', async () => {
@@ -116,7 +117,7 @@
   const resetSession = document.getElementById('reset-session-btn');
   if (resetSession) resetSession.addEventListener('click', async () => {
     if (!confirm('Clear topic history for this room? (Stats are kept.)')) return;
-    await fetch(`/ito/api/${CODE}/reset`, { method: 'POST' });
+    await fetch(`/ito/api/${CODE}/reset`, { method: 'POST', headers: { 'X-Ito-Token': HOST_TOKEN } });
     location.href = `/ito/host/${CODE}`;
   });
 
