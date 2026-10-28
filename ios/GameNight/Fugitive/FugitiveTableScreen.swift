@@ -24,7 +24,9 @@ struct FugitiveTableScreen: View {
         let landscape = heightClass == .compact
         GeometryReader { geo in
             let wide = sizeClass == .regular && geo.size.width > geo.size.height
-            let cardWidth: CGFloat = sizeClass == .regular ? 72 : min(60, geo.size.width / 6.3)
+            let cardWidth: CGFloat = sizeClass != .regular ? min(60, geo.size.width / 6.3)
+                : wide ? Self.deskCard(height: geo.size.height)
+                : max(72, min(88, geo.size.width / 9))
             ZStack {
                 DeskBackground().ignoresSafeArea()
                 if store.gone {
@@ -37,13 +39,18 @@ struct FugitiveTableScreen: View {
                             ScrollView {
                                 VStack(spacing: 14) {
                                     StatusTag(payload: payload)
-                                    Desk(store: store, payload: payload, cardWidth: cardWidth)
+                                    Desk(store: store, payload: payload, cardWidth: cardWidth, controls: false)
                                 }
                                 .padding(20)
                             }
-                            .safeAreaInset(edge: .bottom, spacing: 0) { HideBar.room(store) }
+                            // Hiding happens in the column beside the desk, not in
+                            // a bar over the hand: the column has the room.
                             ScrollView {
-                                SidePanels(store: store, payload: payload).padding(.vertical, 20)
+                                VStack(spacing: 14) {
+                                    HidingPanel(store: store)
+                                    SidePanels(store: store, payload: payload)
+                                }
+                                .padding(.vertical, 20)
                             }
                             .frame(width: 370)
                             .padding(.trailing, 20)
@@ -69,7 +76,7 @@ struct FugitiveTableScreen: View {
                 // on iOS 26 the inset gets the scroll edge effect, and the
                 // hand showed through it.
                 // Sideways, Hide sits in the table's right-hand column instead.
-                if !landscape { VStack { Spacer(); HideBar(store: store) } }
+                if !landscape && !wide { VStack { Spacer(); HideBar(store: store) } }
                 // Not over a game that's gone: its last payload is still in the store.
                 if landscape, showingPanels, !store.gone, let payload = store.payload {
                     LandscapePanels(store: store, payload: payload, showing: $showingPanels)
@@ -145,6 +152,18 @@ struct FugitiveTableScreen: View {
         }
         .task { await Faces.shared.load() }
         .preferredColorScheme(.dark)
+    }
+
+    /// An iPad in landscape: cards as big as the height allows. The desk is
+    /// about 5.2 card widths tall (both hands, the trail with a sprint card
+    /// under it, the decks) plus ~450pt of banner, nameplates, gaps and room
+    /// for a trail three sprint cards deep; the hiding controls and Hide are
+    /// in the column beside it (`HidingPanel`), not in a bar over the hand.
+    /// At a fixed 72 a 13" iPad left a third of the screen empty under the
+    /// hand. Never smaller than that 72, and not past what the 240px card
+    /// images draw sharply.
+    static func deskCard(height: CGFloat) -> CGFloat {
+        max(72, min(112, (height - 450) / 5.2))
     }
 }
 
@@ -246,6 +265,9 @@ private struct Desk: View {
     let store: FugitiveStore
     let payload: FugitivePayload
     let cardWidth: CGFloat
+    /// The hiding controls and the Marshal's hint under the hand; an iPad in
+    /// landscape has them in the column beside the desk instead.
+    var controls = true
 
     var body: some View {
         let g = payload.game
@@ -259,8 +281,8 @@ private struct Desk: View {
             Trail(store: store, payload: payload, cardWidth: cardWidth)
             Decks(store: store, game: g, cardWidth: cardWidth * 0.86)
             Plate(store: store, payload: payload, role: near, mine: near == me, cardWidth: cardWidth)
-            if me == .fugitive { FugitiveControls(store: store, game: g) }
-            if me == .marshal { MarshalHint(game: g) }
+            if controls, me == .fugitive { FugitiveControls(store: store, game: g) }
+            if controls, me == .marshal { MarshalHint(game: g) }
         }
     }
 }
@@ -774,6 +796,28 @@ struct HideBar: View {
             .frame(maxWidth: .infinity)
             .background(Noir.night.ignoresSafeArea(edges: .bottom))
             .overlay(alignment: .top) { Rectangle().fill(Noir.line).frame(height: 1) }
+        }
+    }
+}
+
+/// An iPad in landscape: the hiding step, its hint and Hide at the top of
+/// the column beside the desk, where the bar would have covered the hand.
+private struct HidingPanel: View {
+    let store: FugitiveStore
+
+    var body: some View {
+        if let game = HideBar.shown(store) {
+            NoirPanel(title: "Your move") {
+                VStack(spacing: 12) {
+                    FugitiveControls(store: store, game: game)
+                    HideActions(store: store)
+                }
+            }
+        } else if let game = store.game, game.viewerRole == .fugitive, game.turn == .fugitive, game.phase == .fugitiveDraw {
+            NoirPanel(title: "Your move") { ControlHint(text: "Tap a deck to draw.") }
+        } else if let game = store.game, game.viewerRole == .marshal, game.turn == .marshal,
+                  [.marshalDraw, .marshalGuess, .manhunt].contains(game.phase) {
+            NoirPanel(title: "Your move") { MarshalHint(game: game) }
         }
     }
 }
