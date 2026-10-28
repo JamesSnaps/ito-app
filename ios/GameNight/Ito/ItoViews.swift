@@ -1,17 +1,13 @@
 import SwiftUI
 
 /// ito's topic display — the player view of the web app, which is the whole
-/// reason ito is in Game Night: the topic, big, on everyone's screen. The
-/// host still draws from the browser (it sits behind Authelia), so this is
-/// read-only, like `/ito/play/<code>`.
+/// reason ito is in Game Night: the topic, big, on everyone's screen.
+/// Read-only, like `/ito/play/<code>`; the host deals from its own screen
+/// (`ItoHostView`, or the web's host page).
 struct ItoDisplayView: View {
     let code: String
     @State private var state: ItoState?
     @State private var gone = false
-    /// What's on the card face — swapped only while it's edge-on.
-    @State private var shown: ItoState?
-    /// 0 is face up; 90 is edge-on, the moment the face is changed unseen.
-    @State private var turn: Double = 0
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -22,15 +18,8 @@ struct ItoDisplayView: View {
                     Text(roundLine).font(.system(size: 15, weight: .heavy)).kerning(1.6)
                         .foregroundStyle(Color(hex: 0x8A8F98))
                     let width = min(geo.size.width - 32, (geo.size.height - 140) * 1.45, 900)
-                    Group {
-                        if let shown, shown.currentTopic != nil {
-                            ItoCardFront(state: shown)
-                        } else {
-                            ItoCardBack()
-                        }
-                    }
-                    .frame(width: width, height: width / 1.45)
-                    .rotation3DEffect(.degrees(turn), axis: (x: 0, y: 1, z: 0), perspective: 0.5)
+                    ItoDealtCard(state: state)
+                        .frame(width: width, height: width / 1.45)
                     if state?.currentTopic == nil {
                         Text(gone ? "This room has closed." : "The host is picking a topic…")
                             .font(.title3).foregroundStyle(Color(hex: 0x8A8F98))
@@ -61,30 +50,49 @@ struct ItoDisplayView: View {
         return "ROUND \(state.roundNumber)"
     }
 
-    /// Deals only when the card actually changed — every poll would
-    /// otherwise re-flip it. Keyed on draw_id, so a swapped card flips too.
     private func poll() async {
         do {
-            let fresh = try await AppSettings.client.itoState(code: code)
-            let changed = fresh.drawId != state?.drawId
-            let first = state == nil
-            state = fresh
-            guard changed else { return }
-            if first {
-                shown = fresh
-                return
-            }
-            // The web card's deal: turn edge-on, swap the face out of sight,
-            // turn back. 320ms each way, as in style.css.
-            withAnimation(.easeIn(duration: 0.32)) { turn = 90 }
-            try? await Task.sleep(for: .milliseconds(320))
-            shown = fresh
-            turn = -90
-            withAnimation(.easeOut(duration: 0.32)) { turn = 0 }
+            state = try await AppSettings.client.itoState(code: code)
         } catch let failure as GameNightClient.Failure where failure.status == 404 {
             gone = true
         } catch {
             // Retry on the next tick.
+        }
+    }
+}
+
+/// The card on the table, dealt like the web's: when a new card comes (a
+/// new `draw_id` — a swapped card included) it turns edge-on, the face is
+/// changed out of sight, and it turns back. The first state it's given is
+/// just shown: opening a room mid-game shouldn't deal at you.
+struct ItoDealtCard: View {
+    let state: ItoState?
+    /// What's on the face — swapped only while it's edge-on.
+    @State private var shown: ItoState?
+    /// 0 is face up; 90 is edge-on.
+    @State private var turn: Double = 0
+
+    var body: some View {
+        Group {
+            if let shown, shown.currentTopic != nil {
+                ItoCardFront(state: shown)
+            } else {
+                ItoCardBack()
+            }
+        }
+        .rotation3DEffect(.degrees(turn), axis: (x: 0, y: 1, z: 0), perspective: 0.5)
+        .task(id: state?.drawId) {
+            guard let state else { return }
+            guard let current = shown, current.drawId != state.drawId else {
+                shown = state
+                return
+            }
+            // 320ms each way, as in style.css.
+            withAnimation(.easeIn(duration: 0.32)) { turn = 90 }
+            try? await Task.sleep(for: .milliseconds(320))
+            shown = state
+            turn = -90
+            withAnimation(.easeOut(duration: 0.32)) { turn = 0 }
         }
     }
 }

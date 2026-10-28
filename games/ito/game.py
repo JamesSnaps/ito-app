@@ -7,6 +7,7 @@ use the same instance without stepping on each other.
 """
 
 import random
+import secrets
 import shutil
 import threading
 
@@ -138,6 +139,12 @@ def _bad_body():
 
 def new_room_state():
     return {
+        # Whoever started the room drives it: draw, record a result, reset.
+        # Handed out once, at creation, and never in /state. The web host
+        # page sits behind Authelia and renders it in; the iOS app gets it
+        # from POST /api/rooms and keeps it. A room's code is read aloud
+        # across the table, so the code alone mustn't be what drives it.
+        "host_token": secrets.token_urlsafe(12),
         "current_topic": None,
         "current_category": None,  # the drawn topic's own category (the chip)
         "current_low": None,   # labels for the two ends of the card's scale
@@ -159,7 +166,19 @@ def _room_or_404(code):
 
 
 def _public_state(room):
-    return {**room.state, "code": room.code}
+    state = {k: v for k, v in room.state.items() if k != "host_token"}
+    return {**state, "code": room.code}
+
+
+def _not_the_host(room):
+    """A 403 unless the request carries this room's host token.
+
+    Compared as bytes, like Flip 7's: compare_digest raises on a non-ASCII
+    str, and a header is whatever the client sent."""
+    token = (request.headers.get("X-Ito-Token") or "").encode("utf-8", "surrogateescape")
+    if secrets.compare_digest(token, room.state["host_token"].encode()):
+        return None
+    return jsonify({"error": "Only the device that started this room can run it."}), 403
 
 
 # --- pages ---------------------------------------------------------------
@@ -184,6 +203,9 @@ def host_view(code):
         "ito/host.html",
         game=GAME,
         code=room.code,
+        # This page is behind Authelia in production, so the token only
+        # reaches someone signed in.
+        host_token=room.state["host_token"],
         categories=drawable_categories(load_topics()),
         qr_svg=qr_svg(player_url).decode("utf-8"),
         player_url=player_url,
@@ -253,11 +275,35 @@ def settings_view(code=None):
         "ito/settings.html",
         game=GAME,
         code=room.code if room else None,
+        host_token=room.state["host_token"] if room else None,
         topics=load_topics(),
     )
 
 
 # --- room API ------------------------------------------------------------
+#
+# Reads are open (every phone at the table polls /state). Driving a room —
+# draw, result, reset — needs the host token in X-Ito-Token.
+
+@bp.route("/api/rooms", methods=["POST"])
+def api_create_room():
+    """Start a room from an app: the room, plus the token that runs it and
+    the categories there are to draw from."""
+    room = rooms.create(GAME_ID, new_room_state)
+    with room.lock:
+        return jsonify({
+            **_public_state(room),
+            "host_token": room.state["host_token"],
+            "categories": drawable_categories(load_topics()),
+        })
+
+
+@bp.route("/api/categories")
+def api_categories():
+    """What the host's wheel offers — names only. The topics themselves are
+    behind Authelia with the rest of Settings."""
+    return jsonify(drawable_categories(load_topics()))
+
 
 @bp.route("/api/<code>/state")
 def api_state(code):
@@ -274,6 +320,8 @@ def api_draw(code):
     the topic, you just didn't like it, so it shouldn't count towards the
     round number or clear the result still owed on the round in progress."""
     room = _room_or_404(code)
+    if (refused := _not_the_host(room)):
+        return refused
     body = _json_body()
     if body is None:
         return _bad_body()
@@ -325,6 +373,8 @@ def api_draw(code):
 def api_result(code):
     """Record whether the round's card order came out correct."""
     room = _room_or_404(code)
+    if (refused := _not_the_host(room)):
+        return refused
     body = _json_body()
     if body is None:
         return _bad_body()
@@ -353,8 +403,11 @@ def api_result(code):
 def api_reset(code):
     """Clear this room's topic history for a fresh session (stats untouched)."""
     room = _room_or_404(code)
+    if (refused := _not_the_host(room)):
+        return refused
     with room.lock:
-        room.state.update(new_room_state())
+        # A fresh session, the same host: the token outlives the reset.
+        room.state.update({**new_room_state(), "host_token": room.state["host_token"]})
         return jsonify(_public_state(room))
 
 

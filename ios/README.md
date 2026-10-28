@@ -2,8 +2,8 @@
 
 A SwiftUI front end to the Game Night server: Flip 7 played on the app's
 deck (as the dealer or from your own seat), Fugitive (dealt here, played on
-two phones or passed across one), both games' records, ito's topic display,
-and "You" — a profile name and selfie shared with the web. Room QR codes can
+two phones or passed across one), both games' records, ito (host a room or
+watch its topic), and "You" — a profile name and selfie shared with the web. Room QR codes can
 be scanned inside the app. The rules and the game state live on the server;
 the app shows the table and sends moves. See `../CLAUDE.md` → "iOS app" for
 the design notes.
@@ -102,9 +102,8 @@ Then in App Store Connect → TestFlight:
   > No sign-in. Tap "Start a game", add two names, "Shuffle & deal", then
   > Hit/Stay. To test joining, open https://gamenight.collardserver.co.uk/flip7/play
   > in a browser, start a game there, and enter its four-letter code under
-  > "Join with a code". ito: "Host a room" opens the web host page, which
-  > needs a sign-in reviewers won't have — the in-app part of ito is the
-  > topic display reached by a room code. Fugitive: "Start a game", two
+  > "Join with a code". ito: "Host a room", tap the card to draw a topic;
+  > the QR button shows the code other phones join with. Fugitive: "Start a game", two
   > names, "Pass this device between us", Deal. The camera is used to scan
   > room QR codes and, optionally, for a profile photo on "You" (top left).
   > Fugitive also plays with no internet: choose "Pass this phone, offline"

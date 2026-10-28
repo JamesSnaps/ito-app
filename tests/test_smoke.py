@@ -1,24 +1,50 @@
 """Enough coverage to catch a broken route or a room that doesn't isolate."""
 
 import json
+import re
 import sys
 from pathlib import Path
+
+from flask.testing import FlaskClient
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app import create_app  # noqa: E402
 
 
+class Client(FlaskClient):
+    """Sends an ito room's host token with the calls that drive it, as the
+    host page and the app do, so tests of what a draw does read as before.
+    A header a test passes itself wins; a room it didn't start gets none."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.ito_tokens = {}
+
+    def open(self, *args, **kwargs):
+        path = args[0] if args and isinstance(args[0], str) else ""
+        driving = re.fullmatch(r"/ito/api/([^/]+)/(draw|result|reset)", path)
+        if driving and driving.group(1) in self.ito_tokens:
+            headers = dict(kwargs.get("headers") or {})
+            headers.setdefault("X-Ito-Token", self.ito_tokens[driving.group(1)])
+            kwargs["headers"] = headers
+        return super().open(*args, **kwargs)
+
+
 def client():
     app = create_app()
     app.config["TESTING"] = True
+    app.test_client_class = Client
     return app.test_client()
 
 
 def new_room(c):
-    res = c.post("/ito/rooms")
-    assert res.status_code == 302
-    return res.headers["Location"].rsplit("/", 1)[-1]
+    """An ito room this client started, holding its host token."""
+    res = c.post("/ito/api/rooms")
+    assert res.status_code == 200
+    room = res.get_json()
+    c.ito_tokens[room["code"]] = room["host_token"]
+    return room["code"]
 
 
 def test_hub_lists_every_game():
@@ -84,6 +110,55 @@ def test_flip7_seventh_number_ends_the_turn():
     rules = client().get("/flip7/rules").get_data(as_text=True)
     assert "d.bust || d.frozen || d.numbers.length >= 7" in body
     assert "turn is over" in rules
+
+
+def test_the_web_form_starts_a_room_and_its_host_page_can_run_it():
+    c = client()
+    res = c.post("/ito/rooms")
+    assert res.status_code == 302
+    code = res.headers["Location"].rsplit("/", 1)[-1]
+    page = c.get(f"/ito/host/{code}").get_data(as_text=True)
+    token = re.search(r"'X-Ito-Token': \"([^\"]+)\"", page).group(1)
+    assert c.post(f"/ito/api/{code}/draw", json={}).status_code == 403
+    assert c.post(f"/ito/api/{code}/draw", json={},
+                  headers={"X-Ito-Token": token}).status_code == 200
+    # Settings resets the room, so it carries the token too.
+    assert token in c.get(f"/ito/settings/{code}").get_data(as_text=True)
+    assert "HOST_TOKEN = null" in c.get("/ito/settings").get_data(as_text=True)
+
+
+def test_only_the_host_token_drives_a_room():
+    """The code is read aloud across the table; knowing it lets you watch,
+    not deal. Draw, result and reset all need the token, and nothing a
+    player can read gives it away."""
+    c = client()
+    code = new_room(c)
+    token = c.ito_tokens[code]
+    for path in ("draw", "result", "reset"):
+        for head in ({}, {"X-Ito-Token": "nope"},
+                     {"X-Ito-Token": "caf\u00e9".encode().decode("latin-1")}):
+            res = c.post(f"/ito/api/{code}/{path}", json={"outcome": "win"},
+                         headers=head or {"X-Ito-Token": ""})
+            assert res.status_code == 403, (path, head)
+    assert c.get(f"/ito/api/{code}/state").get_json()["round_number"] == 0
+
+    assert token not in c.get(f"/ito/api/{code}/state").get_data(as_text=True)
+    assert token not in c.get(f"/ito/play/{code}").get_data(as_text=True)
+    assert token not in c.get(f"/api/join/{code}").get_data(as_text=True)
+
+    # A reset starts a fresh session for the same host.
+    c.post(f"/ito/api/{code}/draw", json={})
+    assert c.post(f"/ito/api/{code}/reset").status_code == 200
+    assert c.post(f"/ito/api/{code}/draw", json={}).status_code == 200
+
+
+def test_an_app_can_start_a_room_and_list_what_to_draw_from():
+    c = client()
+    room = c.post("/ito/api/rooms").get_json()
+    assert set(room) >= {"code", "host_token", "categories", "round_number", "draw_id"}
+    assert room["categories"] == c.get("/ito/api/categories").get_json()
+    assert room["categories"] and all(isinstance(x, str) for x in room["categories"])
+    assert c.get(f"/ito/api/{room['code']}/state").status_code == 200
 
 
 def test_host_and_player_pages_render():

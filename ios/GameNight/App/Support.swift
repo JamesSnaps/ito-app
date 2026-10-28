@@ -3,8 +3,8 @@ import SafariServices
 import SwiftUI
 
 /// A server page inside the app, for the screens it leaves to the web —
-/// rules (one source of truth, on the server), ito hosting (behind
-/// Authelia), a scorekeeper's board.
+/// rules (one source of truth, on the server), ito's stats, a scorekeeper's
+/// board.
 struct SafariView: UIViewControllerRepresentable {
     let url: URL
 

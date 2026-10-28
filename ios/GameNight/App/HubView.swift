@@ -2,14 +2,13 @@ import SwiftUI
 
 /// The app's front page, like the web hub: a way into any game by code (or
 /// by scanning its QR), then one panel per game, and "You" in the corner.
-/// ito's host screen sits behind Authelia on the server, which a native app
-/// can't get through yet, so hosting ito opens the browser; watching the
-/// topic is native.
 struct HubView: View {
     enum Route: Hashable {
         case join, newGame, settings, records
         case table(String)
         case ito(String)
+        /// Hosting ito: a room this device started, or nil to start one.
+        case itoHost(String?)
         case fugitiveNew, fugitiveRecords
         case fugitiveTable(String)
         /// An offline game kept on this phone; one kept on a nearby phone.
@@ -28,6 +27,8 @@ struct HubView: View {
     /// Games dealt on this device, which open with the shuffle and the deal.
     @State private var dealtHere: Set<String> = []
     @State private var resumable: PlayPayload?
+    /// The ito room this device last hosted, once it's confirmed still open.
+    @State private var itoRoom: String?
     @State private var webPage: WebPage?
     @State private var linkError: String?
     @Environment(\.horizontalSizeClass) private var sizeClass
@@ -90,16 +91,22 @@ struct HubView: View {
                                 .buttonStyle(FeltButtonStyle(kind: .ghost))
                             }
                             GameTile(title: "ito", accent: Color(hex: 0x8F7BFF),
-                                     blurb: "Get the numbers in order without saying them. Join with the host’s code to see the topic on this screen.") {
+                                     blurb: "Get the numbers in order without saying them. Host a room for the topic cards, or join with the host’s code to see them on this screen.") {
                                 ItoArt()
                             } actions: {
+                                if let room = itoRoom {
+                                    Button { path.append(.itoHost(room)) } label: {
+                                        Label("Back to room \(room)", systemImage: "arrow.uturn.backward")
+                                    }
+                                    .buttonStyle(FeltButtonStyle(kind: .ghost))
+                                }
                                 HStack(spacing: 10) {
-                                    Button { open("/ito/") } label: { Label("Host a room", systemImage: "safari") }
+                                    Button { path.append(.itoHost(nil)) } label: {
+                                        Label(itoRoom == nil ? "Host a room" : "New room", systemImage: "rectangle.on.rectangle")
+                                    }
                                     Button { open("/ito/rules") } label: { Label("Rules", systemImage: "questionmark.circle") }
                                 }
                                 .buttonStyle(FeltButtonStyle(kind: .ghost))
-                                Text("Hosting opens in the browser — it needs the server’s sign-in.")
-                                    .font(.caption).foregroundStyle(Theme.cream.opacity(0.5))
                             }
                         }
                     }
@@ -141,6 +148,7 @@ struct HubView: View {
                     Task { await OfflineUploads.sendWaiting() }
                     await Faces.shared.load()
                     await checkResume()
+                    await checkItoRoom()
                 }
             }
         }
@@ -175,6 +183,8 @@ struct HubView: View {
             RecordsView()
         case .ito(let code):
             ItoDisplayView(code: code)
+        case .itoHost(let code):
+            ItoHostView(code: code)
         case .table(let code):
             if let payload = handedOver[code] {
                 TableScreen(store: PlayStore(payload: payload, fromTheTop: dealtHere.contains(code)))
@@ -244,7 +254,8 @@ struct HubView: View {
             handedOverFugitive[payload.code] = payload
             path = [.fugitiveTable(payload.code)]
         case .ito(let code):
-            path = [.ito(code)]
+            // Your own room's code (or its QR) brings you back to the deck.
+            path = [ItoHostTokens().token(for: code) == nil ? .ito(code) : .itoHost(code)]
         case .profileLink(let code):
             path = [.you(code)]
         case .web(let url):
@@ -269,6 +280,22 @@ struct HubView: View {
             linkError = "Room \(Joining.code(in: url) ?? "") has ended or expired."
         } catch {
             linkError = error.localizedDescription
+        }
+    }
+
+    /// The ito room this device hosted last, offered back only while it's
+    /// still open — as the web landing page's "Resume your game" does.
+    private func checkItoRoom() async {
+        let tokens = ItoHostTokens()
+        guard let code = tokens.lastRoom, tokens.token(for: code) != nil else { itoRoom = nil; return }
+        do {
+            _ = try await AppSettings.client.itoState(code: code)
+            itoRoom = code
+        } catch let failure as GameNightClient.Failure where failure.status == 404 {
+            tokens.lastRoom = nil
+            itoRoom = nil
+        } catch {
+            itoRoom = nil
         }
     }
 
