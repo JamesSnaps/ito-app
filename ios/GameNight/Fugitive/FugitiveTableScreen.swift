@@ -153,25 +153,27 @@ struct FugitiveTableScreen: View {
 /// The case tag at the top: whose move, and what it is.
 private struct StatusTag: View {
     let payload: FugitivePayload
+    /// Smaller type and less paper: the right-hand column of a phone held sideways.
+    var compact = false
 
     var body: some View {
         let words = Self.words(payload)
         let line = words.0, small = words.1
         let g = payload.game
         let colour = g.winner.map(Noir.colour) ?? g.turn.map(Noir.colour) ?? Noir.card
-        HStack(spacing: 12) {
-            RoundedRectangle(cornerRadius: 2).fill(colour).frame(width: 6)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(line).font(Noir.poster(28)).foregroundStyle(Noir.ink)
+        HStack(spacing: compact ? 10 : 12) {
+            RoundedRectangle(cornerRadius: 2).fill(colour).frame(width: compact ? 5 : 6)
+            VStack(alignment: .leading, spacing: compact ? 1 : 3) {
+                Text(line).font(Noir.poster(compact ? 22 : 28)).foregroundStyle(Noir.ink)
                 if !small.isEmpty {
-                    Text(small).font(Noir.type(13)).foregroundStyle(Noir.ink.opacity(0.72))
+                    Text(small).font(Noir.type(compact ? 12 : 13)).foregroundStyle(Noir.ink.opacity(0.72))
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
             Spacer(minLength: 0)
         }
         .fixedSize(horizontal: false, vertical: true)
-        .padding(.vertical, 10).padding(.horizontal, 12)
+        .padding(.vertical, compact ? 6 : 10).padding(.horizontal, compact ? 10 : 12)
         .background(Noir.manila, in: RoundedRectangle(cornerRadius: 6))
         .shadow(color: .black.opacity(0.35), radius: 6, y: 3)
         .rotationEffect(.degrees(-0.6))
@@ -827,6 +829,7 @@ private struct LandscapeTable: View {
         // Cards sized so the opponent's line, the trail and the hand fit the
         // height: two rows of cards at 1.4x their width, plus the chrome.
         let cardWidth = max(36, min(62, (size.height - 150) / 3.1))
+        let guessing = me == .marshal && GuessActions.shown(g)
         HStack(alignment: .top, spacing: 14) {
             // Scrolls only if it has to (a trail deep in sprint cards).
             ScrollView {
@@ -838,24 +841,25 @@ private struct LandscapeTable: View {
                 .padding(.vertical, 4)
             }
             .scrollBounceBehavior(.basedOnSize)
-            // The column: what to do now, scrolling if it must, with Hide and
-            // its way out pinned under it so they're never scrolled away.
+            // The column: what to do now, scrolling if it must, with Hide or
+            // Guess pinned under it so they're never scrolled away.
             VStack(spacing: 8) {
             ScrollView {
                 VStack(spacing: 10) {
-                    StatusTag(payload: payload)
-                    Decks(store: store, game: g, cardWidth: cardWidth * 0.6, compact: true)
+                    StatusTag(payload: payload, compact: true)
+                    // A guessing Marshal can't draw, and the notepad needs
+                    // the room: the decks are back for the next draw.
+                    if !guessing { Decks(store: store, game: g, cardWidth: cardWidth * 0.6, compact: true) }
                     if me == .fugitive { FugitiveControls(store: store, game: g, compact: true) }
-                    if me == .marshal {
-                        MarshalHint(game: g)
-                        Notepad(store: store, payload: payload)
-                    }
+                    // No MarshalHint: the banner says the same, and the notepad is the hint.
+                    if me == .marshal { Notepad(store: store, payload: payload, compact: true) }
                     if me == nil { SeatsPanel(store: store, payload: payload) }
                 }
                 .padding(.vertical, 6)
             }
             .scrollBounceBehavior(.basedOnSize)
             HideActions(store: store).padding(.bottom, 4)
+            if guessing { GuessActions(store: store, payload: payload, compact: true).padding(.bottom, 4) }
             }
             .frame(width: min(330, size.width * 0.38))
         }
@@ -907,7 +911,9 @@ private struct LandscapePanels: View {
                 .padding(14)
             }
             .frame(width: 360)
-            .background(Noir.night.ignoresSafeArea())
+            // Not up under the navigation bar: the title is centred on the
+            // screen, and the panel's edge ran through it.
+            .background(Noir.night.ignoresSafeArea(edges: [.bottom, .horizontal]))
             .overlay(alignment: .leading) { Rectangle().fill(Noir.line).frame(width: 1) }
         }
     }
@@ -998,7 +1004,9 @@ private struct SidePanels: View {
 private struct Notepad: View {
     @Bindable var store: FugitiveStore
     let payload: FugitivePayload
-    @State private var confirmingLetGo = false
+    /// A phone held sideways: eleven to a row in smaller writing, so the
+    /// page is four rows, and Guess is pinned under the column instead.
+    var compact = false
 
     private struct Marks {
         var found: Set<Int> = []
@@ -1009,32 +1017,40 @@ private struct Notepad: View {
 
     var body: some View {
         let g = payload.game
-        let guessing = g.turn == .marshal && (g.phase == .marshalGuess || g.phase == .manhunt)
+        let guessing = GuessActions.shown(g)
         let marks = noted(g)
-        VStack(alignment: .leading, spacing: 10) {
-            Text("\(payload.name(.marshal))’s notes").font(Noir.hand(26)).foregroundStyle(Noir.pen)
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 2), count: 7), spacing: 2) {
+        VStack(alignment: .leading, spacing: compact ? 4 : 10) {
+            HStack {
+                Text("\(payload.name(.marshal))’s notes").font(Noir.hand(compact ? 20 : 26)).foregroundStyle(Noir.pen)
+                // Sideways there's no row to spare: the switch shares the title's.
+                if compact, g.candidates != nil {
+                    Spacer(minLength: 8)
+                    Toggle("Pencil in", isOn: $store.assist)
+                        .font(.caption).controlSize(.mini)
+                        .tint(Noir.pen).foregroundStyle(Noir.ink)
+                        .fixedSize()
+                        .accessibilityLabel("Pencil in what each hideout could be")
+                }
+            }
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 2), count: compact ? 11 : 7), spacing: compact ? 0 : 2) {
                 ForEach(1...41, id: \.self) { n in
                     number(n, marks: marks)
                         .disabled(!guessing || marks.found.contains(n) || store.busy || store.animating)
                 }
             }
-            if guessing { guessButtons(g) }
-            if g.candidates != nil {
+            if guessing && !compact { GuessActions(store: store, payload: payload) }
+            if !compact, g.candidates != nil {
                 Toggle("Pencil in what each hideout could be", isOn: $store.assist)
                     .font(.footnote)
                     .tint(Noir.pen)
                     .foregroundStyle(Noir.ink)
             }
         }
-        .padding(.leading, 26).padding([.trailing, .vertical], 14)
+        .padding(.leading, compact ? 22 : 26).padding([.trailing, .vertical], compact ? 8 : 14)
         .background(LinedPaper())
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .shadow(color: .black.opacity(0.4), radius: 8, y: 4)
         .rotationEffect(.degrees(0.4))
-        .confirmationDialog("Let \(payload.name(.fugitive)) escape?", isPresented: $confirmingLetGo, titleVisibility: .visible) {
-            Button("Let them go", role: .destructive) { Task { await store.letGo() } }
-        }
     }
 
     private func number(_ n: Int, marks: Marks) -> some View {
@@ -1043,24 +1059,25 @@ private struct Notepad: View {
         let missed = marks.missed.contains(n) && !found
         let faint = marks.possible.map { !$0.contains(n) && !found && !struck } ?? false
         let picked = store.guesses.contains(n)
+        let inset: CGFloat = compact ? 2 : 5
         return Button { store.toggleGuess(n) } label: {
             Text("\(n)")
-                .font(Noir.hand(25))
+                .font(Noir.hand(compact ? 21 : 25))
                 .foregroundStyle(found ? Noir.found : Noir.pen)
                 .opacity(faint ? 0.28 : 1)
-                .frame(maxWidth: .infinity, minHeight: 38)
+                .frame(maxWidth: .infinity, minHeight: compact ? 29 : 38)
                 .overlay {
                     if struck {
-                        Capsule().fill(Noir.pen).frame(height: 2.2).padding(.horizontal, 8).rotationEffect(.degrees(-14))
+                        Capsule().fill(Noir.pen).frame(height: 2.2).padding(.horizontal, inset + 3).rotationEffect(.degrees(-14))
                     } else if missed {
-                        Capsule().fill(Color.gray.opacity(0.8)).frame(height: 1.6).padding(.horizontal, 9).rotationEffect(.degrees(12))
+                        Capsule().fill(Color.gray.opacity(0.8)).frame(height: 1.6).padding(.horizontal, inset + 4).rotationEffect(.degrees(12))
                     }
                 }
                 .overlay {
                     if picked {
-                        Ellipse().stroke(Noir.miss, lineWidth: 2.2).padding(.horizontal, 5).padding(.vertical, 2)
+                        Ellipse().stroke(Noir.miss, lineWidth: 2.2).padding(.horizontal, inset).padding(.vertical, 2)
                     } else if found {
-                        Ellipse().stroke(Noir.found, lineWidth: 2).padding(.horizontal, 5).padding(.vertical, 2)
+                        Ellipse().stroke(Noir.found, lineWidth: 2).padding(.horizontal, inset).padding(.vertical, 2)
                     }
                 }
                 .contentShape(Rectangle())
@@ -1075,22 +1092,6 @@ private struct Notepad: View {
         if struck { return "\(n), ruled out" }
         if missed { return "\(n), guessed wrong" }
         return "\(n)"
-    }
-
-    @ViewBuilder private func guessButtons(_ g: FugitiveGame) -> some View {
-        let numbers = store.guesses.sorted()
-        let label = numbers.isEmpty ? "Circle a number"
-            : numbers.count == 1 ? "Guess \(numbers[0])" : "Guess all \(numbers.count) — every one must be right"
-        VStack(spacing: 8) {
-            Button(label) { Task { await store.guess() } }
-                .buttonStyle(NoirButtonStyle(fill: Noir.marshal))
-                .disabled(numbers.isEmpty || store.busy || store.animating)
-            if g.phase == .manhunt {
-                Button("Let them go") { confirmingLetGo = true }
-                    .buttonStyle(NoirButtonStyle(fill: Noir.manila))
-                    .disabled(store.busy || store.animating)
-            }
-        }
     }
 
     private func noted(_ g: FugitiveGame) -> Marks {
@@ -1109,6 +1110,41 @@ private struct Notepad: View {
             marks.possible = possible
         }
         return marks
+    }
+}
+
+/// Guess, and in a Manhunt the way out: under the notepad, or pinned at the
+/// foot of the right-hand column on a phone held sideways.
+private struct GuessActions: View {
+    let store: FugitiveStore
+    let payload: FugitivePayload
+    /// Side by side, so a Manhunt's two buttons take one row.
+    var compact = false
+    @State private var confirmingLetGo = false
+
+    static func shown(_ g: FugitiveGame) -> Bool {
+        g.turn == .marshal && (g.phase == .marshalGuess || g.phase == .manhunt)
+    }
+
+    var body: some View {
+        let numbers = store.guesses.sorted()
+        let label = numbers.isEmpty ? "Circle a number"
+            : numbers.count == 1 ? "Guess \(numbers[0])"
+            : compact ? "Guess all \(numbers.count)" : "Guess all \(numbers.count) — every one must be right"
+        let layout = compact ? AnyLayout(HStackLayout(spacing: 8)) : AnyLayout(VStackLayout(spacing: 8))
+        layout {
+            Button(label) { Task { await store.guess() } }
+                .buttonStyle(NoirButtonStyle(fill: Noir.marshal))
+                .disabled(numbers.isEmpty || store.busy || store.animating)
+            if payload.game.phase == .manhunt {
+                Button("Let them go") { confirmingLetGo = true }
+                    .buttonStyle(NoirButtonStyle(fill: Noir.manila))
+                    .disabled(store.busy || store.animating)
+            }
+        }
+        .confirmationDialog("Let \(payload.name(.fugitive)) escape?", isPresented: $confirmingLetGo, titleVisibility: .visible) {
+            Button("Let them go", role: .destructive) { Task { await store.letGo() } }
+        }
     }
 }
 

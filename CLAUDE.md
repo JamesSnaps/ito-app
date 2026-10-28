@@ -609,11 +609,20 @@ in-app Safari sheet rather than being rebuilt.
   (`FugitiveControls(compact:)`: the heading drops "First turn", and the
   hint waits until a hideout is picked — before that the badges say it),
   and Hide/Done pinned at its foot (`HideActions`, shared with portrait's
-  `HideBar`). The Marshal's column holds the notepad. Card width comes from
-  the height: two rows of cards plus the chrome.
+  `HideBar`), with a smaller banner (`StatusTag(compact:)`). Card width
+  comes from the height: two rows of cards plus the chrome.
+- **The Marshal's column is the notepad** (app 1.8.2): eleven numbers to a
+  row in smaller writing (`Notepad(compact:)`), so 1–41 is four rows, the
+  pencil-in switch shares the title's line, and Guess (with Let them go in
+  a Manhunt, side by side) is pinned at the column's foot (`GuessActions`,
+  which is also what sits under the portrait notepad). While guessing the
+  decks step out — nothing can be drawn — and there's no `MarshalHint`, as
+  the banner says it. Before this the notepad ran off the bottom and Guess
+  needed a scroll to find.
 - **Seats and case notes are a panel away**: the toolbar's sidebar button
   slides them in from the right over a dimmed table (`LandscapePanels`);
-  tapping the table closes it. Only shown sideways.
+  tapping the table closes it. Only shown sideways. The panel stops at the
+  navigation bar: run up under it, its edge cut through the centred title.
 
 ### Fugitive on iOS (app 1.2.0)
 
