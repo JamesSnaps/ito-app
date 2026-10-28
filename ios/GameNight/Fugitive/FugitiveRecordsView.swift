@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// Fugitive's records — /fugitive/stats in the app: the leaderboard in the
-/// server's order, each player's record in both roles, and recent games.
+/// server's order, each player's record in both roles, and recent games;
+/// then games against the computer, kept apart from the leaderboard.
 struct FugitiveRecordsView: View {
     @State private var stats: FugitiveStats?
     @State private var error: String?
@@ -34,7 +35,9 @@ struct FugitiveRecordsView: View {
                         columns {
                             NoirPanel(title: "Most wanted") {
                                 if stats.leaderboard.isEmpty {
-                                    Text("No games yet. Finished games are recorded here automatically.")
+                                    Text(stats.computerLeaderboard?.isEmpty == false
+                                         ? "No games between people yet."
+                                         : "No games yet. Finished games are recorded here automatically.")
                                         .font(.subheadline).foregroundStyle(Noir.card.opacity(0.7))
                                 }
                                 ForEach(Array(stats.leaderboard.enumerated()), id: \.offset) { rank, row in
@@ -49,6 +52,9 @@ struct FugitiveRecordsView: View {
                                 }
                                 .frame(maxWidth: sizeClass == .regular ? 380 : .infinity)
                             }
+                        }
+                        if let rows = stats.computerLeaderboard, !rows.isEmpty {
+                            computerPanel(rows, recent: stats.computer?.recent ?? [])
                         }
                     } else if let error {
                         NoirPanel(title: "Records") { Text(error) }
@@ -94,6 +100,54 @@ struct FugitiveRecordsView: View {
         }
         .padding(.vertical, 3)
         .accessibilityElement(children: .combine)
+    }
+
+    /// stats.html's "Against the computer": ranked by wins on hard, each
+    /// level's wins split by the seat played, then the latest games.
+    private func computerPanel(_ rows: [FugitiveStats.ComputerRow], recent: [FugitiveStats.ComputerRecent]) -> some View {
+        NoirPanel(title: "Against the computer") {
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                HStack(spacing: 10) {
+                    Mugshot(name: row.name,
+                            role: row.marshalHardWins + row.marshalEasyWins > row.fugitiveHardWins + row.fugitiveEasyWins
+                                ? .marshal : .fugitive,
+                            size: 38)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(row.name).font(.body.weight(.bold))
+                        Text(Self.levels(row)).font(.caption).foregroundStyle(Noir.card.opacity(0.6))
+                    }
+                    Spacer()
+                    VStack(alignment: .trailing, spacing: 0) {
+                        Text("\(row.hardWins)").font(Noir.poster(26)).foregroundStyle(Noir.fugitive)
+                        Text("on hard · \(row.wins)/\(row.games) in all").font(.caption2).foregroundStyle(Noir.card.opacity(0.6))
+                    }
+                }
+                .padding(.vertical, 3)
+                .accessibilityElement(children: .combine)
+            }
+            if !recent.isEmpty {
+                Divider().overlay(Noir.card.opacity(0.2)).padding(.vertical, 4)
+                ForEach(Array(recent.enumerated()), id: \.offset) { _, game in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(Self.headline(game)).font(.subheadline.weight(.bold))
+                        Text("\(game.level.capitalized) · \(game.hideouts) hideout\(game.hideouts == 1 ? "" : "s") · \(Self.date(game.at))")
+                            .font(.caption).foregroundStyle(Noir.card.opacity(0.6))
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        }
+    }
+
+    static func levels(_ row: FugitiveStats.ComputerRow) -> String {
+        "Hard \(row.hardWins)/\(row.hardGames) (F \(row.fugitiveHardWins)/\(row.fugitiveHardGames) · M \(row.marshalHardWins)/\(row.marshalHardGames))"
+            + " · Easy \(row.easyWins)/\(row.easyGames)"
+    }
+
+    /// stats.html's wording for a game against the computer.
+    static func headline(_ game: FugitiveStats.ComputerRecent) -> String {
+        game.won ? "\(game.name) beat the computer as \(game.role.title)"
+                 : "The computer beat \(game.name) (\(game.role.title))"
     }
 
     private static func roles(_ row: FugitiveStats.Row) -> String {

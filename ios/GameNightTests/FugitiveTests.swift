@@ -74,6 +74,14 @@ private final class FixtureToken {}
         let recent = try #require(stats.recent.first)
         #expect(recent.winner == .marshal && recent.hideouts == 2)
         #expect(FugitiveRecordsView.headline(recent) == "Ben caught Ana")
+        // Ana's game against the computer: on its own table, not the leaderboard.
+        #expect(stats.computer?.gamesPlayed == 1)
+        let ana = try #require(stats.computerLeaderboard?.first)
+        #expect(ana.name == "Ana" && ana.games == 1 && ana.marshalEasyGames == 1 && ana.hardGames == 0)
+        let solo = try #require(stats.computer?.recent.first)
+        #expect(solo.role == .marshal && solo.level == "easy")
+        #expect(FugitiveRecordsView.headline(solo) == (solo.won ? "Ana beat the computer as Marshal"
+                                                                : "The computer beat Ana (Marshal)"))
     }
 
     @Test func movesLeaveOutWhatDoesntApply() throws {

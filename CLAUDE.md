@@ -583,7 +583,9 @@ in-app Safari sheet rather than being rebuilt.
   version with the app's endpoints (v1.6.1+; v1.8.2+ for app 1.2.0; v1.9.0+
   for app 1.3.0's offline uploads — offline play itself needs no server;
   v1.10.0+ for app 1.4.0's ito hosting; v1.11.0+ for app 1.5.0's online
-  games against the computer) before a build goes out.
+  games against the computer; v1.12.0+ for app 1.6.0's records against the
+  computer — the app holds offline computer games back until the server's
+  stats carry `computer_leaderboard`) before a build goes out.
 - **`.dockerignore` keeps `ios/` out of the server image.**
 - **QR codes are scanned in the app** (`ScanSheet`, VisionKit's
   `DataScannerViewController`, QR only), from the hub's toolbar and the Join
@@ -675,9 +677,12 @@ phones side by side.
   last move, it makes *one* move with `FugitiveAI.choose` from its seat's
   view and `moveRNG(seed, seq)`, recorded in `moves` like anyone's. The
   store's 1s poll is the clock. A rematch swaps its seat, with a fresh seed;
-  its seat can't be freed. It's never uploaded (`OfflineUploads.waiting`
-  skips it, and pruning treats it as sent), and it isn't advertised for a
-  nearby phone — both seats are taken. `OfflineTableTests` replays the
+  its seat can't be freed. It isn't advertised for a nearby phone — both
+  seats are taken. Since app 1.6.0 a finished one is uploaded like any
+  other, with `computer {role, level, seed}` in the body (see "Records
+  against the computer"), but only to a server whose `/fugitive/api/stats`
+  has `computer_leaderboard`: an older one would ignore `computer` and put
+  the game on the leaderboard against a player called Computer. `OfflineTableTests` replays the
   fixture's computer-v-person games through the table, one look per
   computer move.
 - `NSLocalNetworkUsageDescription` and `NSBonjourServices`
@@ -762,7 +767,7 @@ read in full; not in the repo).
 - **Records** are per player and per role (Fugitive wins, Marshal wins,
   Manhunt catches). A game resigned before the Fugitive's first hideout
   isn't recorded — nobody played it.
-  Nor is a game against the computer (see below).
+  A game against the computer is recorded apart (see below).
 - **No admin routes**, so nothing new for the Authelia rule in the docker repo.
 - **iOS is native since app 1.2.0** (see "Fugitive on iOS" below), and the
   AASA file claims `/fugitive/play/*`.
@@ -854,10 +859,9 @@ the computer", takes your name, a seat (Swap roles) and Easy or Hard.
   the clock, a restart picks up where it was, and a Marshal's two draws and
   a guess land a beat apart so the table plays each one out. A move the
   rules refuse (a bug) makes it resign rather than hang the table.
-- **Not recorded.** The records are games between people; a game against
-  the computer is marked recorded without touching stats.json. The payload
-  carries `computer: {role, level}` only when there is one, so the iOS
-  fixtures' shape didn't change.
+- **Recorded apart, since v1.12.0** (see "Records against the computer").
+  The payload carries `computer: {role, level}` only when there is one, so
+  the iOS fixtures' shape didn't change.
 - **A rematch swaps the computer's seat too**, with a fresh seed.
 - **Two levels.** Easy: the Fugitive hides on the lowest card it reaches
   with the fewest sprints, never bluffs; the Marshal draws anywhere and guesses one number from
@@ -896,6 +900,31 @@ the computer", takes your name, a seat (Swap roles) and Easy or Hard.
   name, a seat (Swap roles) and Easy or Hard, as on the web. The payload's
   `computer` is what the table reads: its seat shows "Computer · Hard" and
   has no Free seat button.
+
+### Records against the computer (v1.12.0, app 1.6.0)
+
+- **Kept apart from the leaderboard**, in `record["computer"]` of
+  Fugitive's stats bucket: `{games_played, players, recent}`, players keyed
+  case-insensitively by name like the main records. Only the person gets a
+  row — the computer has none. Beating easy a hundred times must never put
+  someone above a person who wins games against people, so the leaderboard
+  never hears of these games.
+- **Per seat and level**: `{role}_{level}_games/_wins` for both seats and
+  both levels, plus `games`/`wins`. `computer_leaderboard()` adds the
+  per-level totals and `win_rate`, and ranks by wins on hard, then all wins,
+  then win rate. `/fugitive/api/stats` carries it as `computer_leaderboard`.
+- **Shown under its own heading** on the records page ("Against the
+  computer": Hard, Easy and All, each level's wins split by seat in small
+  type so four columns fit 375px) and in the app's records as its own
+  panel. A resigned-before-the-first-hideout game isn't recorded, as ever.
+- **Offline games prove the computer played them.** The upload carries the
+  computer's seed, and `replay_offline` checks every one of its moves is
+  the one ai.py makes from that seat's view and `move_rng(seed, seq)`, by
+  applying both to copies and comparing the states (so the JSON's spelling
+  of a move doesn't matter). A phone can't claim a win over a computer that
+  played along. This only works because the Swift AI is pinned to ai.py;
+  `OfflineTableTests` can write the app's own uploads (`AI_UPLOADS_OUT`) to
+  post at a dev server.
 
 ## Player profiles (added v1.8.0)
 

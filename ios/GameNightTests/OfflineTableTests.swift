@@ -151,8 +151,13 @@ import Testing
             let finished = try #require(table.saved(dealt.code))
             #expect(finished.state.reason == game["reason"] as? String && finished.finishedAt != nil)
         }
-        // None of them goes home: the records are games between people.
-        #expect(OfflineUploads.waiting(on: table.shelf).isEmpty)
+        // Every one goes home with the computer's seed, for the server to
+        // check its moves against ai.py's.
+        let waiting = OfflineUploads.waiting(on: table.shelf)
+        #expect(!waiting.isEmpty && waiting.allSatisfy { OfflineUploads.body(for: $0).computer?.seed == $0.computer?.seed })
+        if let out = ProcessInfo.processInfo.environment["AI_UPLOADS_OUT"] {
+            try JSONEncoder().encode(waiting.map(OfflineUploads.body(for:))).write(to: URL(fileURLWithPath: out))
+        }
     }
 
     @Test func theComputerKeepsItsSeatWaitsItsTurnAndSwapsInARematch() async throws {
@@ -186,7 +191,14 @@ import Testing
         #expect(swapped.players == ["fugitive": "Ana", "marshal": "Computer"])
         let before = try #require(table.saved(dealt.code)?.computer?.seed)
         #expect(table.saved(rematch.code)?.computer?.seed != before)
-        #expect(OfflineUploads.waiting(on: table.shelf).isEmpty)
+        // The finished one goes home with the computer's seed, so the server
+        // can check its moves were the computer's.
+        let waiting = OfflineUploads.waiting(on: table.shelf)
+        #expect(waiting.map(\.code) == [dealt.code])
+        let body = OfflineUploads.body(for: try #require(waiting.first))
+        #expect(body.computer == .init(role: .fugitive, level: "easy", seed: before))
+        let json = try #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode(body)) as? [String: Any])
+        #expect((json["computer"] as? [String: Any])?["seed"] as? Int == Int(before))
     }
 
     @Test func gamesNobodyNeedsAreClearedButAnUnsentFinishIsKept() throws {
@@ -206,21 +218,23 @@ import Testing
         #expect(left.count == 1 && left[0].upload == .notYet && left[0].finishedAt != nil)
     }
 
-    @Test func aComputerGameIsKeptAsLongAsAnyOtherUntilItsFinished() throws {
+    @Test func aComputerGameIsKeptLikeAnyOther() throws {
         let shelf = OfflineShelf(folder: folder)
         let table = OfflineTable(shelf: shelf)
         let tenDays = Date(timeIntervalSinceNow: -10 * 86_400)
-        var codes: [String: String] = [:]
-        for finished in [true, false] {
+        var kept: Set<String> = []
+        for (upload, finished) in [(OfflineGame.Upload.done, true), (.notYet, true), (.notYet, false)] {
             let code = try table.create(you: .fugitive, name: "Ana", level: .easy).code
             var game = try #require(shelf.load(code))
             game.createdAt = tenDays
             game.finishedAt = finished ? tenDays : nil
+            game.upload = upload
             try shelf.save(game)
-            codes[finished ? "finished" : "playing"] = code
+            if upload == .notYet { kept.insert(code) }
         }
         OfflineUploads.prune(shelf)
-        // Finished: nothing to send, so it goes after a week. Still going: a month, like any other.
-        #expect(shelf.all().map(\.code) == [codes["playing"]])
+        // Sent a week ago: gone. Finished and unsent: kept until it's sent.
+        // Still going: a month, like any other.
+        #expect(Set(shelf.all().map(\.code)) == kept)
     }
 }

@@ -149,7 +149,7 @@ nonisolated struct FugitiveRematch: Codable, Equatable {
     let hostToken: String
 }
 
-/// `GET /fugitive/api/stats`, leaderboard in the records page's order.
+/// `GET /fugitive/api/stats`, both leaderboards in the records page's order.
 nonisolated struct FugitiveStats: Decodable, Equatable {
     nonisolated struct Row: Decodable, Equatable {
         let name: String
@@ -170,7 +170,43 @@ nonisolated struct FugitiveStats: Decodable, Equatable {
         let reason: String
         let hideouts: Int
     }
+    /// One person against the computer: by level, and split by the seat played.
+    nonisolated struct ComputerRow: Decodable, Equatable {
+        let name: String
+        let games: Int
+        let wins: Int
+        let winRate: Int
+        let hardGames: Int
+        let hardWins: Int
+        let easyGames: Int
+        let easyWins: Int
+        let fugitiveHardGames: Int
+        let fugitiveHardWins: Int
+        let marshalHardGames: Int
+        let marshalHardWins: Int
+        let fugitiveEasyGames: Int
+        let fugitiveEasyWins: Int
+        let marshalEasyGames: Int
+        let marshalEasyWins: Int
+    }
+    nonisolated struct ComputerRecent: Decodable, Equatable {
+        let at: String
+        let name: String
+        let role: FugitiveRole
+        let level: String
+        let won: Bool
+        let reason: String
+        let hideouts: Int
+    }
+    nonisolated struct Computer: Decodable, Equatable {
+        let gamesPlayed: Int
+        let recent: [ComputerRecent]
+    }
     let gamesPlayed: Int
     let leaderboard: [Row]
     let recent: [Recent]
+    /// Games against the computer, kept off the leaderboard. Optional while a
+    /// server from before v1.12.0 might be answering.
+    var computer: Computer? = nil
+    var computerLeaderboard: [ComputerRow]? = nil
 }

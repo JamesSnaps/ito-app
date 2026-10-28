@@ -12,9 +12,10 @@
     <h1 class="fg-title">Records</h1>
   </header>
 
-  {% if not rows %}
+  {% if not rows and not computer_rows %}
   <p class="fg-muted">No games yet. Finished games are recorded here automatically.</p>
-  {% else %}
+  {% endif %}
+  {% if rows %}
   <p class="fg-muted">{{ record.games_played }} game{{ "" if record.games_played == 1 else "s" }} played.</p>
   <table>
     <thead>
@@ -50,6 +51,47 @@
           {% else %}{{ g.fugitive }} {{ how[g.reason] }} from {{ g.marshal }}{% endif %}
         </td>
         <td class="fg-num-cell">{{ g.hideouts }} hideout{{ "" if g.hideouts == 1 else "s" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% if computer_rows %}
+  {# Kept off the leaderboard above: these aren't games between people. #}
+  <h2>Against the computer</h2>
+  <p class="fg-muted">{{ record.computer.games_played }} game{{ "" if record.computer.games_played == 1 else "s" }}
+    against the computer, ranked by wins on hard.</p>
+  <table>
+    <thead>
+      <tr><th>Player</th><th class="fg-num-cell">Hard</th><th class="fg-num-cell">Easy</th>
+          <th class="fg-num-cell">All</th></tr>
+    </thead>
+    <tbody>
+      {% for p in computer_rows %}
+      <tr>
+        <td><span class="fg-who" data-name="{{ p.name }}"
+                  data-role="{{ 'marshal' if p.marshal_hard_wins + p.marshal_easy_wins > p.fugitive_hard_wins + p.fugitive_easy_wins else 'fugitive' }}">{{ p.name }}</span></td>
+        {% for level in ("hard", "easy") %}
+        <td class="fg-num-cell">{{ p[level ~ "_wins"] }}/{{ p[level ~ "_games"] }}
+          <span class="fg-split">F {{ p["fugitive_" ~ level ~ "_wins"] }}/{{ p["fugitive_" ~ level ~ "_games"] }}
+            · M {{ p["marshal_" ~ level ~ "_wins"] }}/{{ p["marshal_" ~ level ~ "_games"] }}</span></td>
+        {% endfor %}
+        <td class="fg-num-cell">{{ p.wins }}/{{ p.games }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="fg-muted">Wins/games. F and M split them by the seat played: Fugitive or Marshal.</p>
+
+  <h2>Recent games against the computer</h2>
+  <table>
+    <tbody>
+      {% for g in record.computer.recent %}
+      <tr>
+        <td>{{ g.at[:10] }}</td>
+        <td>{% if g.won %}{{ g.name }} beat the computer as {{ g.role|title }}{% else %}The computer beat {{ g.name }} ({{ g.role|title }}){% endif %}</td>
+        <td class="fg-num-cell">{{ g.level|title }} · {{ g.hideouts }} hideout{{ "" if g.hideouts == 1 else "s" }}</td>
       </tr>
       {% endfor %}
     </tbody>
