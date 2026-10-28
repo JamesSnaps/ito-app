@@ -96,6 +96,11 @@ struct HubView: View {
             .navigationDestination(for: Route.self, destination: destination)
             .task(id: path.isEmpty) {
                 if path.isEmpty {
+                    // A game handed over is for the screen it opened, once. Kept,
+                    // it opened the table again later as it was at the deal —
+                    // seen as the dealer, which told the store its seat was gone.
+                    handedOver = [:]
+                    handedOverFugitive = [:]
                     // Offline games waiting for a signal go home quietly.
                     Task { await OfflineUploads.sendWaiting() }
                     await Faces.shared.load()

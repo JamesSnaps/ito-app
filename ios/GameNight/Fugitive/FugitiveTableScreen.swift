@@ -43,6 +43,8 @@ struct FugitiveTableScreen: View {
                                 }
                                 .padding(20)
                             }
+                            // Scrolls only when it must: a column that fits doesn't bounce.
+                            .scrollBounceBehavior(.basedOnSize)
                             // Hiding happens in the column beside the desk, not in
                             // a bar over the hand: the column has the room.
                             ScrollView {
@@ -52,6 +54,7 @@ struct FugitiveTableScreen: View {
                                 }
                                 .padding(.vertical, 20)
                             }
+                            .scrollBounceBehavior(.basedOnSize)
                             .frame(width: 370)
                             .padding(.trailing, 20)
                         }
@@ -66,6 +69,7 @@ struct FugitiveTableScreen: View {
                             .frame(maxWidth: 720)
                             .frame(maxWidth: .infinity)
                         }
+                        .scrollBounceBehavior(.basedOnSize)
                         .safeAreaInset(edge: .bottom, spacing: 0) { HideBar.room(store) }
                     }
                 } else {
@@ -520,14 +524,18 @@ private struct Trail: View {
         // landing wasn't tracked, and it stayed invisible until something
         // else redrew the trail — after a first-turn hideout, nothing did.
         let landing = store.landing
+        // Read too, so the trail draws again once the table settles. A
+        // hideout with sprint cards under it sometimes missed the change to
+        // `landing` alone and stayed invisible until the next move.
+        let settled = !store.animating
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: cardWidth * 0.22) {
                     ForEach(Array(g.hideouts.enumerated()), id: \.offset) { i, hideout in
                         Stop(hideout: hideout, found: hideout.revealed && i > 0 && hideout.card != 42,
                              hint: hint(g, i), width: cardWidth)
-                            .offset(y: landing.contains(i) ? 170 : 0)
-                            .opacity(landing.contains(i) ? 0 : 1)
+                            .offset(y: landing.contains(i) && !settled ? 170 : 0)
+                            .opacity(landing.contains(i) && !settled ? 0 : 1)
                     }
                     if showSlot { Slot(store: store, width: cardWidth) }
                     Color.clear.frame(width: 1, height: 1).id("end")
