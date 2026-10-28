@@ -129,6 +129,25 @@ import Testing
         #expect(store.roundNumber == 1)
     }
 
+    @Test func aPollOfAClosedRoomDoesntCloseItsReplacement() async {
+        let server = FakeItoServer()
+        let store = ItoHostStore(code: nil, api: server, tokens: tokens)
+        await store.start()
+        server.gone = true
+        await store.refresh()
+        #expect(store.closed)
+        // A poll of the closed room is on its way back when a new one opens.
+        server.whileAnsweringState = {
+            server.whileAnsweringState = nil
+            server.gone = false
+            await store.startNew()
+        }
+        server.gone = true
+        await store.refresh()
+        #expect(!store.closed && store.code == "ABCD")
+        #expect(tokens.lastRoom == "ABCD")
+    }
+
     @Test func aNewSessionKeepsTheRoom() async {
         let server = FakeItoServer()
         let store = ItoHostStore(code: nil, api: server, tokens: tokens)
@@ -173,9 +192,10 @@ import Testing
     func itoCategories() async throws -> [String] { ["family", "action"] }
 
     func itoState(code: String) async throws -> ItoState {
-        try check(nil)
+        let wasGone = gone
         let answer = state
         await whileAnsweringState?()
+        if wasGone { throw GameNightClient.Failure.server(status: 404, message: "gone", payload: nil) }
         return answer
     }
 

@@ -165,6 +165,8 @@ final class ItoHostStore {
             state = fresh
             if token != nil { tokens.lastRoom = code }
         } catch let failure as GameNightClient.Failure where failure.status == 404 {
+            // The same goes for "gone": it may be news of a room since replaced.
+            guard changes == before else { return }
             gone()
         } catch {
             // Try again on the next tick.
