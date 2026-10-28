@@ -65,7 +65,7 @@ struct FugitiveTableScreen: View {
             }
             .animation(.easeInOut(duration: 0.25), value: store.folderFor)
         }
-        .navigationTitle(store.game?.myTurn == true ? "● Your turn" : "Fugitive")
+        .navigationTitle(store.game?.myTurn == true ? "● Your turn" : store.inviteURL == nil ? "Fugitive · offline" : "Fugitive")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Noir.night, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
@@ -108,6 +108,10 @@ struct FugitiveTableScreen: View {
         .keepsScreenAwake()
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { store.start() } else { store.stop() }
+        }
+        // An offline game that's just finished: send it home if there's signal.
+        .onChange(of: store.game?.isOver == true) { _, over in
+            if over && store.inviteURL == nil { Task { await OfflineUploads.sendWaiting() } }
         }
         .task { await Faces.shared.load() }
         .preferredColorScheme(.dark)
@@ -797,6 +801,10 @@ private struct SeatsPanel: View {
                         .multilineTextAlignment(.center)
                 }
                 .frame(maxWidth: .infinity)
+            }
+            if store.isDealer, open, !g.isOver, store.inviteURL == nil {
+                Text("No internet needed: on the other phone, open Fugitive and tap “Join a nearby game”.")
+                    .font(.footnote).foregroundStyle(Noir.card.opacity(0.7))
             }
             if g.isOver {
                 if store.isDealer {

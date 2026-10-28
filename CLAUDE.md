@@ -477,6 +477,8 @@ in-app Safari sheet rather than being rebuilt.
 - **The server is still the game.** The app holds no rules: it shows the
   table from `/flip7/api/play/<code>` and sends moves, exactly like
   `play.html`. Anything rule-shaped belongs in `engine.py`, not in Swift.
+  The one exception is offline Fugitive (below), and it's a pinned port,
+  not a second set of rules.
 - **It mirrors the web table on purpose.** The same three modes (`table`,
   `player`, `watch`), the same `canAct` / `takenByPhone` / `token(for:)`
   rules, the same card order and log wording, the same layout split (iPad
@@ -496,7 +498,15 @@ in-app Safari sheet rather than being rebuilt.
 - **Fixtures are real responses.** `ios/GameNightTests/Fixtures/*.json`
   were captured from the Flask code, the Swift models are tested against
   them, and `test_the_ios_app_fixtures_still_match_the_api` fails the
-  Python suite if the API's keys drift — iOS tests don't run in CI.
+  Python suite if the API's keys drift.
+- **The Swift that doesn't need UIKit also builds on Linux**
+  (`ios/LinuxTests`): a Swift package of symlinks to the app's models,
+  client, offline engine, offline table and nearby play, with the Xcode
+  project's settings (Swift 6.2, MainActor by default) and a
+  signature-only MultipeerConnectivity stub. `./run.sh` runs it in the
+  `swift:6.2` image; CI runs it on every PR touching `ios/` or Fugitive
+  (`.github/workflows/swift-tests.yml`). The SwiftUI screens still only
+  build in Xcode. A new non-UI file worth checking needs a symlink there.
 - **The invite QR opens the web table**, not the app, so a phone without
   the app can still join.
 - **One join for every game.** `GET /api/join/<code>` (app.py) is /join's
@@ -540,8 +550,9 @@ in-app Safari sheet rather than being rebuilt.
   `applinks:gamenight.collardserver.co.uk` entitlement. The file must stay
   on the public Traefik router — Apple fetches it with no sign-in.
 - **The app talks to production by default**, so the server must be on a
-  version with the app's endpoints (v1.6.1+; v1.8.2+ for app 1.2.0) before
-  a build goes out.
+  version with the app's endpoints (v1.6.1+; v1.8.2+ for app 1.2.0; v1.9.0+
+  for app 1.3.0's offline uploads — offline play itself needs no server)
+  before a build goes out.
 - **`.dockerignore` keeps `ios/` out of the server image.**
 - **QR codes are scanned in the app** (`ScanSheet`, VisionKit's
   `DataScannerViewController`, QR only), from the hub's toolbar and the Join
@@ -585,7 +596,49 @@ in-app Safari sheet rather than being rebuilt.
   game (`ios_fixtures` in tests/test_fugitive_play_api.py), which also fails
   the Python suite if the API's shape drifts.
   `WRITE_IOS_FIXTURES=1 pytest tests -q -k fugitive_fixtures` rewrites them.
-- **Offline play** is still the plan from the Fugitive section: not in 1.2.0.
+
+### Offline Fugitive (app 1.3.0, server 1.9.0)
+
+For a plane: Fugitive with no internet, on one phone passed across or two
+phones side by side.
+
+- **The rules in Swift, pinned to engine.py.** `FugitiveEngine.swift` is a
+  line-for-line port — the same state (the Python dict's JSON keys), the
+  same order of checks, the same refusals word for word, `view` and
+  `candidates` included. `tests/test_fugitive_offline.py` plays six seeded
+  games (every ending, every refusal) and writes every seat's view after
+  every move to `Fixtures/fugitive_engine_games.json`, failing if engine.py
+  no longer plays that way; `FugitiveEngineTests` replays it in Swift and
+  must match all of it. **Change engine.py → rewrite the fixture
+  (`WRITE_IOS_FIXTURES=1 pytest tests -q -k engine_scripts`) → make the
+  Swift agree.** CI runs both halves.
+- **The table doesn't know it's offline.** `FugitiveTransport` is the five
+  calls the table makes; `GameNightClient` is one, `OfflineTable` another —
+  game.py's room kept as a file per code in Application Support, answering
+  with the same payloads, tokens, seats, refusals and rematches. So
+  `FugitiveStore` and every screen are unchanged, pass-and-play's folder
+  included. Offline codes and tokens have their own shelf
+  (`FugitiveTokens.offline`), so they can't collide with the server's.
+- **Two phones: one keeps the game.** The host phone advertises over
+  MultipeerConnectivity (`NearbyLink`: Bluetooth / peer-to-peer Wi-Fi, no
+  network) while its table is on screen; the other joins from "Join a
+  nearby game" and sends the server's API calls across (`Nearby.swift`),
+  which the host answers from its `OfflineTable` — the view for the
+  guest's token only, as online. If the link drops it rejoins the same
+  host. The host phone holds the whole game, as the server would; fine for
+  a family game. Both phones must stay in the foreground — iOS suspends
+  the link in the background.
+- **Coming home.** An offline game keeps its decks from before the deal and
+  every move. Once there's signal (`OfflineUploads`: when the hub or the
+  records open, and when a game ends) it's posted to
+  `POST /fugitive/api/offline`, which replays it through engine.py and
+  records it only if the real rules accept it to the end — once per game
+  id, so a retried upload doesn't count twice. A 4xx is remembered, not
+  retried; sent games are cleared after a week; a finished game is never
+  dropped unsent. The records screen says how many are waiting.
+- `NSLocalNetworkUsageDescription` and `NSBonjourServices`
+  (`_gn-fugitive._tcp/_udp`) are in `project.yml` and the committed
+  `Info.plist`; iOS asks before the first nearby game.
 
 ### The table as a real deck (iOS)
 
@@ -668,13 +721,12 @@ read in full; not in the repo).
 - **No admin routes**, so nothing new for the Authelia rule in the docker repo.
 - **iOS is native since app 1.2.0** (see "Fugitive on iOS" below), and the
   AASA file claims `/fugitive/play/*`.
-- **Offline (plane) play is planned for the iOS app only**: one device
-  hosts over MultipeerConnectivity. That needs the rules in Swift too — the
-  one deliberate exception to "rules live in engine.py" — so the Swift
-  engine must be pinned to this one by fixtures: scripted games (moves,
-  expected views, expected errors) generated by the Python suite and
-  replayed by the Swift tests. An offline game's moves are uploaded later
-  and replayed here before they're recorded.
+- **Offline (plane) play is in the iOS app** (since 1.3.0; see "Offline
+  Fugitive"): the rules in Swift, pinned to this engine by scripted games
+  the Python suite writes out and the Swift tests replay, and finished games
+  replayed through this engine by `POST /fugitive/api/offline` before
+  they're recorded. Any change to engine.py has to be made in
+  `FugitiveEngine.swift` too — the fixture test makes sure of it.
 
 ### Fugitive's table (v1.7.0)
 
@@ -943,6 +995,9 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python app.py  # http://localhost:5000 (PORT= to override;
                          # macOS AirPlay squats on 5000)
 .venv/bin/python -m pytest tests -q
+
+# iOS's non-UI Swift on Linux (Docker; or `swift test` with Swift 6.2)
+ios/LinuxTests/run.sh
 
 # iOS (needs Xcode + XcodeGen)
 cd ios && xcodegen && open GameNight.xcodeproj

@@ -1,0 +1,1 @@
+../../../GameNight/App/AppSettings.swift

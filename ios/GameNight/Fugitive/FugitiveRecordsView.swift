@@ -5,6 +5,9 @@ import SwiftUI
 struct FugitiveRecordsView: View {
     @State private var stats: FugitiveStats?
     @State private var error: String?
+    /// Offline games still on this phone: waiting for signal, or refused.
+    @State private var waiting = 0
+    @State private var refused = 0
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     var body: some View {
@@ -12,6 +15,16 @@ struct FugitiveRecordsView: View {
             DeskBackground().ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
+                    if waiting > 0 {
+                        Label("\(waiting) offline game\(waiting == 1 ? "" : "s") on this phone will be added once there’s signal.",
+                              systemImage: "airplane")
+                            .font(.footnote).foregroundStyle(Noir.card.opacity(0.8))
+                    }
+                    if refused > 0 {
+                        Label("\(refused) offline game\(refused == 1 ? "" : "s") couldn’t be added — the server didn’t accept \(refused == 1 ? "it" : "them").",
+                              systemImage: "exclamationmark.triangle")
+                            .font(.footnote).foregroundStyle(Noir.miss)
+                    }
                     if let stats {
                         Text("\(stats.gamesPlayed) game\(stats.gamesPlayed == 1 ? "" : "s") played")
                             .font(Noir.type(15)).foregroundStyle(Noir.card.opacity(0.75))
@@ -55,6 +68,8 @@ struct FugitiveRecordsView: View {
         .toolbarColorScheme(.dark, for: .navigationBar)
         .task {
             await Faces.shared.load()
+            await OfflineUploads.sendWaiting()
+            countOffline()
             await load()
         }
         .preferredColorScheme(.dark)
@@ -109,6 +124,12 @@ struct FugitiveRecordsView: View {
         case "resigned": return game.winner == .marshal ? "\(f) gave up to \(m)" : "\(m) gave up to \(f)"
         default: return "\(game.winner == .marshal ? m : f) won"
         }
+    }
+
+    private func countOffline() {
+        let games = OfflineShelf.standard.all()
+        waiting = games.filter { $0.finishedAt != nil && $0.upload == .notYet }.count
+        refused = games.filter { if case .refused = $0.upload { true } else { false } }.count
     }
 
     private func load() async {

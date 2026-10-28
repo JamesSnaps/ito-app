@@ -184,6 +184,9 @@ final class OfflineTable: FugitiveTransport {
         return FugitiveRematch(code: game.next ?? code, hostToken: game.hostToken)
     }
 
+    /// A saved game, for the screens around the table.
+    func saved(_ code: String) -> OfflineGame? { try? game(code) }
+
     /// Change a saved game outside play — its upload status.
     func update(_ code: String, _ change: (inout OfflineGame) -> Void) {
         guard var game = try? game(code) else { return }
