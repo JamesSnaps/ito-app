@@ -624,6 +624,24 @@ in-app Safari sheet rather than being rebuilt.
   tapping the table closes it. Only shown sideways. The panel stops at the
   navigation bar: run up under it, its edge cut through the centred title.
 
+### Fugitive on an iPad in landscape (app 1.8.3)
+
+- **Cards are sized from the height** (`FugitiveTableScreen.deskCard`):
+  about 5.2 card widths plus ~450pt of chrome, between 72 (what every iPad
+  had before) and 112 (the 240px card images' sharp limit). A 13" gets
+  ~95pt cards; an 11" stays at 72. Upright, up to 88.
+- **Hiding is in the side column** (`HidingPanel`, above the seats): the
+  step switch, the hint, Hide and Lie low — not under the hand with a bar
+  pinned over it. With bigger cards the bar covered the hand. The desk is
+  `Desk(controls: false)` there; the panel also carries the "tap a deck"
+  and Marshal hints on your turn.
+- **A hideout once didn't land on an iPad playing online** (25 in the case
+  notes, missing from the trail, the next turn under way). Not reproduced:
+  `everyHideoutLandsOverAWholeGame` plays a whole game against the offline
+  table, hiding on the card just drawn, and every hideout lands. If it comes
+  back, suspect the online timing (a poll and a move crossing), not the
+  trail.
+
 ### Fugitive on iOS (app 1.2.0)
 
 - **Same server, same secrecy.** `FugitiveStore` is play.html in Swift: it
