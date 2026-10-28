@@ -39,7 +39,7 @@ struct FugitiveTableScreen: View {
                         HStack(alignment: .top, spacing: 18) {
                             ScrollView {
                                 VStack(spacing: 14) {
-                                    StatusTag(payload: payload, holding: store.animating)
+                                    StatusTag(payload: payload, holding: !store.turning.isEmpty)
                                     Desk(store: store, payload: payload, cardWidth: cardWidth, controls: false)
                                 }
                                 .padding(20)
@@ -62,7 +62,7 @@ struct FugitiveTableScreen: View {
                     } else {
                         ScrollView {
                             VStack(spacing: 14) {
-                                StatusTag(payload: payload, holding: store.animating)
+                                StatusTag(payload: payload, holding: !store.turning.isEmpty)
                                 Desk(store: store, payload: payload, cardWidth: cardWidth)
                                 SidePanels(store: store, payload: payload)
                             }
@@ -199,8 +199,8 @@ private struct StatusTag: View {
     let payload: FugitivePayload
     /// Smaller type and less paper: the right-hand column of a phone held sideways.
     var compact = false
-    /// The table is still playing out the last move: a result isn't
-    /// announced before the cards that decide it have turned over.
+    /// Found cards are still turning over: a catch isn't announced before
+    /// the cards that decide it are face up. Any other ending says itself.
     var holding = false
 
     var body: some View {
@@ -939,7 +939,7 @@ private struct LandscapeTable: View {
             VStack(spacing: 8) {
             ScrollView {
                 VStack(spacing: 10) {
-                    StatusTag(payload: payload, compact: true, holding: store.animating)
+                    StatusTag(payload: payload, compact: true, holding: !store.turning.isEmpty)
                     // A guessing Marshal can't draw, and the notepad needs
                     // the room: the decks are back for the next draw.
                     if !guessing { Decks(store: store, game: g, cardWidth: cardWidth * 0.6, compact: true) }

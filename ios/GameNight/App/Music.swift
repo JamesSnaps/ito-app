@@ -35,6 +35,9 @@ final class Music {
     func play(intensity: Double) {
         state.target = Float(max(0, min(1, intensity)))
         guard Self.enabled else { return }
+        // Back before a fade-out finished (a table left and reopened, a
+        // rematch): cancel it, or its stop would silence the new game.
+        state.fadingOut = false
         if !playing { start() }
     }
 
