@@ -787,12 +787,29 @@ read in full; not in the repo).
   across the table and yours fanned at the bottom. The table view seats the
   Marshal across and the Fugitive near.
 - **Every card is drawn, not shipped** (`cardSVG()` in `static/fugitive.js`):
-  a night scene seeded by the number, so the same card looks the same on
-  every device. The era follows the rulebook's deck icons — 0 the cell, 1–14
-  on foot, 15–28 by car, 29–41 the airfield, 42 the plane out at sunrise —
-  with corner numbers, shoe prints for footprints and the deck icon. The
-  **back is one design for every card**: a deck icon on the back would say
-  which third of the trail a face-down hideout is in.
+  since v1.14.0 an illustrated scene in our own 60s-caper style, flat shapes
+  in a small palette — **not** the published cards' art, which is
+  copyrighted. Two recurring characters: the runner (dark suit, red tie,
+  briefcase: `runner()`, poses run/leap/stand/climb) and the one on his tail
+  (trench coat, fedora, torch or newspaper: `pursuer()`). Five scenes per
+  deck (`SCENE_SETS`) in turn by number, so neighbours differ — on foot
+  (1–14, the starting cards too): rooftops, alley, fire escape, subway,
+  newsstand; by car (15–28): bridge, cab in the rain, motel, tunnel, gas
+  station; by plane (29–41): tower, helicopter, hangar, runway, terminal —
+  each varied by `seeded(n)` (which way he runs, car paint, lit windows, the
+  moon), so a card looks the same on every device. 0 is the cell with a bent
+  bar and a rope of sheets; 42 the plane out at sunrise, the pursuer left on
+  the tarmac. The art window runs to y 106 of the 140-high card; the band
+  under it has the number (30px), footprints and the deck icon. Signs on the
+  art stay clear of the corner number. The **back is one design for every
+  card**: a deck icon on the back would say which third of the trail a
+  face-down hideout is in. **Change the art → re-render the iOS PNGs**
+  (`node ios/scripts/render_fugitive_cards.js`; Playwright must match the
+  cached Chromium build).
+- **The web Hide bar is moved to the top of `#app` after each render**: the
+  desk is its own stacking context, so the panels after it painted over a
+  bar left inside it, whatever its z-index. `#app:has(> .fg-hidebar)` keeps
+  room for it at the end of the page.
 - **Sprint cards are tucked under their hideout**, each peeking out a little
   lower, faces showing once they're known — the count is public, as on a
   real table. While hiding, the next slot on the trail previews the pick.

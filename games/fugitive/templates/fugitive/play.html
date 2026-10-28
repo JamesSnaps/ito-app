@@ -847,16 +847,15 @@
         : null;
       // Hide and the way out sit in a bar pinned to the bottom of the screen:
       // below the hand and the hint, Hide was off-screen on a phone, and it
-      // wasn't clear a chosen hideout still had to be confirmed. The spacer
-      // keeps the page's end clear of it.
+      // wasn't clear a chosen hideout still had to be confirmed. The page
+      // keeps room for it at its end (#app:has(> .fg-hidebar) in the CSS).
       const bar = [el('button', {class: 'fg-btn fg-btn-fugitive', type: 'button', disabled: !ok,
         text: pick.card === null ? 'Choose a hideout' : `Hide at ${pick.card}`,
         onclick: () => send({type: 'hide', card: pick.card, sprints: [...pick.sprints]})})];
       const pass = passLabel(g);
       if (pass) bar.push(el('button', {class: 'fg-pass', type: 'button', text: pass, onclick: () => send({type: 'pass'})}));
       return el('div', {class: 'fg-controls'}, [heading, hideSteps(), el('p', {class: 'fg-hint', text: hideHint(g)}),
-                                                el('div', {class: 'fg-hidebar'}, [el('div', {class: 'fg-hidebar-in'}, bar)]),
-                                                el('div', {class: 'fg-hidebar-space'})]);
+                                                el('div', {class: 'fg-hidebar'}, [el('div', {class: 'fg-hidebar-in'}, bar)])]);
     }
 
     // The way out of hiding: stopping after one hideout on the first turn, or
@@ -1034,6 +1033,11 @@
         el('div', {class: 'fg-main'}, [statusTag(), desk()]),
         el('div', {class: 'fg-side'}, side)
       ]), ...(hidden ? [curtain(hidden)] : []));
+      // The Hide bar is built with the controls, inside the desk, but the
+      // desk is its own stacking context: the panels after it painted over
+      // the bar whatever its z-index. Out at the top level it's over them all.
+      const bar = app.querySelector('.fg-hidebar');
+      if (bar) app.appendChild(bar);
       const row = document.getElementById('trail');
       if (row) row.scrollLeft = scroll == null ? row.scrollWidth : scroll;
       document.title = `${g.turn && g.turn === g.viewer ? '● Your turn — ' : ''}Fugitive — ${CODE}`;
