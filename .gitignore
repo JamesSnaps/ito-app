@@ -15,8 +15,9 @@ data/ito/topics.json
 # restart doesn't end them. Runtime state, like stats.json.
 data/flip7/
 
-# Fugitive games, saved the same way.
+# Fugitive and Wildwood games, saved the same way.
 data/fugitive/
+data/wildwood/
 
 # Player profiles and their photos — people, not content.
 data/profiles.json
