@@ -29,6 +29,7 @@ float sum, so nothing can round differently in Swift. Like engine.py,
 nothing here knows about Flask or rooms.
 """
 
+from core.seeded import Mulberry32, move_rng  # noqa: F401 — ai.Mulberry32 / ai.move_rng
 from games.fugitive import engine
 
 LEVELS = ("easy", "hard")
@@ -36,34 +37,6 @@ DEFAULT_LEVEL = "hard"
 # Out of 3: how often the hard Fugitive tucks a spare dead card under a
 # hideout it didn't need it for.
 BLUFF_IN_3 = 1
-
-
-class Mulberry32:
-    """mulberry32, 32-bit state. `below(n)` is the only way the AI draws."""
-
-    def __init__(self, seed):
-        self.a = seed & 0xFFFFFFFF
-
-    def next(self):
-        self.a = (self.a + 0x6D2B79F5) & 0xFFFFFFFF
-        t = self.a
-        t = ((t ^ (t >> 15)) * (t | 1)) & 0xFFFFFFFF
-        t ^= (t + (((t ^ (t >> 7)) * (t | 61)) & 0xFFFFFFFF)) & 0xFFFFFFFF
-        return (t ^ (t >> 14)) & 0xFFFFFFFF
-
-    def below(self, n):
-        """An integer in [0, n)."""
-        return self.next() % n
-
-    def pick(self, options):
-        return options[self.below(len(options))]
-
-
-def move_rng(seed, seq):
-    """The generator for the move at `seq`. The seed is the room's secret, so
-    the human can't work the computer's choices out from the code; mixing in
-    `seq` means a restart mid-game picks up exactly where it would have."""
-    return Mulberry32((seed ^ ((seq * 0x9E3779B1) & 0xFFFFFFFF)) & 0xFFFFFFFF)
 
 
 def choose(seen, level, rng):

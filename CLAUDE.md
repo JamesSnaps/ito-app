@@ -3,10 +3,11 @@
 ## What this is
 
 **Game Night** — a hub for companion web apps to physical board games.
-It holds three: *ito* (cooperative, secret-number ordering game),
-*Flip 7* (push-your-luck card game) and *Fugitive* (two-player
+It holds four: *ito* (cooperative, secret-number ordering game),
+*Flip 7* (push-your-luck card game), *Fugitive* (two-player
 hidden-movement card game, played entirely on the app, against a person or
-the computer — see its section).
+the computer — see its section) and *Wildwood* (our own Crazy Eights-style
+card game for the family, two to four, also played entirely on the app).
 `/` is the menu — it used to redirect straight to ito when ito was the
 only game.
 
@@ -1099,6 +1100,57 @@ the computer", takes your name, a seat (Swap roles) and Easy or Hard.
   the tempo climbs 84→132 in a Manhunt. `FugitiveStore.tension` drives it
   (hideouts found, trail length, how near 42), nil once the game ends.
   Toggles: the table's toolbar and Settings. `.ambient`, like the sounds.
+
+## Wildwood (added v1.17.0)
+
+A card game made for the family's youngest (Louis reads fine, so words on
+screen are OK): match the colour or the symbol, wilds change the colour,
+first to empty their hand wins. **Our own game in the Crazy Eights family**,
+not a copy of a published one: its own name, animals, deck spread and art.
+Built exactly the way Fugitive is — read that section first.
+
+- **The rules are the family's choices** (engine.py's docstring has them in
+  full): 2–4 players, seven each, 1–9 twice per colour plus two Skips,
+  Reverses and Draw twos (104 cards with four Badgers and four Bears).
+  Draw twos stack; a Bear (+4) can't be stacked and a Draw two can't go on
+  one. The Bear only goes down when you hold nothing of the colour in play —
+  enforced, no bluff-and-challenge, which is too fiddly for a child. A drawn
+  card that fits may be played or kept. One round is one game.
+- **"Last card!" has a penalty.** Say it with the play (the page arms it
+  when you hold two) or any time while you hold one. Forget, and anyone can
+  catch you until the next player's move lands (`exposed` in the state),
+  and you draw two. `call` and `catch` are the only moves made off-turn.
+- **Four animals and two wilds**: Fox (red), Frog (green), Owl (blue),
+  Duckling (yellow), Badger (wild), Bear (wild +4). Every face is drawn by
+  `cardSVG()` in `static/wildwood.js`: a coloured card, an arch into the
+  wood, the animal on a hillock, the number or action above. A Skip's animal
+  is asleep, a Reverse's looks back. The wilds' mark and the back are four
+  leaves crossed, one per colour — deliberately not a four-colour ring, which
+  read as someone else's logo.
+- **Seats, not roles.** `seats` is a list of tokens; a seat token sees that
+  seat's hand, the host token sees the table and runs the room, no token
+  watches. One device can hold several seats: pass-and-play, with a
+  "Pass to Ana" curtain that waits until the last move has played out.
+- **The computer sits after the people**, named for woodland animals
+  nobody at the table is called (Hedgehog, Rabbit, Squirrel, Mole), one
+  level for all of them. `ai.py` sees one seat's view, nothing else. Easy
+  plays the first card that fits and forgets "Last card!" half the time (so
+  a child gets to catch it); Hard holds wilds back, aims actions at a next
+  player near going out, and always calls and catches. Hard beats Easy about
+  two games in three.
+- **Reshuffles are seeded** (`shuffle_seed` in the state, `core.seeded`),
+  so an offline game replays exactly from its deck, seed, first seat and
+  moves. `core/seeded.py` is Fugitive's Mulberry32 moved out to be shared;
+  `games/fugitive/ai.py` re-exports it, nothing there changed.
+- **Records**: per player wins, games and catches (forgotten calls they
+  spotted). Any game with a computer at the table goes in
+  `record["computer"]` instead, per person by level, as in Fugitive.
+- **A table catching up plays out at most the last ten moves** (`PLAY_OUT`),
+  so a phone that slept through several turns doesn't spend a minute
+  replaying them.
+- **`POST /wildwood/api/offline`** is ready for the iOS app's offline games
+  (same checks as Fugitive's: the real rules to the end, every computer move
+  the one ai.py makes, once per game id). Nothing uses it yet.
 
 ## Player profiles (added v1.8.0)
 

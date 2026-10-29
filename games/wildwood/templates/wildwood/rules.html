@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Wildwood — rules — {{ app_name }}{% endblock %}
+{% block body_class %}wildwood{% endblock %}
+{% block theme_color %}#13291b{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ asset('wildwood.css') }}">
+<script src="{{ asset('wildwood.js') }}"></script>{% endblock %}
+{% block body %}
+{# The rules as engine.py plays them; every number on this page comes from
+   there, so the page and the game can't disagree. #}
+<div class="wrap ww-page">
+  <header class="ww-bar">
+    <a class="ww-icon-btn" href="{{ back }}" aria-label="Back" title="Back">←</a>
+    <h1 class="ww-title">How to play</h1>
+  </header>
+
+  <p>{{ engine.MIN_PLAYERS }} to {{ engine.MAX_PLAYERS }} players. Everyone starts with
+    {{ engine.HAND_SIZE }} cards. Be the first to get rid of all of yours.</p>
+
+  <h2>The cards</h2>
+  <p>Four colours, each with its own animal: the red <strong>Fox</strong>, the green
+    <strong>Frog</strong>, the blue <strong>Owl</strong> and the yellow <strong>Duckling</strong>.
+    Each colour has the numbers 1 to 9 twice, and two of each action card.</p>
+  <div class="ww-gallery" data-cards="r3 g7 b9 y1"></div>
+  <p>Then there are the wild cards, {{ engine.full_deck()|select("equalto", "W")|list|length }} of each:
+    the <strong>Badger</strong> and the <strong>Bear</strong>.
+    {{ engine.full_deck()|length }} cards in all.</p>
+
+  <h2>Your turn</h2>
+  <p>Put down a card that matches the one on top of the pile: the <strong>same colour</strong>,
+    or the <strong>same number or picture</strong>. A ring round the pile shows the colour to play.</p>
+  <p>Nothing fits? <strong>Draw a card.</strong> If that card fits, you can put it straight down —
+    or keep it. Otherwise your turn is over.</p>
+
+  <h2>Action cards</h2>
+  <div class="ww-gallery" data-cards="gS bR rD W W4"></div>
+  <ul>
+    <li><strong>Skip</strong> (the animal's asleep): the next player misses their go.</li>
+    <li><strong>Reverse</strong>: play goes the other way round. With two players, it's a Skip — you go again.</li>
+    <li><strong>Draw two</strong>: the next player picks up two and misses their go — unless they put down a
+      Draw two of their own, and then the next player has four to pick up, and so on.</li>
+    <li><strong>Badger</strong> (wild): goes on anything. Choose the colour to play next.</li>
+    <li><strong>Bear</strong> (wild +4): choose the colour, and the next player picks up four and misses
+      their go. You can only play the Bear when you've no cards of the colour being played.
+      A Bear can't be passed on, and a Draw two can't go on a Bear.</li>
+  </ul>
+
+  <h2>Last card!</h2>
+  <p>When you put down your second-to-last card, tap <strong>Last card!</strong> — before or as you play it,
+    or any time after while you hold one card. Forget, and anyone can tap <strong>Caught!</strong>
+    until the next player has gone. If you're caught, you pick up {{ engine.PENALTY }}.</p>
+
+  <h2>Winning</h2>
+  <p>The first player with no cards left wins. If the draw pile runs out, the pile of played cards
+    (all but the top one) is shuffled to make a new one.</p>
+
+  <h2>Playing on the app</h2>
+  <p>Play on your own phones (the dealing screen shows a code to scan), pass one device round
+    (hands are hidden while it changes hands), or play against the computer — Easy or Hard.
+    Games against the computer are kept in their own records.</p>
+</div>
+<script>
+  for (const slot of document.querySelectorAll('.ww-gallery')) {
+    for (const card of slot.dataset.cards.split(' ')) {
+      slot.appendChild(el('div', {class: 'ww-card', html: cardSVG(card), role: 'img', 'aria-label': WW.label(card)}));
+    }
+  }
+</script>
+{% endblock %}

@@ -1,0 +1,785 @@
+{% extends "base.html" %}
+{% block title %}Wildwood — {% if code %}game {{ code }}{% else %}new game{% endif %} — {{ app_name }}{% endblock %}
+{% block body_class %}wildwood{% endblock %}
+{% block theme_color %}#13291b{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ asset('wildwood.css') }}">
+<script src="{{ asset('profiles.js') }}"></script>
+<script src="{{ asset('wildwood.js') }}"></script>
+<script src="{{ asset('share.js') }}"></script>{% endblock %}
+{% block body %}
+<div class="wrap">
+  <header class="ww-bar">
+    {% if code %}
+    <a class="ww-icon-btn" href="{{ url_for('wildwood.landing') }}"
+       aria-label="Leave the table" title="Leave the table — the game keeps">←</a>
+    {% else %}
+    <a class="ww-icon-btn" href="/" aria-label="Back to the games" title="Back to the games">←</a>
+    {% endif %}
+    <h1 class="ww-title">Wild<span>wood</span></h1>
+    {% if code %}<span class="ww-code" title="Room code — /join with it">{{ code }}</span>{% endif %}
+    <button class="ww-icon-btn" id="sound-btn" type="button" aria-label="Sound"></button>
+    {% set here = request.path %}
+    <a class="ww-icon-btn" href="{{ url_for('wildwood.stats_view', back=here) }}"
+       aria-label="Records" title="Records">★</a>
+    <a class="ww-icon-btn" href="{{ url_for('wildwood.rules_view', back=here) }}"
+       aria-label="Rules" title="Rules">?</a>
+  </header>
+
+  <div id="app"></div>
+
+  {% if not code %}<div class="version">{{ app_name }} v{{ app_version }}</div>{% endif %}
+</div>
+
+<div class="ww-toast" id="toast" role="status" hidden></div>
+
+<script>
+  const CODE = {{ code|tojson }};
+  const MAX_NAME = {{ max_name }};
+  const MAX_PLAYERS = {{ max_players }};
+  const CREATE_URL = '{{ url_for("wildwood.api_create") }}';
+  const TABLE_URL = '{{ url_for("wildwood.play_view", code="CODE") }}';
+  const LANDING_URL = '{{ url_for("wildwood.landing") }}';
+  const API = code => `/wildwood/api/play/${code}`;
+  const LEVEL_NAMES = {easy: 'Easy', hard: 'Hard'};
+  // Last table's names, and how it was set up, so a family isn't typed in
+  // every evening.
+  const NAMES_KEY = 'wildwood:names';
+  const SETUP_KEY = 'wildwood:setup';
+  // What this device holds in a game: {host, seats: {seat: token}, pass, at}.
+  // Pass-and-play is a device holding more than one seat.
+  const GAME_PREFIX = 'wildwood:game:';
+  // How many missed log entries a table plays out when it catches up.
+  const PLAY_OUT = 10;
+
+  function readJSON(key){
+    try { return JSON.parse(localStorage.getItem(key)); } catch (e) { return null; }
+  }
+  function writeJSON(key, value){
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {}
+  }
+  function forget(key){
+    try { localStorage.removeItem(key); } catch (e) {}
+  }
+  function tableUrl(code){ return TABLE_URL.replace('CODE', code); }
+
+  let toastTimer;
+  function showToast(text){
+    const node = document.getElementById('toast');
+    node.textContent = text;
+    node.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { node.hidden = true; }, 3500);
+  }
+
+  // Never throws: a dropped connection comes back as a failed answer.
+  async function post(url, body, token){
+    const headers = {'Content-Type': 'application/json'};
+    if (token) headers['X-Wildwood-Token'] = token;
+    let res;
+    try {
+      res = await fetch(url, {method: 'POST', headers, body: JSON.stringify(body || {})});
+    } catch (e) {
+      return {ok: false, status: 0, data: {error: 'Can’t reach the table — try again.'}};
+    }
+    let data = null;
+    try { data = await res.json(); } catch (e) {}
+    return {ok: res.ok, status: res.status, data: data || {}};
+  }
+
+  const soundBtn = document.getElementById('sound-btn');
+  function drawSoundBtn(){
+    soundBtn.innerHTML = icon(Sound.on ? 'soundOn' : 'soundOff');
+    soundBtn.title = Sound.on ? 'Sound on — tap to mute' : 'Sound off — tap to turn on';
+  }
+  soundBtn.addEventListener('click', () => { Sound.on = !Sound.on; Sound.unlock(); drawSoundBtn(); Sound.play('flick'); });
+  drawSoundBtn();
+
+  function cardEl(code, cls, attrs){
+    return el('div', {class: `ww-card ${cls || ''}`, 'data-card': code || null,
+                      html: code ? cardSVG(code) : backSVG(), ...(attrs || {})});
+  }
+
+  const app = document.getElementById('app');
+
+  // ---------------------------------------------------------------- setup
+
+  if (!CODE) {
+    const saved = readJSON(SETUP_KEY) || {};
+    const names = readJSON(NAMES_KEY);
+    const form = {
+      names: Array.isArray(names) && names.length ? names.slice(0, MAX_PLAYERS) : ['', ''],
+      computers: Number.isInteger(saved.computers) ? saved.computers : 0,
+      level: LEVEL_NAMES[saved.level] ? saved.level : 'easy',
+      mode: saved.mode === 'pass' ? 'pass' : 'phones',
+      error: null
+    };
+    let busy = false;
+    const fit = () => { form.computers = Math.max(0, Math.min(form.computers, MAX_PLAYERS - form.names.length)); };
+    fit();
+
+    async function deal(){
+      if (busy) return;
+      const people = form.names.map(n => n.trim());
+      if (people.some(n => !n)) { form.error = 'Every player needs a name.'; return renderSetup(); }
+      if (people.length + form.computers < 2) { form.error = 'Two players at least — add someone, or the computer.'; return renderSetup(); }
+      busy = true;
+      Sound.play('riffle');
+      const made = await post(CREATE_URL, {players: people, computers: form.computers, level: form.level});
+      if (!made.ok) { busy = false; form.error = made.data.error || 'Couldn’t deal — try again.'; return renderSetup(); }
+      writeJSON(NAMES_KEY, people);
+      writeJSON(SETUP_KEY, {computers: form.computers, level: form.level, mode: form.mode});
+      const code = made.data.code;
+      const device = {host: made.data.host_token, seats: {}, pass: false, at: Date.now()};
+      // One person (against the computer) or one device passed round: this
+      // device sits in every seat a person has.
+      if (people.length === 1 || form.mode === 'pass') {
+        device.pass = people.length > 1;
+        for (let seat = 0; seat < people.length; seat++) {
+          const sat = await post(`${API(code)}/seats/${seat}/claim`);
+          if (sat.ok) device.seats[seat] = sat.data.seat_token;
+        }
+      }
+      writeJSON(GAME_PREFIX + code, device);
+      location.href = tableUrl(code);
+    }
+
+    function nameRow(i){
+      const face = el('span', {class: 'ww-seat-no', text: String(i + 1)});
+      const input = el('input', {
+        type: 'text', maxlength: MAX_NAME, value: form.names[i], placeholder: i === 0 ? 'Your name' : 'Name',
+        autocomplete: 'off', 'aria-label': `Player ${i + 1}'s name`,
+        oninput: e => { form.names[i] = e.target.value; },
+        onkeydown: e => { if (e.key === 'Enter') deal(); }
+      });
+      const remove = form.names.length > 1
+        ? el('button', {class: 'ww-row-remove', type: 'button', 'aria-label': `Remove player ${i + 1}`, text: '×',
+                        onclick: () => { form.names.splice(i, 1); fit(); renderSetup(); }})
+        : null;
+      return el('div', {class: 'ww-name-row'}, [face, input, remove]);
+    }
+
+    function segment(label, options, value, onPick){
+      return el('div', {class: 'ww-seg', role: 'radiogroup', 'aria-label': label},
+        options.map(([v, text]) => el('button', {type: 'button', role: 'radio', text,
+          'aria-checked': v === value ? 'true' : 'false', onclick: () => { onPick(v); renderSetup(); }})));
+    }
+
+    function choice(value, title, detail){
+      return el('label', {}, [
+        el('input', {type: 'radio', name: 'mode', value, checked: form.mode === value,
+                     onchange: () => { form.mode = value; renderSetup(); }}),
+        el('span', {}, [el('strong', {text: title}), el('span', {class: 'ww-muted', text: detail})])
+      ]);
+    }
+
+    function renderSetup(){
+      const hero = el('div', {class: 'ww-hero'}, [
+        cardEl('r7', '', {style: {'--tilt': '-14deg', '--drop': '10px'}}),
+        cardEl('gS', '', {style: {'--tilt': '-5deg'}}),
+        cardEl('W', '', {style: {'--tilt': '5deg'}}),
+        cardEl('yD', '', {style: {'--tilt': '14deg', '--drop': '10px'}})
+      ]);
+      const room = MAX_PLAYERS - form.names.length;
+      const counts = [];
+      for (let n = 0; n <= room; n++) counts.push([n, String(n)]);
+      const picker = GN.picker(name => {
+        const blank = form.names.findIndex(n => !n.trim());
+        if (blank >= 0) form.names[blank] = name;
+        else if (form.names.length + form.computers < MAX_PLAYERS) form.names.push(name);
+        else form.names[form.names.length - 1] = name;
+        fit();
+        renderSetup();
+      }, form.names, 'Regulars — tap to add');
+
+      app.replaceChildren(el('div', {class: 'ww-setup'}, [
+        hero,
+        el('p', {class: 'ww-lede', text: 'Match the colour or the creature, play a wild Badger to change the colour, and be first to empty your hand. Down to one card? Say “Last card!” before anyone catches you.'}),
+        el('div', {id: 'resume'}),
+        el('div', {class: 'ww-panel'}, [
+          el('h2', {text: 'Who’s playing?'}),
+          picker,
+          ...form.names.map((_, i) => nameRow(i)),
+          form.names.length + form.computers < MAX_PLAYERS
+            ? el('button', {class: 'ww-btn ww-btn-quiet ww-btn-small', type: 'button', text: '+ Add a player',
+                            onclick: () => { form.names.push(''); renderSetup(); }})
+            : null,
+          el('div', {class: 'ww-stepper'}, [
+            el('strong', {text: 'Computer players'}),
+            segment('How many computer players', counts, form.computers, n => { form.computers = n; })
+          ]),
+          form.computers ? el('div', {class: 'ww-critters'},
+            computerNames(form.names, form.computers).map(name => el('span', {class: 'ww-critter-chip'}, [
+              el('span', {class: 'ww-face', style: {'--size': '30px'}, html: critterSVG(name)}), name]))) : null,
+          form.computers ? el('div', {class: 'ww-stepper'}, [
+            el('strong', {text: 'They play'}),
+            segment('How the computer plays', [['easy', 'Easy'], ['hard', 'Hard']], form.level, v => { form.level = v; })
+          ]) : null,
+          form.names.length > 1 ? el('div', {class: 'ww-choice'}, [
+            choice('phones', 'On our own phones', 'This screen is the table. Scan its code on each phone and sit down.'),
+            choice('pass', 'Pass this device round', 'Hands are hidden while it changes hands.')
+          ]) : el('p', {class: 'ww-muted', text: form.computers ? 'Just you and the computer, on this device.' : 'Add another player, or a computer player.'}),
+          el('button', {class: 'ww-btn ww-btn-go ww-btn-wide', type: 'button', text: 'Deal', onclick: deal}),
+          form.error ? el('div', {class: 'ww-error', text: form.error}) : null
+        ])
+      ]));
+      offerResume();
+    }
+
+    // The computer's animals, skipping any a person at the table is called —
+    // the same choice game.py makes.
+    function computerNames(people, count){
+      const taken = new Set(people.map(n => GN.fold(n)));
+      return {{ computer_names|tojson }}.filter(n => !taken.has(GN.fold(n))).slice(0, count);
+    }
+
+    // Games this device was in that are still going, checked before being
+    // offered: a dead code offered up is worse than no offer.
+    async function offerResume(){
+      const keys = [];
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith(GAME_PREFIX)) keys.push(key);
+        }
+      } catch (e) { return; }
+      const entries = keys.map(k => ({key: k, code: k.slice(GAME_PREFIX.length), device: readJSON(k) || {}}))
+        .sort((a, b) => (b.device.at || 0) - (a.device.at || 0));
+      const live = [];
+      for (const entry of entries.slice(0, 5)) {
+        try {
+          const res = await fetch(API(entry.code));
+          if (res.status === 404) { forget(entry.key); continue; }
+          const payload = await res.json();
+          if (payload.game.phase !== 'game_over') live.push({...entry, payload});
+        } catch (e) {}
+      }
+      const slot = document.getElementById('resume');
+      if (!slot || !live.length) return;
+      slot.replaceChildren(el('div', {class: 'ww-panel'}, [
+        el('h2', {text: 'Carry on'}),
+        ...live.slice(0, 3).map(g => el('a', {class: 'ww-btn ww-btn-quiet ww-btn-wide', href: tableUrl(g.code),
+          text: `${g.payload.players.join(', ')} · ${g.code}`}))
+      ]));
+    }
+
+    renderSetup();
+    GN.profiles.load().then(renderSetup);
+  }
+
+  // ---------------------------------------------------------------- table
+
+  if (CODE) {
+    const KEY = GAME_PREFIX + CODE;
+    let device = readJSON(KEY) || {seats: {}};
+    device.seats = device.seats || {};
+    let data = null;
+    let shownAs = null;        // pass-and-play: whose hand the screen is showing
+    let armed = false;         // "Last card!" said ahead of the play
+    let armedSeq = null;
+    let drawn = null;          // the payload last put on screen, as JSON
+    let busy = false;
+    let invite = null;
+    let seenEvent = null;      // the last log entry that's been played out
+    let animating = false;
+    let waiting = null;        // a payload that arrived mid-animation
+    let wasMyTurn = false;
+    let dealt = false;
+    const baseTitle = document.title;
+
+    function save(){ device.at = Date.now(); writeJSON(KEY, device); }
+    function held(){ return Object.keys(device.seats).map(Number).filter(s => device.seats[s]).sort((a, b) => a - b); }
+    function passAndPlay(){ return held().length > 1; }
+    function computers(){ return (data && data.computer && data.computer.seats) || []; }
+    function isComputer(seat){ return computers().includes(seat); }
+    function nameOf(seat){ return data.players[seat]; }
+    function viewer(){ const v = data && data.game.viewer; return typeof v === 'number' ? v : null; }
+
+    // Which token to ask with. A device with several seats only shows a hand
+    // once it's been handed over and the curtain tapped away.
+    function askingAs(){
+      const seats = held();
+      if (seats.length === 1) return device.seats[seats[0]];
+      if (seats.length > 1 && data && data.game.turn != null && shownAs === data.game.turn && seats.includes(shownAs)) {
+        return device.seats[shownAs];
+      }
+      return device.host || (seats.length ? device.seats[seats[0]] : '');
+    }
+
+    function curtainSeat(){
+      if (!passAndPlay() || !data || data.game.turn == null) return null;
+      const turn = data.game.turn;
+      if (!held().includes(turn)) return null;
+      return shownAs === turn ? null : turn;
+    }
+
+    function take(payload, askedWith){
+      if (!payload || !payload.game) return;
+      if (data && payload.code === data.code && payload.game.seq < data.game.seq) return;
+      // A seat freed by the dealing device: this token no longer sits anywhere.
+      for (const seat of held()) {
+        if (askedWith === device.seats[seat] && payload.you.seat !== seat) {
+          delete device.seats[seat];
+          save();
+          showToast(`You’re no longer sitting at this table.`);
+        }
+      }
+      if (payload.next && (device.host || held().length)) return follow(payload.next);
+      if (animating) { waiting = payload; return; }
+      show(payload);
+    }
+
+    async function show(payload){
+      if (payload.game.seq !== armedSeq) { armed = false; armedSeq = payload.game.seq; }
+      const json = JSON.stringify(payload);
+      const first = data === null;
+      data = payload;
+      if (json === drawn && !first) return;
+      drawn = json;
+
+      const log = payload.game.log;
+      const lastId = log.length ? log[log.length - 1].id : 0;
+      const fresh = !dealt && payload.game.seq === 0 && !curtainSeat();
+      if (fresh) dealt = true;
+      // Only the last few: a phone that slept through ten turns shouldn't
+      // spend a minute replaying them.
+      const events = first ? [] : log.filter(e => seenEvent === null || e.id > seenEvent).slice(-PLAY_OUT);
+      seenEvent = lastId;
+
+      // The pass-and-play curtain waits until whatever just happened has
+      // played out, so everyone sees the card go down.
+      render(fresh || events.length > 0);
+      if (fresh || events.length) {
+        animating = true;
+        try {
+          if (fresh) { Sound.play('riffle'); await Motion.wait(500); }
+          for (const event of events) await perform(event);
+        } finally {
+          animating = false;
+        }
+        if (curtainSeat() != null) render();
+      }
+      const mine = data.game.turn != null && data.game.turn === viewer();
+      if (mine && !wasMyTurn && !first) {
+        Sound.play('turn');
+        try { navigator.vibrate && navigator.vibrate(60); } catch (e) {}
+      }
+      document.title = mine ? `● Your turn — ${baseTitle}` : baseTitle;
+      wasMyTurn = mine;
+      if (waiting) { const next = waiting; waiting = null; show(next); }
+    }
+
+    // A rematch keeps every seat, so every token carries straight over.
+    function follow(code){
+      writeJSON(GAME_PREFIX + code, {host: device.host, seats: device.seats, pass: device.pass, at: Date.now()});
+      location.href = tableUrl(code);
+    }
+
+    let pollTimer;
+    async function poll(){
+      clearTimeout(pollTimer);
+      const token = askingAs();
+      try {
+        const res = await fetch(API(CODE), {headers: {'X-Wildwood-Token': token}});
+        if (res.status === 404) {
+          app.replaceChildren(el('div', {class: 'ww-panel'}, [
+            el('p', {text: 'This game has ended or expired.'}),
+            el('a', {class: 'ww-btn ww-btn-go', href: LANDING_URL, text: 'New game'})
+          ]));
+          forget(KEY);
+          return;
+        }
+        take(await res.json(), token);
+      } catch (e) {
+        showToast('Can’t reach the table — trying again.');
+      }
+      const live = data && data.game.phase !== 'game_over';
+      pollTimer = setTimeout(poll, live ? 1000 : 2500);
+    }
+
+    async function sendAs(seat, move){
+      if (busy || !data) return;
+      const token = device.seats[seat];
+      if (!token) return;
+      busy = true;
+      const res = await post(`${API(CODE)}/move`, {...move, seq: data.game.seq}, token);
+      busy = false;
+      if (!res.ok) {
+        showToast(res.data.error || 'That didn’t work — try again.');
+        Motion.shake(document.querySelector('.ww-hand'));
+      }
+      // Answered as `seat`: in pass-and-play only take it if that's whose
+      // hand is showing, or the next poll would be told the wrong seat.
+      if (!passAndPlay() || seat === viewer()) take(res.data, token);
+      else poll();
+    }
+
+    function send(move){ const me = viewer(); if (me != null) sendAs(me, move); }
+
+    async function sitAt(seat){
+      const res = await post(`${API(CODE)}/seats/${seat}/claim`);
+      if (!res.ok) { showToast(res.data.error || 'Couldn’t sit down.'); return poll(); }
+      device.seats[seat] = res.data.seat_token;
+      save();
+      if (passAndPlay()) shownAs = null;
+      drawn = null;
+      poll();
+    }
+
+    async function freeSeat(seat){
+      if (!confirm(`Free ${nameOf(seat)}’s seat? Whoever’s in it goes back to watching.`)) return;
+      const res = await post(`${API(CODE)}/seats/${seat}/release`, {}, device.host);
+      if (!res.ok) showToast(res.data.error || 'Couldn’t free the seat.');
+      if (device.seats[seat]) { delete device.seats[seat]; save(); }
+      poll();
+    }
+
+    async function rematch(){
+      const res = await post(`${API(CODE)}/rematch`, {}, device.host);
+      if (!res.ok) return showToast(res.data.error || 'Couldn’t start a rematch.');
+      follow(res.data.code);
+    }
+
+    async function loadInvite(){
+      if (invite || !device.host) return;
+      try {
+        invite = await (await fetch(`${API(CODE)}/invite`)).json();
+        if (!animating) render();
+      } catch (e) {}
+    }
+
+    // ------------------------------------------------------------ moves
+
+    function playCard(card){
+      const g = data.game;
+      if (busy || g.turn !== viewer() || !g.playable.includes(card)) return;
+      const call = armed && g.hand.length === 2;
+      if (WW.isWild(card)) return pickColour(colour => send({type: 'play', card, colour, call}));
+      send({type: 'play', card, call});
+    }
+
+    function pickColour(then){
+      const dialog = el('dialog', {class: 'ww-dialog'}, [
+        el('h2', {text: 'Pick a colour'}),
+        el('div', {class: 'ww-colours'}, WW.COLOURS.map(c => el('button', {
+          class: `ww-colour ww-colour-${c}`, type: 'button',
+          onclick: () => { dialog.close(); then(c); }
+        }, [el('span', {html: `<svg viewBox="-24 -28 48 50" aria-hidden="true">${head(WW.ANIMALS[c], 0, 0, 1)}</svg>`}),
+            `${WW.NAMES[c][0].toUpperCase()}${WW.NAMES[c].slice(1)}`]))),
+        el('button', {class: 'ww-btn ww-btn-quiet ww-btn-wide', type: 'button', text: 'Not this card',
+                      style: {'margin-top': '12px'}, onclick: () => dialog.close()})
+      ]);
+      dialog.addEventListener('close', () => dialog.remove());
+      document.body.appendChild(dialog);
+      dialog.showModal();
+    }
+
+    // Who catches: the seat on screen, or any other seat this device holds.
+    function catcher(){
+      const g = data.game;
+      if (g.exposed == null || g.phase === 'game_over') return null;
+      const me = viewer();
+      if (me != null && me !== g.exposed && device.seats[me]) return me;
+      return held().find(s => s !== g.exposed) ?? null;
+    }
+
+    // ------------------------------------------------------------ motion
+
+    function seatEl(seat){
+      if (seat === viewer()) return document.querySelector('.ww-hand');
+      return document.querySelector(`.ww-seat[data-seat="${seat}"]`);
+    }
+
+    async function perform(e){
+      const g = data.game;
+      const discard = document.querySelector('.ww-discard');
+      const pile = document.querySelector('.ww-draw-pile');
+      if (e.kind === 'play') {
+        if (discard) {
+          discard.querySelector('.ww-pile-top').innerHTML = cardSVG(e.card);
+          discard.style.setProperty('--ring', `var(--ww-${e.colour})`);
+          await Motion.fly(discard.querySelector('.ww-pile-top'), seatEl(e.seat), {spin: -8});
+        }
+        Sound.play('land');
+        const sym = WW.symbolOf(e.card);
+        if (e.called) { Sound.play('call'); await Motion.burst('Last card!', 'call', 500); }
+        if (sym === 'W' || sym === 'W4') { Sound.play('wild'); await Motion.burst(`${WW.NAMES[e.colour]}!`, 'plain', 450); }
+        if (sym === 'R') { Sound.play('reverse'); Motion.pop(document.querySelector('.ww-direction')); }
+        if (sym === 'D' || sym === 'W4') Sound.play('stack');
+        await Motion.wait(120);
+      } else if (e.kind === 'skip') {
+        Sound.play('skip');
+        Motion.shake(seatEl(e.seat));
+        await Motion.burst(e.seat === viewer() ? 'Skipped!' : `${nameOf(e.seat)} misses a go`, 'plain', 500);
+      } else if (e.kind === 'draw') {
+        const to = seatEl(e.seat);
+        const n = Math.min(e.count, 6);
+        for (let i = 0; i < n; i++) {
+          Sound.play('flick');
+          await Motion.ghost(pile, to, e.cards ? e.cards[i] : null);
+        }
+      } else if (e.kind === 'call') {
+        Sound.play('call');
+        await Motion.burst(`${e.seat === viewer() ? 'You' : nameOf(e.seat)}: Last card!`, 'call', 650);
+      } else if (e.kind === 'catch') {
+        Sound.play('caught');
+        await Motion.burst(`Caught! ${nameOf(e.seat)} draws 2`, 'caught', 800);
+      } else if (e.kind === 'reshuffle') {
+        Sound.play('riffle');
+        await Motion.wait(400);
+      } else if (e.kind === 'game_over') {
+        Sound.play('win');
+        await Motion.burst(e.winner === viewer() ? 'You win!' : `${nameOf(e.winner)} wins!`, 'win', 1200);
+      }
+      void g;
+    }
+
+    // ------------------------------------------------------------ drawing
+
+    function face(seat, size){
+      if (isComputer(seat)) {
+        return el('span', {class: 'ww-face', style: {'--size': `${size}px`}, html: critterSVG(nameOf(seat))});
+      }
+      return GN.avatar(nameOf(seat), size);
+    }
+
+    function statusLine(){
+      const g = data.game;
+      const me = viewer();
+      if (g.phase === 'game_over') return [`${nameOf(g.winner)} wins!`, null];
+      const colour = WW.NAMES[g.colour];
+      const sym = WW.symbolOf(g.top);
+      const what = WW.isWild(g.top) ? colour : `${colour} or ${WW.ACTION_NAMES[sym] || sym}`;
+      if (g.turn === me) {
+        if (g.stack) {
+          return WW.symbolOf(g.top) === 'D' && g.playable.length
+            ? [`Play a Draw two, or take ${g.stack}`, `+${g.stack} is waiting for you`]
+            : [`Take ${g.stack} cards`, WW.symbolOf(g.top) === 'W4' ? 'A Bear can’t be stacked' : 'No Draw two to pass it on'];
+        }
+        if (g.deciding) return [`You drew ${WW.label(g.drawn)}`, 'Play it now, or keep it'];
+        if (g.playable.length) return ['Your turn', `Match ${what}`];
+        return ['Nothing fits', 'Draw a card'];
+      }
+      const who = nameOf(g.turn);
+      if (g.stack) return [`${who} has +${g.stack} coming`, null];
+      return [`${who}’s turn`, isComputer(g.turn) ? 'Thinking…' : `Match ${what}`];
+    }
+
+    function seatChip(seat){
+      const g = data.game;
+      const count = g.hand_counts[seat];
+      const fan = el('div', {class: 'ww-mini-fan'});
+      for (let i = 0; i < Math.min(count, 8); i++) fan.appendChild(cardEl(null));
+      const badge = g.exposed === seat
+        ? el('span', {class: 'ww-badge ww-badge-danger', text: 'Forgot!'})
+        : count === 1 ? el('span', {class: 'ww-badge', text: 'Last card'}) : null;
+      return el('div', {class: `ww-seat ${g.turn === seat ? 'ww-seat-turn' : ''}`, 'data-seat': seat}, [
+        face(seat, 40),
+        el('span', {class: 'ww-seat-name', text: nameOf(seat)}),
+        fan,
+        el('span', {class: 'ww-count', text: `${count} card${count === 1 ? '' : 's'}`}),
+        badge
+      ]);
+    }
+
+    function piles(){
+      const g = data.game;
+      const me = viewer();
+      const canDraw = g.turn === me && me != null && !g.stack && !g.deciding && g.phase !== 'game_over';
+      const drawPile = el('div', {class: `ww-pile ww-draw-pile ${canDraw ? 'ww-pile-live' : ''}`,
+                                  role: canDraw ? 'button' : null, tabindex: canDraw ? '0' : null,
+                                  'aria-label': canDraw ? 'Draw a card' : `Draw pile, ${g.draw_count} cards`,
+                                  onclick: canDraw ? () => send({type: 'draw'}) : null,
+                                  onkeydown: canDraw ? e => { if (e.key === 'Enter' || e.key === ' ') send({type: 'draw'}); } : null});
+      const depth = Math.min(4, Math.ceil(g.draw_count / 20));
+      for (let k = 0; k < depth; k++) {
+        drawPile.appendChild(cardEl(null, k === depth - 1 ? 'ww-pile-top' : '', {style: {'--k': k}}));
+      }
+      const discard = el('div', {class: 'ww-pile ww-discard', style: {'--ring': `var(--ww-${g.colour})`},
+                                 'aria-label': `On the pile: ${WW.label(g.top)}, ${WW.NAMES[g.colour]} to play`}, [
+        cardEl(g.top, 'ww-pile-top', {style: {'--k': 0}})
+      ]);
+      const arrow = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v4h-4"/></svg>';
+      return el('div', {class: 'ww-middle'}, [
+        el('div', {}, [drawPile, el('div', {class: 'ww-pile-label', text: canDraw ? 'Tap to draw' : `${g.draw_count} left`})]),
+        el('div', {class: `ww-direction ${g.direction < 0 ? 'ww-direction-ccw' : ''}`, html: arrow + `<span>${g.stack ? '+' + g.stack : ''}</span>`}),
+        el('div', {}, [discard, el('div', {class: 'ww-pile-label', text: `${WW.NAMES[g.colour]} to play`})])
+      ]);
+    }
+
+    function actions(){
+      const g = data.game;
+      const me = viewer();
+      const out = [];
+      if (g.phase === 'game_over') return out;
+      const myTurn = me != null && g.turn === me;
+      if (myTurn && g.stack) out.push(el('button', {class: 'ww-btn ww-btn-go', type: 'button', text: `Take ${g.stack}`, onclick: () => send({type: 'take'})}));
+      if (myTurn && g.deciding) out.push(el('button', {class: 'ww-btn', type: 'button', text: 'Keep it', onclick: () => send({type: 'pass'})}));
+      if (myTurn && !g.stack && !g.deciding) out.push(el('button', {class: 'ww-btn', type: 'button', text: 'Draw a card', onclick: () => send({type: 'draw'})}));
+      // Say it ahead of the play (two cards, one of them going down), or
+      // late, while nobody's caught you yet.
+      if (me != null && g.exposed === me) {
+        out.unshift(el('button', {class: 'ww-btn ww-btn-call', type: 'button', text: 'Last card!', onclick: () => send({type: 'call'})}));
+      } else if (myTurn && g.hand.length === 2 && g.playable.length) {
+        out.unshift(el('button', {class: `ww-btn ww-btn-call ${armed ? 'ww-armed' : ''}`, type: 'button',
+          'aria-pressed': armed ? 'true' : 'false', text: armed ? 'Last card! ✓' : 'Last card!',
+          onclick: () => { armed = !armed; if (armed) Sound.play('call'); render(); }}));
+      }
+      const by = catcher();
+      if (by != null) {
+        out.push(el('button', {class: 'ww-btn ww-btn-catch', type: 'button', text: `Caught! ${nameOf(g.exposed)} forgot`,
+          onclick: () => sendAs(by, {type: 'catch'})}));
+      }
+      return out;
+    }
+
+    function myHand(){
+      const g = data.game;
+      const me = viewer();
+      if (me == null || !g.hand) return null;
+      const myTurn = g.turn === me && g.phase !== 'game_over';
+      const hand = el('div', {class: `ww-hand ${myTurn ? 'ww-hand-live' : ''}`});
+      const n = g.hand.length;
+      let newShown = false;
+      g.hand.forEach(card => {
+        const can = myTurn && g.playable.includes(card);
+        const isNew = g.deciding && card === g.drawn && !newShown;
+        if (isNew) newShown = true;
+        hand.appendChild(el('button', {class: `ww-card ${can ? 'ww-can' : ''} ${isNew ? 'ww-new' : ''}`, type: 'button',
+          html: cardSVG(card), 'aria-label': WW.label(card) + (can ? ', playable' : ''),
+          disabled: !can, onclick: () => playCard(card)}));
+      });
+      return el('div', {class: 'ww-mine'}, [
+        el('div', {class: 'ww-mine-head'}, [face(me, 30), el('strong', {text: `${nameOf(me)} · ${n} card${n === 1 ? '' : 's'}`})]),
+        hand
+      ]);
+    }
+
+    function logLine(e){
+      const who = s => s === viewer() ? 'You' : nameOf(s);
+      switch (e.kind) {
+        case 'play': return [`${who(e.seat)} played ${WW.label(e.card)}${WW.isWild(e.card) ? ` → ${WW.NAMES[e.colour]}` : ''}${e.called ? ' · Last card!' : ''}`, e.colour];
+        case 'draw': return [`${who(e.seat)} ${e.reason === 'take' ? 'took' : 'drew'} ${e.count}${e.reason === 'caught' ? ' (caught!)' : ''}`, null];
+        case 'skip': return [`${who(e.seat)} missed a go`, null];
+        case 'reverse': return ['Round the other way', null];
+        case 'keep': return [`${who(e.seat)} kept the card`, null];
+        case 'call': return [`${who(e.seat)}: Last card!`, null];
+        case 'catch': return [`${who(e.by)} caught ${who(e.seat)}`, null];
+        case 'reshuffle': return ['The pile was shuffled', null];
+        case 'deal': return [`Dealt — ${who(e.first)} first`, null];
+        case 'game_over': return [`${who(e.winner)} won`, null];
+      }
+      return null;
+    }
+
+    function side(){
+      const g = data.game;
+      const rows = data.players.map((name, seat) => {
+        const taken = data.seats[seat].taken;
+        const mine = !!device.seats[seat];
+        let right;
+        if (isComputer(seat)) right = el('span', {class: 'ww-muted', text: `Computer · ${LEVEL_NAMES[data.computer.level]}`});
+        else if (taken && device.host && g.phase !== 'game_over') {
+          right = el('button', {class: 'ww-btn ww-btn-quiet ww-btn-small', type: 'button', text: mine ? 'Leave' : 'Free seat', onclick: () => freeSeat(seat)});
+        } else if (taken) right = el('span', {class: 'ww-muted', text: mine ? 'This device' : 'Seated'});
+        else {
+          const me = GN.me.get();
+          const isMe = me && GN.fold(me.name) === GN.fold(name);
+          right = el('button', {class: 'ww-btn ww-btn-go ww-btn-small', type: 'button', text: isMe ? 'That’s me — sit' : 'Sit here', onclick: () => sitAt(seat)});
+        }
+        return el('div', {class: 'ww-seat-row'}, [face(seat, 32), el('span', {class: 'ww-name', text: name}), right]);
+      });
+      const children = [el('h2', {text: 'At the table'}), ...rows];
+      const open = data.seats.some((s, i) => !s.taken && !isComputer(i));
+      if (device.host && open && g.phase !== 'game_over') {
+        loadInvite();
+        if (invite) {
+          const qr = el('div', {class: 'ww-qr'});
+          qr.innerHTML = invite.qr_svg;   // our own server's SVG, not user input
+          children.push(qr,
+            Invite.button({path: invite.url, text: `Play Wildwood with me on Game Night — code ${CODE}`,
+                           className: 'ww-btn ww-btn-quiet ww-btn-wide'}),
+            el('p', {class: 'ww-muted ww-center', text: `Scan to sit down, send the link, or enter ${CODE} at /join.`}));
+        }
+      }
+      const lines = g.log.slice(-8).reverse().map(logLine).filter(Boolean);
+      return el('div', {class: 'ww-side'}, [
+        el('div', {class: 'ww-panel'}, children),
+        el('div', {class: 'ww-panel'}, [
+          el('h2', {text: 'What happened'}),
+          el('ul', {class: 'ww-log'}, lines.map(([text, colour]) => el('li', {}, [
+            el('span', {class: 'ww-chip', style: {background: colour ? `var(--ww-${colour})` : 'transparent'}}), text])))
+        ])
+      ]);
+    }
+
+    function gameOver(){
+      const g = data.game;
+      const reveal = el('div', {class: 'ww-reveal'}, data.players.map((name, seat) => el('div', {class: 'ww-reveal-row'}, [
+        face(seat, 28), el('span', {class: 'ww-name', text: name}),
+        ...(g.hands[seat].length ? g.hands[seat].map(c => cardEl(c)) : [el('span', {class: 'ww-badge', text: 'Out!'})])
+      ])));
+      return el('div', {class: 'ww-banner'}, [
+        face(g.winner, 64),
+        el('h2', {text: g.winner === viewer() ? 'You win!' : `${nameOf(g.winner)} wins!`}),
+        reveal,
+        device.host
+          ? el('button', {class: 'ww-btn ww-btn-go', type: 'button', text: 'Play again', onclick: rematch})
+          : el('p', {class: 'ww-muted', text: 'The device that dealt can start another game.'}),
+        el('a', {class: 'ww-btn ww-btn-quiet ww-btn-small', href: LANDING_URL, text: 'New table'})
+      ]);
+    }
+
+    function curtain(seat){
+      const g = data.game;
+      const by = g.exposed != null && g.exposed !== seat && device.seats[seat] ? seat : null;
+      return el('div', {class: 'ww-curtain'}, [el('div', {class: 'ww-curtain-card'}, [
+        face(seat, 96),
+        el('h2', {text: `Pass to ${nameOf(seat)}`}),
+        el('p', {class: 'ww-muted', text: 'Everyone else, look away.'}),
+        el('button', {class: 'ww-btn ww-btn-go ww-btn-wide', type: 'button', text: `I’m ${nameOf(seat)} — show my cards`,
+          onclick: () => { shownAs = seat; drawn = null; poll(); }}),
+        by != null ? el('button', {class: 'ww-btn ww-btn-catch ww-btn-wide', type: 'button',
+          text: `Caught! ${nameOf(g.exposed)} forgot`, onclick: () => sendAs(by, {type: 'catch'})}) : null
+      ])]);
+    }
+
+    function render(holdCurtain){
+      if (!data) return;
+      const g = data.game;
+      const me = viewer();
+      const [status, detail] = statusLine();
+      const others = data.players.map((_, seat) => seat).filter(seat => seat !== me);
+      const ground = el('div', {class: 'ww-ground'}, [
+        el('div', {class: 'ww-others'}, others.map(seatChip)),
+        piles(),
+        el('div', {class: 'ww-status', 'aria-live': 'polite'}, [status, detail ? el('small', {text: detail}) : null]),
+        el('div', {class: 'ww-actions'}, actions()),
+        myHand()
+      ]);
+      const main = el('div', {}, [g.phase === 'game_over' ? gameOver() : null, ground]);
+      const nodes = [el('div', {class: 'ww-table'}, [main, side()])];
+      const folder = curtainSeat();
+      if (folder != null && !animating && !holdCurtain) nodes.push(curtain(folder));
+      app.replaceChildren(...nodes);
+      fitHand();
+    }
+
+    // Overlap the hand just enough to fit the space it has, measured once
+    // it's on the page: a phone's seven cards shouldn't run off the edge.
+    function fitHand(){
+      const hand = document.querySelector('.ww-hand');
+      const cards = hand ? hand.querySelectorAll('.ww-card') : [];
+      if (!cards.length) return;
+      const room = hand.clientWidth - 12;
+      const w = cards[0].getBoundingClientRect().width;
+      const n = cards.length;
+      const overlap = n * (w + 4) > room ? Math.max(-w * 0.72, (room - w) / Math.max(1, n - 1) - w) : 4;
+      hand.style.setProperty('--overlap', `${overlap}px`);
+    }
+
+    window.addEventListener('resize', () => { if (!animating) render(); });
+    GN.profiles.load().then(() => { if (!animating) render(); });
+    poll();
+  }
+</script>
+{% endblock %}
