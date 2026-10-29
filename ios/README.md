@@ -120,3 +120,29 @@ Since 1.2.0 the app collects a name and an optional photo when a player makes
 a profile, so App Store Connect's App Privacy answers need **Name** and
 **Photos** under "Data linked to you", for app functionality, not tracking —
 matching `PrivacyInfo.xcprivacy`.
+
+## Ad hoc builds — Louis's iPad
+
+TestFlight needs an Apple Account aged 13 or over, so a younger child's iPad
+gets an ad hoc build instead, exactly as Brief does (news-hub's
+`ios/RUNBOOK.md`, "Ad hoc builds"): signed for the devices registered with the
+team, installed over a cable or Wi-Fi pairing, no review, and it runs for a
+year (until its provisioning profile expires). It only opens with **Developer
+Mode** on (Settings → Privacy & Security → Developer Mode).
+
+```bash
+# Register a new device once — same team as Brief, so use its script:
+node ../news-hub/ios/scripts/register-device.mjs "Louis's iPad"
+# Each update, with it plugged in or paired (a name from `xcrun devicectl list devices`, or its UDID):
+ADHOC=1 INSTALL="iPad - H6VPQ0FWH9" ios/scripts/testflight.sh
+# Or re-export a build already archived for TestFlight:
+ADHOC=1 INSTALL="iPad - H6VPQ0FWH9" ARCHIVE=~/Library/Developer/Xcode/DerivedData/GameNight/GameNight-<build>.xcarchive ios/scripts/testflight.sh
+```
+
+- Louis's iPad is "iPad - H6VPQ0FWH9" (UDID `00008120-0009193E01B8201E`),
+  registered for Brief. 1.11.0 (202610291120) installed on 29 Oct 2026.
+- An ad hoc copy doesn't update itself: reinstall after each TestFlight build
+  he should have, and at least once a year.
+- If a newly registered device won't install ("not included in the
+  provisioning profile"), delete the stale profile from
+  `~/Library/Developer/Xcode/UserData/Provisioning Profiles` and build again.
