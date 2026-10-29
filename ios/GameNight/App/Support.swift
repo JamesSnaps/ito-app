@@ -33,6 +33,22 @@ extension View {
     }
 }
 
+/// A room's link through the share sheet, beside every invite QR: the QR
+/// only reaches someone at the table, a link can go over Messages to someone
+/// on their way. It's the same web link the QR holds, so it opens the app
+/// where it's installed (Associated Domains) and the web table where it isn't.
+/// Styled by the screen it's on.
+struct InviteLink: View {
+    let url: URL
+    let message: String
+
+    var body: some View {
+        ShareLink(item: url, subject: Text("Game Night"), message: Text(message)) {
+            Label("Send invite", systemImage: "square.and.arrow.up")
+        }
+    }
+}
+
 /// A QR code as an image, for codes the app shows: a room's invite, a link
 /// for signing another device in. Scale with `.interpolation(.none)`.
 enum QRCode {

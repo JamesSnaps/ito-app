@@ -1057,6 +1057,7 @@
   background: var(--cream);
 }
 .f7-invite .f7-share-code { text-align: center; }
+.f7-invite-send { margin: 10px 0 6px; }
 .f7-invite-seats { text-align: left; margin: 12px 0 16px; }
 .f7-invite-seat {
   display: grid;

@@ -212,6 +212,9 @@ struct ItoInviteSheet: View {
                         .accessibilityLabel("QR code for room \(code)")
                 }
                 Text(code).font(.system(size: 44, weight: .heavy, design: .rounded)).kerning(8)
+                InviteLink(url: url, message: "Join our ito game on Game Night — code \(code)")
+                    .font(.headline)
+                    .buttonStyle(ItoButtonStyle(primary: true))
                 Text("Or open Game Night and join with the code. It also works cast to a TV: \(url.absoluteString)")
                     .font(.footnote).foregroundStyle(Ito.muted).multilineTextAlignment(.center)
                     .textSelection(.enabled)

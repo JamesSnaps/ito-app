@@ -4,7 +4,8 @@
 {% block theme_color %}#0e1726{% endblock %}
 {% block head %}<link rel="stylesheet" href="{{ asset('fugitive.css') }}">
 <script src="{{ asset('profiles.js') }}"></script>
-<script src="{{ asset('fugitive.js') }}"></script>{% endblock %}
+<script src="{{ asset('fugitive.js') }}"></script>
+<script src="{{ asset('share.js') }}"></script>{% endblock %}
 {% block body %}
 <div class="wrap">
   <header class="fg-bar">
@@ -1060,7 +1061,10 @@
         if (invite) {
           const qr = el('div', {class: 'fg-qr'});
           qr.innerHTML = invite.qr_svg;   // our own server's SVG, not user input
-          children.push(qr, el('p', {class: 'fg-muted fg-center', text: `Scan to sit down, or enter ${CODE} at /join.`}));
+          children.push(qr,
+            Invite.button({path: invite.invite_url, text: `Play Fugitive with me on Game Night \u2014 code ${CODE}`,
+                           className: 'fg-btn fg-btn-quiet fg-btn-wide'}),
+            el('p', {class: 'fg-muted fg-center', text: `Scan to sit down, send the link, or enter ${CODE} at /join.`}));
         }
       }
       const g = data.game;
