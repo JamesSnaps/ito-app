@@ -20,9 +20,31 @@ struct FugitiveSetupView: View {
         var solo: Bool { self == .computer || self == .offlineComputer }
     }
 
+    /// Who you're playing, and how: plain choices rather than six ways to
+    /// play in a list. `mode` is worked out from them.
+    enum Opponent: Hashable { case friend, computer }
+    enum Devices: Hashable { case own, shared }
+
     @State private var fugitive: String
     @State private var marshal: String
-    @State private var mode = Mode.phones
+    @AppStorage("fugitive.setup.computer") private var opponentIsComputer = false
+    @AppStorage("fugitive.setup.shared") private var shared = false
+    /// Offline: on by itself when there's no connection, and by hand on a plane.
+    @State private var offline = false
+    /// With the app's hints, or the game as printed. One setting for the table.
+    @AppStorage("fugitive.hints") private var hints = true
+
+    private var opponent: Opponent { opponentIsComputer ? .computer : .friend }
+    private var mode: Mode {
+        switch (opponent, shared, offline) {
+        case (.computer, _, false): return .computer
+        case (.computer, _, true): return .offlineComputer
+        case (.friend, false, false): return .phones
+        case (.friend, true, false): return .pass
+        case (.friend, false, true): return .nearby
+        case (.friend, true, true): return .offlinePass
+        }
+    }
     /// Two phones offline: which seat this one takes.
     @State private var nearbyRole = FugitiveRole.fugitive
     /// Against the computer: your name, your seat and how hard it plays.
@@ -65,6 +87,8 @@ struct FugitiveSetupView: View {
                     if let game = resumable { resumeButton(game, offline: false) }
                     if let game = resumableOffline { resumeButton(game, offline: true) }
                     form
+                        // A choice changes what's below it; it shouldn't animate the page.
+                        .transaction { $0.animation = nil }
                     Button {
                         joiningNearby = true
                     } label: {
@@ -80,9 +104,11 @@ struct FugitiveSetupView: View {
                     .buttonStyle(NoirButtonStyle(fill: nil))
                 }
                 .padding(sizeClass == .regular ? 32 : 20)
-                .frame(maxWidth: 560)
+                // Two columns on an iPad: who's playing beside how.
+                .frame(maxWidth: sizeClass == .regular ? 880 : 560)
                 .frame(maxWidth: .infinity)
             }
+            .scrollBounceBehavior(.basedOnSize)
             .scrollDismissesKeyboard(.interactively)
         }
         .navigationTitle("Fugitive")
@@ -97,6 +123,8 @@ struct FugitiveSetupView: View {
             }
         }
         .task {
+            // No connection (a plane, a dead spot): start on the offline game.
+            if !(await Connectivity.online()) { offline = true }
             // The offline game first: it needs no signal, so it mustn't wait for any.
             await checkOfflineResume()
             await Faces.shared.load()
@@ -121,8 +149,29 @@ struct FugitiveSetupView: View {
     }
 
     private var form: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        let wide = sizeClass == .regular
+        let layout = wide ? AnyLayout(HStackLayout(alignment: .top, spacing: 28))
+                          : AnyLayout(VStackLayout(alignment: .leading, spacing: 18))
+        return VStack(alignment: .leading, spacing: 14) {
             Text("Who’s playing?").font(Noir.poster(28)).foregroundStyle(Noir.ink)
+            layout {
+                players.frame(maxWidth: .infinity, alignment: .leading)
+                howToPlay.frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if let error {
+                Text(error).font(.footnote.weight(.semibold)).foregroundStyle(Noir.miss)
+            }
+        }
+        .padding(18)
+        .background(Noir.paper, in: RoundedRectangle(cornerRadius: 14))
+        // Light controls on the paper: the dark ones washed out against it.
+        .environment(\.colorScheme, .light)
+        .shadow(color: .black.opacity(0.4), radius: 10, y: 6)
+    }
+
+    /// The names, faces and seats.
+    private var players: some View {
+        VStack(alignment: .leading, spacing: 14) {
             // The regulars, with their faces: the first tap fills the
             // Fugitive, the next the Marshal — or, against the computer, just you.
             if mode.solo {
@@ -150,31 +199,61 @@ struct FugitiveSetupView: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(Noir.pen)
+        }
+    }
 
-            VStack(alignment: .leading, spacing: 8) {
-                modeRow(.phones, "On our own phones", "This screen is the table. Scan its code on each phone and sit down.")
-                modeRow(.pass, "Pass this device between us", "Hands are hidden while it changes hands.")
-                modeRow(.computer, "Against the computer",
-                        "On your own. Easy plays plainly; Hard bluffs, and deduces as well as the notepad. Kept in its own records, apart from games between people.")
-                Text("NO INTERNET — ON A PLANE")
-                    .font(Noir.type(11)).kerning(1.2)
-                    .foregroundStyle(Noir.ink.opacity(0.55))
-                    .padding(.top, 6)
-                modeRow(.offlinePass, "Pass this phone, offline",
-                        "The whole game stays on this phone. It’s added to the records once there’s signal.")
-                modeRow(.nearby, "Two phones side by side, offline",
-                        "This phone keeps the game; the other joins with “Join a nearby game”. Bluetooth or Wi‑Fi, no internet needed.")
-                if mode == .nearby {
-                    Picker("This phone plays", selection: $nearbyRole) {
-                        Text("This phone: \(displayName(.fugitive))").tag(FugitiveRole.fugitive)
-                        Text("This phone: \(displayName(.marshal))").tag(FugitiveRole.marshal)
-                    }
-                    .pickerStyle(.segmented)
+    /// How it's played: against whom, on what, with or without a signal and
+    /// hints — each a row that stays put, so a choice never moves the rest.
+    private var howToPlay: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            choiceRow("Against") {
+                Picker("Against", selection: Binding(get: { opponent }, set: { pick(opponent: $0) })) {
+                    Text("A friend").tag(Opponent.friend)
+                    Text("The computer").tag(Opponent.computer)
                 }
-                modeRow(.offlineComputer, "Against the computer, offline",
-                        "On your own, with the computer playing on this phone. Added to its own records once there’s signal.")
             }
-
+            if mode.solo {
+                choiceRow("Plays") {
+                    Picker("How hard the computer plays", selection: $level) {
+                        ForEach(FugitiveAI.Level.allCases) { Text($0.title).tag($0) }
+                    }
+                }
+            } else {
+                choiceRow("On") {
+                    Picker("Played on", selection: Binding(get: { shared ? Devices.shared : .own },
+                                                          set: { shared = $0 == .shared })) {
+                        Text("Our own phones").tag(Devices.own)
+                        Text("One device").tag(Devices.shared)
+                    }
+                }
+            }
+            Toggle(isOn: $offline) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Offline").font(.subheadline.weight(.bold))
+                    Text("No internet needed — for a plane.").font(.caption).foregroundStyle(Noir.ink.opacity(0.65))
+                }
+            }
+            .tint(Noir.pen)
+            Toggle(isOn: $hints) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Hints").font(.subheadline.weight(.bold))
+                    Text("Reach badges and an automatic notepad. Off for the game as printed — both players see which.")
+                        .font(.caption).foregroundStyle(Noir.ink.opacity(0.65))
+                }
+            }
+            .tint(Noir.pen)
+            // One sentence on what Deal will do — always there, so nothing jumps.
+            Text(summary)
+                .font(.caption).foregroundStyle(Noir.ink.opacity(0.75))
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(minHeight: 34, alignment: .topLeading)
+            if mode == .nearby {
+                Picker("This phone plays", selection: $nearbyRole) {
+                    Text("This phone: \(displayName(.fugitive))").tag(FugitiveRole.fugitive)
+                    Text("This phone: \(displayName(.marshal))").tag(FugitiveRole.marshal)
+                }
+                .pickerStyle(.segmented)
+            }
             Button {
                 Task { await deal() }
             } label: {
@@ -182,14 +261,34 @@ struct FugitiveSetupView: View {
             }
             .buttonStyle(NoirButtonStyle(fill: Noir.fugitive))
             .disabled(working)
-
-            if let error {
-                Text(error).font(.footnote.weight(.semibold)).foregroundStyle(Noir.miss)
-            }
         }
-        .padding(18)
-        .background(Noir.paper, in: RoundedRectangle(cornerRadius: 14))
-        .shadow(color: .black.opacity(0.4), radius: 10, y: 6)
+        .foregroundStyle(Noir.ink)
+    }
+
+    private var summary: String {
+        switch mode {
+        case .phones: return "This screen is the table. Each player scans its code on their own phone and sits down."
+        case .pass: return "This device is passed between you. Hands are hidden while it changes hands."
+        case .computer: return "On your own, against the computer. Kept in its own records, apart from games between people."
+        case .offlinePass: return "The whole game stays on this device, passed between you. Added to the records once there’s signal."
+        case .nearby: return "This phone keeps the game; the other joins with “Join a nearby game” below. Bluetooth or Wi‑Fi."
+        case .offlineComputer: return "On your own, with the computer playing on this device. Added to its records once there’s signal."
+        }
+    }
+
+    private func choiceRow<Content: View>(_ title: String, @ViewBuilder _ picker: () -> Content) -> some View {
+        HStack(spacing: 10) {
+            Text(title.uppercased()).font(Noir.type(11)).kerning(1).foregroundStyle(Noir.ink.opacity(0.6))
+                .frame(width: 64, alignment: .leading)
+            picker().pickerStyle(.segmented)
+        }
+    }
+
+    private func pick(opponent: Opponent) {
+        opponentIsComputer = opponent == .computer
+        // Your name against the computer starts as the last Fugitive's.
+        if opponent == .computer && me.trimmingCharacters(in: .whitespaces).isEmpty { me = fugitive }
+        error = nil
     }
 
     private func nameRow(_ role: FugitiveRole, text: Binding<String>, solo: Bool = false) -> some View {
@@ -232,44 +331,14 @@ struct FugitiveSetupView: View {
                 .padding(.horizontal, 7).padding(.vertical, 3)
                 .background(Noir.colour(role).opacity(0.25), in: RoundedRectangle(cornerRadius: 4))
                 .foregroundStyle(Noir.ink)
-            VStack(alignment: .leading, spacing: 6) {
-                Text(FugitiveComputer.name).font(.body.weight(.semibold)).foregroundStyle(Noir.ink)
-                Picker("How hard the computer plays", selection: $level) {
-                    ForEach(FugitiveAI.Level.allCases) { Text($0.title).tag($0) }
-                }
-                .pickerStyle(.segmented)
-            }
+            Text("\(FugitiveComputer.name) · \(level.title)").font(.body.weight(.semibold)).foregroundStyle(Noir.ink)
+            Spacer(minLength: 0)
         }
     }
 
     private func displayName(_ role: FugitiveRole) -> String {
         let name = (role == .fugitive ? fugitive : marshal).trimmingCharacters(in: .whitespaces)
         return name.isEmpty ? role.title : name
-    }
-
-    private func modeRow(_ choice: Mode, _ title: String, _ detail: String) -> some View {
-        Button {
-            mode = choice
-            // Your name against the computer starts as the last Fugitive's.
-            if choice.solo && me.trimmingCharacters(in: .whitespaces).isEmpty { me = fugitive }
-            error = nil
-        } label: {
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: mode == choice ? "largecircle.fill.circle" : "circle")
-                    .foregroundStyle(mode == choice ? Noir.pen : Noir.pen.opacity(0.4))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.subheadline.weight(.bold))
-                    Text(detail).font(.caption).foregroundStyle(Noir.ink.opacity(0.65))
-                }
-                Spacer(minLength: 0)
-            }
-            .foregroundStyle(Noir.ink)
-            .padding(10)
-            .background(mode == choice ? Noir.manila.opacity(0.6) : .clear, in: RoundedRectangle(cornerRadius: 8))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(mode == choice ? .isSelected : [])
     }
 
     private func resumeButton(_ game: FugitivePayload, offline: Bool) -> some View {
@@ -318,7 +387,7 @@ struct FugitiveSetupView: View {
         let client = AppSettings.client
         let tokens = FugitiveTokens()
         do {
-            var payload = try await client.fugitiveCreate(fugitive: f, marshal: m)
+            var payload = try await client.fugitiveCreate(fugitive: f, marshal: m, hints: hints)
             var device = FugitiveDevice(host: payload.hostToken)
             if mode == .pass {
                 for role in FugitiveRole.allCases {
@@ -334,7 +403,7 @@ struct FugitiveSetupView: View {
             tokens.lastGame = payload.code
             onDealt(payload)
         } catch GameNightClient.Failure.unreachable {
-            error = "No signal? Pick one of the offline ways to play, under “No internet”."
+            error = "No signal? Turn on Offline and deal again."
         } catch {
             self.error = error.localizedDescription
         }
@@ -354,7 +423,7 @@ struct FugitiveSetupView: View {
             if mode.offline {
                 let table = OfflineTable.shared
                 let tokens = FugitiveTokens.offline
-                let payload = try table.create(you: you, name: name, level: level)
+                let payload = try table.create(you: you, name: name, level: level, hints: hints)
                 var device = FugitiveDevice(host: payload.hostToken)
                 device.setSeat(you, try await table.fugitiveClaim(code: payload.code, role: you).seatToken)
                 tokens.set(device, for: payload.code)
@@ -363,7 +432,7 @@ struct FugitiveSetupView: View {
             } else {
                 let client = AppSettings.client
                 let tokens = FugitiveTokens()
-                let payload = try await client.fugitiveCreate(you: you, name: name, level: level)
+                let payload = try await client.fugitiveCreate(you: you, name: name, level: level, hints: hints)
                 var device = FugitiveDevice(host: payload.hostToken)
                 let sat = try await client.fugitiveClaim(code: payload.code, role: you)
                 device.setSeat(you, sat.seatToken)
@@ -373,7 +442,7 @@ struct FugitiveSetupView: View {
                 onDealt(sat)
             }
         } catch GameNightClient.Failure.unreachable {
-            error = "No signal? Pick “Against the computer, offline”, under “No internet”."
+            error = "No signal? Turn on Offline and deal again."
         } catch {
             self.error = error.localizedDescription
         }
@@ -385,7 +454,7 @@ struct FugitiveSetupView: View {
         let table = OfflineTable.shared
         let tokens = FugitiveTokens.offline
         do {
-            let payload = try table.create(fugitive: f, marshal: m)
+            let payload = try table.create(fugitive: f, marshal: m, hints: hints)
             var device = FugitiveDevice(host: payload.hostToken)
             let mine: [FugitiveRole] = mode == .nearby ? [nearbyRole] : FugitiveRole.allCases
             for role in mine {

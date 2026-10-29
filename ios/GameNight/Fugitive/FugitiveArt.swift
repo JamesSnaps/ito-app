@@ -360,13 +360,17 @@ struct InkStamp: View {
     @State private var landed = false
 
     var body: some View {
+        // The verdicts — Found, Caught, Escaped, Manhunt — big enough to read
+        // across the table; a miss with its numbers a size down to fit.
         Text(stamp.text.uppercased())
-            .font(Noir.type(34))
+            .font(Noir.type(stamp.text.count > 14 ? 40 : 60))
+            .minimumScaleFactor(0.5)
+            .lineLimit(1)
             .kerning(2)
             .foregroundStyle(colour)
-            .padding(.horizontal, 18).padding(.vertical, 8)
-            .background(Noir.card.opacity(0.88), in: RoundedRectangle(cornerRadius: 8))
-            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(colour, lineWidth: 4))
+            .padding(.horizontal, 26).padding(.vertical, 12)
+            .background(Noir.card.opacity(0.9), in: RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(colour, lineWidth: 6))
             .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(colour.opacity(0.6), lineWidth: 1.5).padding(6))
             .rotationEffect(.degrees(-12))
             .scaleEffect(landed ? 1 : 2.4)

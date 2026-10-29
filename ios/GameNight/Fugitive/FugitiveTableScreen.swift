@@ -17,6 +17,7 @@ struct FugitiveTableScreen: View {
     @State private var showingPanels = false
     @Environment(\.scenePhase) private var scenePhase
     @State private var soundOn = Sound.enabled
+    @State private var musicOn = Music.enabled
     @State private var rules: WebPage?
     @State private var showingCode = false
 
@@ -38,7 +39,7 @@ struct FugitiveTableScreen: View {
                         HStack(alignment: .top, spacing: 18) {
                             ScrollView {
                                 VStack(spacing: 14) {
-                                    StatusTag(payload: payload)
+                                    StatusTag(payload: payload, holding: store.revealing)
                                     Desk(store: store, payload: payload, cardWidth: cardWidth, controls: false)
                                 }
                                 .padding(20)
@@ -61,7 +62,7 @@ struct FugitiveTableScreen: View {
                     } else {
                         ScrollView {
                             VStack(spacing: 14) {
-                                StatusTag(payload: payload)
+                                StatusTag(payload: payload, holding: store.revealing)
                                 Desk(store: store, payload: payload, cardWidth: cardWidth)
                                 SidePanels(store: store, payload: payload)
                             }
@@ -115,6 +116,16 @@ struct FugitiveTableScreen: View {
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
+                    musicOn.toggle()
+                    Music.enabled = musicOn
+                    if musicOn, let tension = store.tension { Music.shared.play(intensity: tension) }
+                } label: {
+                    Image(systemName: musicOn ? "music.note" : "music.note.slash")
+                }
+                .accessibilityLabel(musicOn ? "Music on" : "Music off")
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
                     soundOn.toggle()
                     Sound.enabled = soundOn
                 } label: {
@@ -145,7 +156,17 @@ struct FugitiveTableScreen: View {
             }
         }
         .onAppear { store.start() }
-        .onDisappear { store.stop() }
+        .onDisappear {
+            store.stop()
+            Music.shared.stop()
+        }
+        // The music follows the hunt, and stops when the game does.
+        .onChange(of: store.tension) { _, tension in
+            if let tension { Music.shared.play(intensity: tension) } else { Music.shared.stop() }
+        }
+        .task(id: store.payload == nil) {
+            if let tension = store.tension { Music.shared.play(intensity: tension) }
+        }
         .keepsScreenAwake()
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { store.start() } else { store.stop() }
@@ -178,9 +199,12 @@ private struct StatusTag: View {
     let payload: FugitivePayload
     /// Smaller type and less paper: the right-hand column of a phone held sideways.
     var compact = false
+    /// Found cards are still turning over: a catch isn't announced before
+    /// the cards that decide it are face up. Any other ending says itself.
+    var holding = false
 
     var body: some View {
-        let words = Self.words(payload)
+        let words = holding && payload.game.isOver ? ("The cards turn over…", "") : Self.words(payload)
         let line = words.0, small = words.1
         let g = payload.game
         let colour = g.winner.map(Noir.colour) ?? g.turn.map(Noir.colour) ?? Noir.card
@@ -194,6 +218,13 @@ private struct StatusTag: View {
                 }
             }
             Spacer(minLength: 0)
+            // Both players see how the game is being played.
+            if !payload.hintsOn {
+                Text("NO HINTS").font(Noir.type(compact ? 10 : 11)).kerning(1)
+                    .padding(.horizontal, 6).padding(.vertical, 3)
+                    .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Noir.ink.opacity(0.5)))
+                    .foregroundStyle(Noir.ink.opacity(0.75))
+            }
         }
         .fixedSize(horizontal: false, vertical: true)
         .padding(.vertical, compact ? 6 : 10).padding(.horizontal, compact ? 10 : 12)
@@ -432,6 +463,8 @@ private struct Fan: View {
         if picked { return .hide }
         let steps = game.steps(number)
         if sprinting { return .sprint(steps) }
+        // Without hints the hand shows only what's been chosen.
+        guard choice.hints else { return nil }
         switch choice.mode {
         case .hideout:
             switch FugitiveHiding.cost(number, in: game) {
@@ -451,7 +484,7 @@ private struct Fan: View {
         case .inReach: return "\(number), in reach"
         case .needs(let n): return "\(number), needs \(n) more footprint\(n == 1 ? "" : "s")"
         case .steps(let n): return "\(number), sprint for \(n) footprint\(n == 1 ? "" : "s")"
-        case nil: return "\(number), out of reach"
+        case nil: return store.hiding.hints ? "\(number), out of reach" : "\(number)"
         }
     }
 }
@@ -528,11 +561,14 @@ private struct Trail: View {
         // hideout with sprint cards under it sometimes missed the change to
         // `landing` alone and stayed invisible until the next move.
         let settled = !store.animating
+        // Found but not yet turned over: still drawn as the Marshal saw it.
+        let turning = settled ? [] : store.turning
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: cardWidth * 0.22) {
                     ForEach(Array(g.hideouts.enumerated()), id: \.offset) { i, hideout in
-                        Stop(hideout: hideout, found: hideout.revealed && i > 0 && hideout.card != 42,
+                        let shown = turning.contains(i) ? hideout.unturned(for: g.viewerRole) : hideout
+                        Stop(hideout: shown, found: shown.revealed && i > 0 && shown.card != 42,
                              hint: hint(g, i), width: cardWidth)
                             .offset(y: landing.contains(i) && !settled ? 170 : 0)
                             .opacity(landing.contains(i) && !settled ? 0 : 1)
@@ -631,8 +667,13 @@ private struct Slot: View {
             .frame(height: width * 1.4 + CGFloat(sprints.count) * tuck, alignment: .top)
         } else {
             VStack(spacing: 0) {
-                Text("up to").font(Noir.type(11))
-                Text("\(store.reach)").font(Noir.poster(width * 0.5))
+                // Without hints the slot doesn't say how far you reach.
+                if store.hiding.hints {
+                    Text("up to").font(Noir.type(11))
+                    Text("\(store.reach)").font(Noir.poster(width * 0.5))
+                } else {
+                    Text("next").font(Noir.type(12))
+                }
             }
             .foregroundStyle(Noir.card.opacity(0.8))
             .frame(width: width, height: width * 1.4)
@@ -898,7 +939,7 @@ private struct LandscapeTable: View {
             VStack(spacing: 8) {
             ScrollView {
                 VStack(spacing: 10) {
-                    StatusTag(payload: payload, compact: true)
+                    StatusTag(payload: payload, compact: true, holding: store.revealing)
                     // A guessing Marshal can't draw, and the notepad needs
                     // the room: the decks are back for the next draw.
                     if !guessing { Decks(store: store, game: g, cardWidth: cardWidth * 0.6, compact: true) }
@@ -1065,6 +1106,8 @@ private struct Notepad: View {
         var struck: Set<Int> = []
         var missed: Set<Int> = []
         var possible: Set<Int>?
+        /// Your own pencil.
+        var mine: Set<Int> = []
     }
 
     var body: some View {
@@ -1073,7 +1116,21 @@ private struct Notepad: View {
         let marks = noted(g)
         VStack(alignment: .leading, spacing: compact ? 4 : 10) {
             HStack {
-                Text("\(payload.name(.marshal))’s notes").font(Noir.hand(compact ? 20 : 26)).foregroundStyle(Noir.pen)
+                // Sideways the row holds two switches, so the title gives way.
+                if !compact {
+                    Text("\(payload.name(.marshal))’s notes").font(Noir.hand(26)).foregroundStyle(Noir.pen)
+                        .lineLimit(1).minimumScaleFactor(0.7)
+                    Spacer(minLength: 6)
+                }
+                // Your own pencil: a tap crosses a number out, or clears it.
+                Picker("A tap on the notepad", selection: $store.marking) {
+                    Text(guessing ? "Guess" : "Look").tag(false)
+                    Text("✎ Mark").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .fixedSize()
+                .controlSize(compact ? .mini : .small)
+                .environment(\.colorScheme, .light)
                 // Sideways there's no row to spare: the switch shares the title's.
                 if compact, g.candidates != nil {
                     Spacer(minLength: 8)
@@ -1087,7 +1144,7 @@ private struct Notepad: View {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 2), count: compact ? 11 : 7), spacing: compact ? 0 : 2) {
                 ForEach(1...41, id: \.self) { n in
                     number(n, marks: marks)
-                        .disabled(!guessing || marks.found.contains(n) || store.busy || store.animating)
+                        .disabled(marks.found.contains(n) || (!store.marking && (!guessing || store.busy || store.animating)))
                 }
             }
             if guessing && !compact { GuessActions(store: store, payload: payload) }
@@ -1109,10 +1166,11 @@ private struct Notepad: View {
         let found = marks.found.contains(n)
         let struck = marks.struck.contains(n)
         let missed = marks.missed.contains(n) && !found
+        let mine = marks.mine.contains(n) && !found
         let faint = marks.possible.map { !$0.contains(n) && !found && !struck } ?? false
         let picked = store.guesses.contains(n)
         let inset: CGFloat = compact ? 2 : 5
-        return Button { store.toggleGuess(n) } label: {
+        return Button { if store.marking { store.toggleMark(n) } else { store.toggleGuess(n) } } label: {
             Text("\(n)")
                 .font(Noir.hand(compact ? 21 : 25))
                 .foregroundStyle(found ? Noir.found : Noir.pen)
@@ -1121,8 +1179,17 @@ private struct Notepad: View {
                 .overlay {
                     if struck {
                         Capsule().fill(Noir.pen).frame(height: 2.2).padding(.horizontal, inset + 3).rotationEffect(.degrees(-14))
-                    } else if missed {
-                        Capsule().fill(Color.gray.opacity(0.8)).frame(height: 1.6).padding(.horizontal, inset + 4).rotationEffect(.degrees(12))
+                    } else if mine {
+                        // Your own mark: pencil, the other way.
+                        Capsule().fill(Color.gray).frame(height: 2).padding(.horizontal, inset + 3).rotationEffect(.degrees(18))
+                    }
+                }
+                .overlay(alignment: .topTrailing) {
+                    // A wrong single guess: a pencil tick, not a strike — it
+                    // wasn't there then, but a later hideout could still be.
+                    if missed {
+                        Text("✓").font(Noir.hand(compact ? 11 : 13)).foregroundStyle(Color.gray)
+                            .padding(.trailing, compact ? 0 : 2)
                     }
                 }
                 .overlay {
@@ -1135,7 +1202,7 @@ private struct Notepad: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(PaperPress())
-        .accessibilityLabel(Self.label(n, found: found, struck: struck, missed: missed))
+        .accessibilityLabel(Self.label(n, found: found, struck: struck || mine, missed: missed))
         .accessibilityAddTraits(picked ? .isSelected : [])
     }
 
@@ -1148,7 +1215,12 @@ private struct Notepad: View {
 
     private func noted(_ g: FugitiveGame) -> Marks {
         var marks = Marks()
+        // Found cards are face up on the table, so they're circled either
+        // way; your own pencil is yours. Everything else the app writes in
+        // is a hint, and left off in a game without them.
         marks.found = Set(g.hideouts.filter(\.revealed).compactMap(\.card))
+        marks.mine = store.marks
+        guard payload.hintsOn else { return marks }
         marks.struck = Set(g.hand ?? [])
         for hideout in g.hideouts { marks.struck.formUnion(hideout.sprints ?? []) }
         for event in g.log where event.kind == "guessed" && event.hit != true {
@@ -1219,11 +1291,51 @@ private struct SeatsPanel: View {
     let store: FugitiveStore
     let payload: FugitivePayload
     @State private var confirmingResign = false
+    /// Opened by hand while it would otherwise be folded.
+    @State private var opened = false
 
     var body: some View {
         let g = payload.game
         let open = FugitiveRole.allCases.contains { !payload.taken($0) }
+        // Folded to one line once everyone's sitting and the game's going:
+        // the whole panel is only wanted when someone joins, or at the end.
+        if !open && !g.isOver && !opened {
+            folded
+        } else {
+            full(g, open: open)
+        }
+    }
+
+    /// Both faces and names on one line; a tap opens the panel.
+    private var folded: some View {
+        Button {
+            withAnimation(.easeOut(duration: 0.2)) { opened = true }
+        } label: {
+            HStack(spacing: 8) {
+                Text("AT THE TABLE").font(Noir.type(12)).kerning(1.2).foregroundStyle(Noir.fugitive)
+                Spacer(minLength: 4)
+                ForEach(FugitiveRole.allCases) { role in
+                    Mugshot(name: payload.name(role), role: role, size: 24)
+                    Text(payload.name(role)).font(.subheadline.weight(.semibold)).lineLimit(1)
+                }
+                Image(systemName: "chevron.down").font(.caption.weight(.bold)).foregroundStyle(Noir.card.opacity(0.6))
+            }
+            .padding(.horizontal, 14).padding(.vertical, 10)
+            .background(Noir.panel.opacity(0.94), in: RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Noir.line))
+            .foregroundStyle(Noir.card)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("At the table: \(payload.name(.fugitive)) and \(payload.name(.marshal)). Show seats and Give up.")
+    }
+
+    private func full(_ g: FugitiveGame, open: Bool) -> some View {
         NoirPanel(title: "At the table") {
+            if opened && !open && !g.isOver {
+                Button("Fold away") { withAnimation(.easeOut(duration: 0.2)) { opened = false } }
+                    .font(.footnote).buttonStyle(.plain).foregroundStyle(Noir.card.opacity(0.6))
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
             ForEach(FugitiveRole.allCases) { role in row(role) }
             if store.isDealer, open, !g.isOver,
                let qr = store.inviteURL.flatMap({ QRCode.image($0.absoluteString) }) {

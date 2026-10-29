@@ -50,7 +50,7 @@
           {% elif g.reason == "resigned" %}{{ g.fugitive if g.winner == "marshal" else g.marshal }} gave up to {{ g.marshal if g.winner == "marshal" else g.fugitive }}
           {% else %}{{ g.fugitive }} {{ how[g.reason] }} from {{ g.marshal }}{% endif %}
         </td>
-        <td class="fg-num-cell">{{ g.hideouts }} hideout{{ "" if g.hideouts == 1 else "s" }}</td>
+        <td class="fg-num-cell">{{ g.hideouts }} hideout{{ "" if g.hideouts == 1 else "s" }}{% if g.hints is false %} · no hints{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -91,7 +91,7 @@
       <tr>
         <td>{{ g.at[:10] }}</td>
         <td>{% if g.won %}{{ g.name }} beat the computer as {{ g.role|title }}{% else %}The computer beat {{ g.name }} ({{ g.role|title }}){% endif %}</td>
-        <td class="fg-num-cell">{{ g.level|title }} · {{ g.hideouts }} hideout{{ "" if g.hideouts == 1 else "s" }}</td>
+        <td class="fg-num-cell">{{ g.level|title }} · {{ g.hideouts }} hideout{{ "" if g.hideouts == 1 else "s" }}{% if g.hints is false %} · no hints{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>

@@ -44,6 +44,8 @@ final class Sound {
         case escape
         /// Fugitive: the cell door, when the Marshal finds them all.
         case caught
+        /// Fugitive: a found hideout turned over — a snap and a rising sting.
+        case reveal
     }
 
     static var enabled: Bool {
@@ -151,11 +153,23 @@ private enum Synth {
             mix(&out, sweep(from: 220, to: 880, duration: 1.1, gain: 0.12), at: 0)
             mix(&out, chime(freq: 1318.5, duration: 0.6, gain: 0.16), at: Int(0.95 * rate))
         case .caught:
-            // A barred door: a heavy thud and a metallic ring.
-            out = thump(freq: 80, to: 48, duration: 0.32, gain: 0.8)
-            for (f, g) in [(420.0, Float(0.18)), (1260.0, Float(0.1)), (2390.0, Float(0.06))] {
-                mix(&out, chime(freq: f, duration: 0.6, gain: g), at: Int(0.01 * rate))
+            // A barred door slammed, its ring, then three falling low notes:
+            // dun, dun, DUN.
+            out = thump(freq: 80, to: 44, duration: 0.42, gain: 0.95)
+            mix(&out, noiseBurst(duration: 0.08, decay: 0.02, highpass: 0, lowpass: 0.4, gain: 0.5), at: 0)
+            for (f, g) in [(420.0, Float(0.2)), (1260.0, Float(0.11)), (2390.0, Float(0.07))] {
+                mix(&out, chime(freq: f, duration: 0.9, gain: g), at: Int(0.01 * rate))
             }
+            for (i, f) in [196.0, 185.0, 146.83].enumerated() {
+                mix(&out, chime(freq: f, duration: i == 2 ? 1.4 : 0.35, gain: 0.3), at: Int((0.55 + Double(i) * 0.32) * rate))
+                mix(&out, chime(freq: f / 2, duration: i == 2 ? 1.4 : 0.35, gain: 0.25), at: Int((0.55 + Double(i) * 0.32) * rate))
+            }
+        case .reveal:
+            // A card snapped over, a knock, and two notes rising.
+            out = noiseBurst(duration: 0.06, decay: 0.014, highpass: 0.85, gain: 0.6)
+            mix(&out, thump(freq: 130, to: 80, duration: 0.14, gain: 0.55), at: Int(0.02 * rate))
+            mix(&out, chime(freq: 587.33, duration: 0.3, gain: 0.2), at: Int(0.08 * rate))
+            mix(&out, chime(freq: 880, duration: 0.5, gain: 0.22), at: Int(0.2 * rate))
         }
 
         let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(max(out.count, 1)))!

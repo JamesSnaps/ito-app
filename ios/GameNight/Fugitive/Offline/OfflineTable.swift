@@ -54,6 +54,8 @@ nonisolated struct OfflineGame: Codable, Equatable {
     var computer: Computer?
     /// When the last move was made: the computer waits `computerDelay` after it.
     var movedAt: Date?
+    /// False for a game dealt without the app's hints (game.py's `hints`).
+    var hints: Bool? = nil
 
     nonisolated struct Computer: Codable, Equatable {
         var role: FugitiveRole
@@ -125,22 +127,23 @@ final class OfflineTable: FugitiveTransport {
     /// A new game, shuffled on this phone (or dealt from `decks`, top card
     /// last, when a test rigs one). Answers as the server's create does:
     /// the table's view, with the dealer's token.
-    func create(fugitive: String, marshal: String, decks rigged: [[Int]]? = nil) throws -> FugitivePayload {
-        try create(players: ["fugitive": fugitive, "marshal": marshal], computer: nil, decks: rigged)
+    func create(fugitive: String, marshal: String, hints: Bool = true, decks rigged: [[Int]]? = nil) throws -> FugitivePayload {
+        try create(players: ["fugitive": fugitive, "marshal": marshal], computer: nil, hints: hints, decks: rigged)
     }
 
     /// A game against the computer: `name` sits as `you` (the caller still
     /// claims the seat, as online), and the computer takes the other one at
     /// `level`, under its own name, with a seed nobody sees.
-    func create(you: FugitiveRole, name: String, level: FugitiveAI.Level, decks rigged: [[Int]]? = nil,
-                seed: UInt32? = nil) throws -> FugitivePayload {
+    func create(you: FugitiveRole, name: String, level: FugitiveAI.Level, hints: Bool = true,
+                decks rigged: [[Int]]? = nil, seed: UInt32? = nil) throws -> FugitivePayload {
         var rng = SystemRandomNumberGenerator()
         let computer = OfflineGame.Computer(role: you.other, level: level, seed: seed ?? rng.next())
         return try create(players: [you.rawValue: name, you.other.rawValue: FugitiveComputer.name],
-                          computer: computer, decks: rigged)
+                          computer: computer, hints: hints, decks: rigged)
     }
 
-    private func create(players: [String: String], computer: OfflineGame.Computer?, decks rigged: [[Int]]?) throws -> FugitivePayload {
+    private func create(players: [String: String], computer: OfflineGame.Computer?, hints: Bool,
+                        decks rigged: [[Int]]?) throws -> FugitivePayload {
         var rng = SystemRandomNumberGenerator()
         let decks = rigged ?? FugitiveEngine.deckRanges.map { Array($0).shuffled(using: &rng) }
         var seats: [String: String] = [:]
@@ -150,7 +153,7 @@ final class OfflineTable: FugitiveTransport {
             id: UUID().uuidString, code: freshCode(), players: players,
             decks: decks, moves: [], state: FugitiveEngine.newGame(decks: decks), hostToken: Self.newToken(),
             seats: seats, next: nil, createdAt: Date(), finishedAt: nil, upload: .notYet,
-            computer: computer, movedAt: Date())
+            computer: computer, movedAt: Date(), hints: hints ? nil : false)
         try save(game)
         return payload(game, token: game.hostToken).with(hostToken: game.hostToken)
     }
@@ -229,7 +232,7 @@ final class OfflineTable: FugitiveTransport {
                 players: ["fugitive": game.name(.marshal), "marshal": game.name(.fugitive)],
                 decks: decks, moves: [], state: FugitiveEngine.newGame(decks: decks), hostToken: game.hostToken,
                 seats: seats, next: nil, createdAt: Date(), finishedAt: nil, upload: .notYet,
-                computer: computer, movedAt: Date())
+                computer: computer, movedAt: Date(), hints: game.hints)
             try save(fresh)
             game.next = fresh.code
             try save(game)
@@ -298,6 +301,9 @@ final class OfflineTable: FugitiveTransport {
         case .seat(let role): (you, viewer) = (FugitiveYou(role: "seat", seat: role), role)
         case .nobody: (you, viewer) = (FugitiveYou(role: nil, seat: nil), nil)
         }
+        // As game.py: without hints, no notepad help leaves the table.
+        var view = FugitiveEngine.view(game.state, viewer: viewer)
+        if game.hints == false { view = view.with(candidates: nil) }
         return FugitivePayload(
             code: game.code,
             players: game.players,
@@ -305,10 +311,11 @@ final class OfflineTable: FugitiveTransport {
                 ($0.rawValue, FugitiveSeat(taken: game.seats[$0.rawValue] != nil))
             }),
             you: you,
-            game: FugitiveEngine.view(game.state, viewer: viewer),
+            game: view,
             next: game.next,
             hostToken: nil, inviteUrl: nil, seatToken: nil, error: nil,
-            computer: game.computer.map { FugitiveComputer(role: $0.role, level: $0.level.rawValue) })
+            computer: game.computer.map { FugitiveComputer(role: $0.role, level: $0.level.rawValue) },
+            hints: game.hints == false ? false : nil)
     }
 
     private func game(_ code: String) throws -> OfflineGame {
@@ -352,6 +359,6 @@ extension FugitivePayload {
     nonisolated func with(hostToken: String? = nil, seatToken: String? = nil) -> FugitivePayload {
         FugitivePayload(code: code, players: players, seats: seats, you: you, game: game, next: next,
                         hostToken: hostToken ?? self.hostToken, inviteUrl: inviteUrl,
-                        seatToken: seatToken ?? self.seatToken, error: error, computer: computer)
+                        seatToken: seatToken ?? self.seatToken, error: error, computer: computer, hints: hints)
     }
 }

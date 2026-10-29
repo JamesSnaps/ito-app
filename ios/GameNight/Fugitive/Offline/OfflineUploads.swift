@@ -64,7 +64,8 @@ enum OfflineUploads {
             playedAt: game.finishedAt.map { $0.formatted(.iso8601) },
             // The seed lets the server check every one of the computer's
             // moves is the one ai.py makes from it.
-            computer: game.computer.map { .init(role: $0.role, level: $0.level.rawValue, seed: $0.seed) })
+            computer: game.computer.map { .init(role: $0.role, level: $0.level.rawValue, seed: $0.seed) },
+            hints: game.hints)
     }
 
     /// Games that are done with: sent (or refused) a week ago, or abandoned

@@ -110,4 +110,23 @@ import Testing
         hiding.tap(2, in: game)
         #expect(hiding.pick == 2 && hiding.sprints == [4])
     }
+
+    /// Without hints: any card on from the trail can be the hideout, nothing
+    /// switches to Sprint for you, and the hint names only what's chosen.
+    @Test func withoutHintsTheHandOnlySaysWhatsChosen() async throws {
+        let game = try await firstTurn()
+        var hiding = FugitiveHiding(hints: false)
+        // 17 is out of reach, and with hints it couldn't be tapped.
+        #expect(hiding.canTap(17, in: game) && !FugitiveHiding().canTap(17, in: game))
+        hiding.tap(11, in: game)
+        // Out of free reach, but it stays on Hideout: switching would say so.
+        #expect(hiding.pick == 11 && hiding.mode == .hideout)
+        #expect(hiding.canHide(game))
+        #expect(hiding.hint(game) == "Hide at 11.")
+        hiding.switchTo(.sprint)
+        hiding.tap(1, in: game)
+        #expect(hiding.hint(game) == "Hide at 11 with 1 sprint card.")
+        hiding.tap(11, in: game)
+        #expect(hiding == FugitiveHiding(hints: false))
+    }
 }

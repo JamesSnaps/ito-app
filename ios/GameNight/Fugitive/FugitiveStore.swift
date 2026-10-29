@@ -33,6 +33,16 @@ final class FugitiveStore {
     var assist: Bool = UserDefaults.standard.object(forKey: "fugitive.assist") as? Bool ?? true {
         didSet { UserDefaults.standard.set(assist, forKey: "fugitive.assist") }
     }
+    /// The Marshal's own pencil marks on the notepad, kept per game.
+    private(set) var marks: Set<Int> = []
+    /// Whether a tap on the notepad marks a number rather than circling a guess.
+    var marking = false
+
+    func toggleMark(_ number: Int) {
+        if marks.contains(number) { marks.remove(number) } else { marks.insert(number) }
+        UserDefaults.standard.set(Array(marks), forKey: "fugitive.marks.\(code)")
+        Sound.shared.play(.flick, volume: 0.5)
+    }
 
     // MARK: the table in motion
     //
@@ -57,6 +67,12 @@ final class FugitiveStore {
     private(set) var dealing = false
     /// Hideouts already in the game but not yet slid onto the trail.
     private(set) var landing: Set<Int> = []
+    /// Hideouts found by a guess but not yet turned over on the trail: a
+    /// guess of several numbers turns them one at a time, not all at once.
+    private(set) var turning: Set<Int> = []
+    /// From a successful guess arriving until its last card has turned and
+    /// been stamped: the banner holds a catch back until then.
+    private(set) var revealing = false
     /// Cards drawn but still on their way: faces this viewer will see, and
     /// how many backs each hand is still owed.
     private(set) var incomingCards: Set<Int> = []
@@ -87,6 +103,7 @@ final class FugitiveStore {
         self.transport = transport
         self.tokens = transport.tokens
         self.device = tokens.held(for: code)
+        self.marks = Set(UserDefaults.standard.array(forKey: "fugitive.marks.\(code)") as? [Int] ?? [])
     }
 
     /// For a game this device was just handed in full (dealt, or checked on
@@ -116,6 +133,18 @@ final class FugitiveStore {
         // move is still playing out; the folder only goes up after it.
         if device.seats.count == 2, let shown = shownAs, animating || game?.turn == shown { return device.seat(shown) }
         return device.askingToken
+    }
+
+    /// How tense the music should be: the hunt closing in. Calm at the deal,
+    /// tighter with each hideout found and the trail getting long, highest in
+    /// a Manhunt; nothing once the game is over.
+    var tension: Double? {
+        guard let game, !game.isOver else { return nil }
+        if game.phase == .manhunt { return 1 }
+        let found = game.hideouts.dropFirst().filter(\.revealed).count
+        let laid = max(0, game.hideouts.count - 1)
+        let near42 = Double(game.lastHideout) / 42
+        return min(0.95, 0.15 + Double(found) * 0.12 + Double(laid) * 0.03 + near42 * 0.35)
     }
 
     // MARK: - polling
@@ -291,8 +320,8 @@ final class FugitiveStore {
             follow(to: next)
             return
         }
-        if fresh.game.seq != payload?.game.seq {
-            hiding = FugitiveHiding()
+        if fresh.game.seq != payload?.game.seq || hiding.hints != fresh.hintsOn {
+            hiding = FugitiveHiding(hints: fresh.hintsOn)
             guesses = []
         }
         let first = lastEvent == nil
@@ -310,6 +339,10 @@ final class FugitiveStore {
         // Whatever the new entries put on the table waits for its animation.
         for event in fresher {
             if event.kind == "hid", let index = event.index { landing.insert(index) }
+            if event.kind == "guessed", event.hit == true {
+                turning.formUnion(event.revealed ?? [])
+                revealing = true
+            }
             if event.kind == "drew", let role = event.role {
                 if role == fresh.game.viewerRole, let card = event.card {
                     incomingCards.insert(card)
@@ -332,6 +365,8 @@ final class FugitiveStore {
         if tokens.lastGame == code { tokens.lastGame = next }
         code = next
         payload = nil
+        marks = []
+        marking = false
         lastEvent = nil
         dealt = false
         shownAs = nil
@@ -345,6 +380,8 @@ final class FugitiveStore {
         dealing = false
         queue = []
         landing = []
+        turning = []
+        revealing = false
         incomingCards = []
         incomingBacks = [:]
         Task { await refresh() }
@@ -412,7 +449,18 @@ final class FugitiveStore {
             await pause(0.2)
         case "guessed":
             if event.hit == true {
-                await show("Found", .found, for: 1.0)
+                // One card at a time: turned over, a knock, then the stamp.
+                let found = (event.revealed ?? []).sorted()
+                for (k, index) in found.enumerated() {
+                    sound.play(.reveal)
+                    withAnimation(.easeOut(duration: 0.45)) { _ = turning.remove(index) }
+                    UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
+                    await pause(0.5)
+                    await show(found.count > 1 ? "Found · \(k + 1) of \(found.count)" : "Found", .found, for: 0.75)
+                }
+                if found.isEmpty { await show("Found", .found, for: 1.0) }
+                // Still held while a later hit's cards wait their turn.
+                revealing = !turning.isEmpty
             } else {
                 sound.play(.miss)
                 shakes += 1

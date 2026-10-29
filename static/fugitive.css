@@ -509,7 +509,7 @@
 .fg-num:disabled { cursor: default; }
 .fg-num[aria-pressed="true"] { box-shadow: 0 0 0 2.5px var(--fg-miss); color: var(--fg-miss); }
 .fg-num-found { box-shadow: 0 0 0 2.5px var(--fg-found); color: #1f6e3f; }
-.fg-num-struck::after, .fg-num-missed::after {
+.fg-num-struck::after, .fg-num-marked::after {
   content: "";
   position: absolute;
   left: 14%;
@@ -518,7 +518,27 @@
   border-top: 2.5px solid #23314f;
   transform: rotate(-24deg);
 }
-.fg-num-missed::after { border-top: 1.5px solid rgba(35, 49, 79, 0.55); transform: rotate(18deg); }
+/* Your own marks are pencil, not the app's pen. */
+.fg-num-marked::after { border-top: 2px solid rgba(35, 49, 79, 0.6); transform: rotate(20deg); }
+/* A wrong single guess: a small pencil tick by the number, not a strike —
+   it wasn't there then, but a later hideout could still be. */
+.fg-num-missed::before {
+  content: "✓";
+  position: absolute;
+  top: 1px;
+  right: 6%;
+  font: 600 0.8rem/1 var(--fg-hand);
+  color: rgba(35, 49, 79, 0.55);
+}
+.fg-notepad-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.fg-pad-tools { display: flex; gap: 2px; padding: 2px; border-radius: 999px; background: rgba(35, 49, 79, 0.08); }
+.fg-pad-tool { border: 0; background: transparent; color: #23314f; font: 600 1.05rem var(--fg-hand); padding: 2px 10px; border-radius: 999px; cursor: pointer; }
+.fg-pad-tool-on { background: #23314f; color: #f6efdc; }
+.fg-seats-folded { display: flex; align-items: center; gap: 8px; width: 100%; cursor: pointer; color: inherit; text-align: left; font: inherit; }
+.fg-seats-folded-title { flex: 1; font: 0.8rem var(--fg-type); letter-spacing: 0.12em; text-transform: uppercase; color: var(--fg-fugitive); }
+.fg-nohints { margin-left: 8px; padding: 1px 6px; border: 1px solid currentColor; border-radius: 4px; font-size: 0.75em; letter-spacing: 0.08em; text-transform: uppercase; }
+.fg-hints-toggle { align-items: flex-start; font: 0.95rem var(--fg-body, system-ui); color: inherit; }
+.fg-hints-toggle small { opacity: 0.7; }
 .fg-num-faint { opacity: 0.32; }
 .fg-pad-actions { margin-top: 12px; max-width: none; }
 .fg-btn-ink { color: #23314f; border-color: rgba(35, 49, 79, 0.35); }
@@ -542,9 +562,10 @@
   position: absolute;
   z-index: 70;
   padding: 6px 16px;
-  border: 4px double currentColor;
-  border-radius: 8px;
-  font: 400 clamp(1.5rem, 6.5vw, 2.6rem) var(--fg-type);
+  border: 6px double currentColor;
+  border-radius: 10px;
+  /* The verdicts, big enough to read across the table. */
+  font: 400 clamp(2rem, 9vw, 4rem) var(--fg-type);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   white-space: nowrap;

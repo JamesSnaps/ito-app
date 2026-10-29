@@ -336,3 +336,37 @@ def test_the_ios_app_fugitive_fixtures_still_match_the_api():
                 assert {k for e in payload["game"]["log"] for k in e} <= EVENT_KEYS, name
                 payload["game"]["log"] = []
         assert shape(body) == shape(saved), name
+
+
+def test_a_game_without_hints_sends_no_notepad_help_and_says_so():
+    c = client()
+    for bad in ("no", 0, None):
+        res = c.post("/fugitive/api/play", json={"fugitive": "Ana", "marshal": "Ben", "hints": bad})
+        assert res.status_code == 400, bad
+    made = c.post("/fugitive/api/play", json={"fugitive": "Ana", "marshal": "Ben", "hints": False}).get_json()
+    code = made["code"]
+    tokens = {role: sit(c, code, role) for role in ("fugitive", "marshal")}
+    marshal = state(c, code, tokens["marshal"])
+    # Left out by the server, not hidden by the page.
+    assert marshal["hints"] is False and "candidates" not in marshal["game"]
+    assert state(c, code)["hints"] is False and state(c, code, tokens["fugitive"])["hints"] is False
+    # A game with hints keeps the shape it always had.
+    usual, usual_tokens = seated_game(c)
+    assert "hints" not in state(c, usual["code"], usual_tokens["marshal"])
+
+    play_out(c, code, tokens)
+    assert c.get("/fugitive/api/stats").get_json()["recent"][0]["hints"] is False
+    fresh = c.post(f"/fugitive/api/play/{code}/rematch",
+                   headers={"X-Fugitive-Token": made["host_token"]}).get_json()
+    assert state(c, fresh["code"])["hints"] is False
+
+
+def test_a_game_against_the_computer_without_hints_still_lets_it_think():
+    c = client()
+    made = c.post("/fugitive/api/play", json={"fugitive": "Ana", "hints": False,
+                                              "computer": {"role": "marshal", "level": "hard"}}).get_json()
+    assert made["hints"] is False and room_state(made["code"])["hints"] is False
+    # The computer's own view still carries the notepad: it plays as well
+    # as ever, and only people go without the help.
+    from games.fugitive import game as fugitive_game
+    assert "candidates" in fugitive_game.seat_view(room_state(made["code"])["game"], "marshal")

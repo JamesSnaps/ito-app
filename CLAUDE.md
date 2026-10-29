@@ -584,7 +584,8 @@ in-app Safari sheet rather than being rebuilt.
   for app 1.3.0's offline uploads — offline play itself needs no server;
   v1.10.0+ for app 1.4.0's ito hosting; v1.11.0+ for app 1.5.0's online
   games against the computer; v1.12.0+ for app 1.6.0's records against the
-  computer — the app holds offline computer games back until the server's
+  computer; v1.15.0+ for app 1.9.0's games without hints, which an older
+  server deals with hints on — the app holds offline computer games back until the server's
   stats carry `computer_leaderboard`) before a build goes out.
 - **`.dockerignore` keeps `ios/` out of the server image.**
 - **QR codes are scanned in the app** (`ScanSheet`, VisionKit's
@@ -930,7 +931,8 @@ read in full; not in the repo).
   beside the icons. A game kept on the phone shows no code.
 - **The Marshal's notepad is paper**: lined, a red margin, handwriting from
   the device's own fonts. Your cards and seen sprints are struck in pen,
-  wrong single guesses in pencil, finds circled green, picks circled red.
+  wrong single guesses ticked in pencil, finds circled green, picks circled
+  red, and your own marks crossed in pencil (see Pure mode below).
   The Guess buttons live on the notepad; on a phone it scrolls into view
   when it's time to guess.
 - **`el()` sets `style` objects with `setProperty`.** `Object.assign` onto
@@ -1042,6 +1044,50 @@ the computer", takes your name, a seat (Swap roles) and Easy or Hard.
   played along. This only works because the Swift AI is pinned to ai.py;
   `OfflineTableTests` can write the app's own uploads (`AI_UPLOADS_OUT`) to
   post at a dev server.
+
+### Pure mode, the notepad, the table's extras (v1.15.0, app 1.9.0)
+
+- **Hints are one setting for the table, chosen at the deal** (`hints` on
+  `POST /fugitive/api/play`, kept in the room as `hints: false` only when
+  off, carried by a rematch). Off is the game as printed: no reach badges
+  (✓/+N), no running total, no "up to N" slot, nothing switches to Sprint
+  for you, Hide is offered for any card on from the trail (the rules still
+  refuse one out of reach), and the Marshal's notepad starts blank with no
+  "Pencil in". **The server enforces it**: `payload()` leaves `candidates`
+  out, so no device can show the help. Both players see a NO HINTS tag on
+  the banner, and the records mark the game ("· no hints"). The computer
+  still thinks with its full view — only people go without. Offline games
+  keep it in the saved game and send it with the upload. `hints_on()` /
+  `parse_hints()` in game.py; `FugitiveHiding.hints`, `payload.hintsOn` in
+  the app; `hintsOn()` in play.html.
+- **The Marshal's own pencil**: a Guess (Look) / ✎ Mark switch on the
+  notepad; in Mark a tap crosses a number out or clears it. Kept per game
+  (`fugitive.marks.<code>` / `fugitive:marks:<code>`), with or without hints.
+- **A wrong single guess is a pencil tick by the number, not a strike.** It
+  only says the number wasn't any hideout *then*; a later hideout can still
+  be it, and a strike read as ruled out for good. The candidates (and the
+  computer) always knew this.
+- **Found cards turn over one at a time** (iOS `turning`, like `landing`:
+  held face down until the play-out turns each, "Found · 1 of 2", then the
+  next), with a `reveal` sound per card and a heavier `caught`. The banner
+  says "The cards turn over…" until they have, rather than announcing the
+  result first. Stamps are much bigger on both.
+- **At the table folds to one line** once both seats are taken and the game
+  is going; a tap opens it, and it opens itself when a seat frees up or the
+  game ends (Rematch).
+- **Setup (iOS) is three plain choices**: Against (a friend / the computer),
+  On (own phones / one device) or Plays (Easy / Hard), and Offline and
+  Hints switches; `mode` is worked out from them. Offline turns itself on
+  when `Connectivity.online()` (NWPathMonitor) says there's no network. Two
+  columns on an iPad. The paper form uses light controls — dark segmented
+  pickers washed out on it. Simulator taps on a SwiftUI Toggle need a
+  slightly longer press (`duration: 0.2`) to register.
+- **Music** (`App/Music.swift`, iOS only, off by default): synthesised live
+  in an `AVAudioSourceNode` — a low pulse and a D minor bass figure, then a
+  ticking clock, a heartbeat and a high ostinato as `intensity` rises, and
+  the tempo climbs 84→132 in a Manhunt. `FugitiveStore.tension` drives it
+  (hideouts found, trail length, how near 42), nil once the game ends.
+  Toggles: the table's toolbar and Settings. `.ambient`, like the sounds.
 
 ## Player profiles (added v1.8.0)
 

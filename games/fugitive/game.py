@@ -161,7 +161,29 @@ def payload(room, token=None):
     computer = room.state.get("computer")
     if computer:
         out["computer"] = {"role": computer["role"], "level": computer["level"]}
+    if not hints_on(room.state):
+        # No notepad help reaches a device in a game without hints — it's
+        # left out here, not just hidden by the page. Said only when off,
+        # so a game with hints has the shape it always had.
+        out["hints"] = False
+        out["game"].pop("candidates", None)
     return out
+
+
+def hints_on(state):
+    """Whether the table plays with the app's hints: the Fugitive's reach
+    badges and running total, the Marshal's automatic notepad marks and
+    pencilled-in ranges. On unless the game was dealt without them — one
+    setting for both players, so everyone can see how the game was played."""
+    return state.get("hints", True) is not False
+
+
+def parse_hints(body):
+    """A new game's `hints`: true (the default) or false. Returns (on, error)."""
+    hints = body.get("hints", True) if isinstance(body, dict) else True
+    if not isinstance(hints, bool):
+        return True, "hints is on or off: true or false"
+    return hints, None
 
 
 # --- the computer ---------------------------------------------------------
@@ -327,9 +349,10 @@ def record_if_finished(room):
     try:
         if computer:
             stats.update(GAME_ID, lambda stored: add_computer_result(
-                stored, room.state["players"], computer, game))
+                stored, room.state["players"], computer, game, hints=hints_on(room.state)))
         else:
-            stats.update(GAME_ID, lambda stored: add_result(stored, room.state["players"], game))
+            stats.update(GAME_ID, lambda stored: add_result(
+                stored, room.state["players"], game, hints=hints_on(room.state)))
     except DataUnavailable:
         # stats.json is damaged and refuses writes. The game stays saved
         # and unrecorded, and is tried again on the next look at the table.
@@ -338,8 +361,9 @@ def record_if_finished(room):
     game["recorded"] = True
 
 
-def add_result(stored, names, game, at=None):
-    """The records with one finished game added: per player and per role."""
+def add_result(stored, names, game, at=None, hints=True):
+    """The records with one finished game added: per player and per role. A
+    game played without hints says so in the recent games."""
     winner = game["winner"]
     manhunt = any(e["kind"] == "manhunt" for e in game["log"])
     record = blank_stats()
@@ -366,12 +390,13 @@ def add_result(stored, names, game, at=None):
         "winner": winner,
         "reason": game["reason"],
         "hideouts": len(game["hideouts"]) - 1,
+        **({} if hints else {"hints": False}),
     })
     del record["recent"][RECENT_GAMES:]
     return record
 
 
-def add_computer_result(stored, names, computer, game, at=None):
+def add_computer_result(stored, names, computer, game, at=None, hints=True):
     """The records with one game against the computer added, under the
     person's name only — the computer has no row of its own."""
     record = stored if isinstance(stored, dict) else {}
@@ -398,6 +423,7 @@ def add_computer_result(stored, names, computer, game, at=None):
         "won": won,
         "reason": game["reason"],
         "hideouts": len(game["hideouts"]) - 1,
+        **({} if hints else {"hints": False}),
     }, *played["recent"]][:RECENT_GAMES]
     return {**record, "computer": played}
 
@@ -449,6 +475,8 @@ def api_create():
     against the computer, which takes the other seat under its own name."""
     body = request.get_json(silent=True)
     computer, error = parse_computer(body)
+    hints, hints_error = parse_hints(body)
+    error = error or hints_error
     if computer:
         body = {**body, computer["role"]: COMPUTER_NAME}
     players, error = (None, error) if error else parse_players(body)
@@ -467,6 +495,8 @@ def api_create():
             made["computer"] = computer_seat(computer)
             # Taken, by a token nobody is ever given.
             made["seats"][computer["role"]] = secrets.token_urlsafe(12)
+        if not hints:
+            made["hints"] = False
         return made
 
     room = rooms.create(GAME_ID, state)
@@ -591,6 +621,8 @@ def api_rematch(code):
                 "seats": {"fugitive": old["seats"]["marshal"], "marshal": old["seats"]["fugitive"]},
                 "host_token": old["host_token"],
             }
+            if not hints_on(old):
+                carried["hints"] = False
             computer = old.get("computer")
 
             def state():
@@ -723,6 +755,10 @@ def api_offline():
         players, computer, game, at = replay_offline(body)
     except ValueError as problem:
         return jsonify({"error": str(problem)}), 400
+    # Played without hints on the phone: the records say so, as online.
+    hints, error = parse_hints(body)
+    if error:
+        return jsonify({"error": error}), 400
     if not worth_recording(game):
         return jsonify({"recorded": False})
     outcome = {}
@@ -734,9 +770,9 @@ def api_offline():
             outcome["recorded"] = False
             return record
         if computer:
-            record = add_computer_result(record, players, computer, game, at)
+            record = add_computer_result(record, players, computer, game, at, hints=hints)
         else:
-            record = add_result(record, players, game, at)
+            record = add_result(record, players, game, at, hints=hints)
         record["offline_ids"] = (seen + [body["id"]])[-OFFLINE_IDS_KEPT:]
         outcome["recorded"] = True
         return record
