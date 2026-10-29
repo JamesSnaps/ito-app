@@ -115,7 +115,9 @@ struct HubView: View {
                 }
             }
         }
-        .sheet(item: $webPage) { page in SafariView(url: page.url).ignoresSafeArea() }
+        // Awake like the tables: the scorekeeper and a spectator board sit
+        // on the table all night.
+        .sheet(item: $webPage) { page in SafariView(url: page.url).ignoresSafeArea().keepsScreenAwake() }
         .sheet(isPresented: $scanning) {
             ScanSheet { url in Task { await openLink(url) } }
         }
@@ -224,13 +226,21 @@ struct HubView: View {
 
     private var flip7Tile: some View {
         GameTile(title: "Flip 7", accent: Theme.gold,
-                 blurb: "Push your luck, bank your cards — first to 200 takes it. The app is the deck: it shuffles, deals and adds it all up.") {
+                 blurb: "Push your luck, bank your cards — first to 200 takes it. The app is the deck: it shuffles, deals and adds it all up. Playing with the real cards? Keep score here instead.") {
             Flip7Art()
         } actions: {
-            Button { path.append(.newGame) } label: {
-                Label("Start a game", systemImage: "suit.spade.fill")
+            HStack(spacing: 10) {
+                Button { path.append(.newGame) } label: {
+                    Label("Start a game", systemImage: "suit.spade.fill")
+                }
+                .buttonStyle(FeltButtonStyle(kind: resumable == nil ? .gold : .ghost))
+                // The real deck's score pad is the web's scorekeeper, not
+                // rebuilt here: its scoring and records are the server's pages.
+                Button { open("/flip7/") } label: {
+                    Label("Keep score", systemImage: "list.number")
+                }
+                .buttonStyle(FeltButtonStyle(kind: .ghost))
             }
-            .buttonStyle(FeltButtonStyle(kind: resumable == nil ? .gold : .ghost))
             moreRow(records: { path.append(.records) }, rules: "/flip7/rules")
         }
     }

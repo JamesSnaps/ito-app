@@ -28,8 +28,31 @@ extension View {
     /// Tables and topic displays sit on the table for an hour at a time;
     /// the screen locking mid-round is the thing that would break them.
     func keepsScreenAwake() -> some View {
-        onAppear { UIApplication.shared.isIdleTimerDisabled = true }
-            .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
+        modifier(KeepsScreenAwake())
+    }
+}
+
+/// Counted, not a plain switch: screens that want the screen awake can
+/// overlap (a web sheet over a table, one table replacing another), and
+/// the first to go used to let the phone lock under the one still showing.
+private struct KeepsScreenAwake: ViewModifier {
+    private static var holders = 0 {
+        didSet { UIApplication.shared.isIdleTimerDisabled = holders > 0 }
+    }
+    @State private var holding = false
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear {
+                guard !holding else { return }
+                holding = true
+                Self.holders += 1
+            }
+            .onDisappear {
+                guard holding else { return }
+                holding = false
+                Self.holders -= 1
+            }
     }
 }
 
