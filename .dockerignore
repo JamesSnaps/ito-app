@@ -5,3 +5,5 @@ ios/
 .venv/
 **/__pycache__/
 data/
+# Claude Code config and skills (pxl is 11 MB): tooling, not the app.
+.claude/

@@ -1313,6 +1313,37 @@ one thing besides the games that `app.py` registers), `templates/me.html`
   three-card fan with the 7 face up; Fugitive's is the trail — two
   face-down hideouts, footprints, and 42 turned up.
 
+## Pixel art (the pxl skill)
+
+- **Use pxl for raster game art** — sprites, card faces, icons, tiles,
+  animated GIFs, sprite sheets. It's a Claude Code skill
+  ([uilianks/pxl](https://github.com/uilianks/pxl), MIT, a fork of
+  crsolver/claude-pxl): art is written as a `.px.js` file and built to PNGs.
+  Its `SKILL.md` has the workflow; the short version is write → `build
+  --only <name>` → look at `out/_preview/<name>.png` → patch, and
+  `lint <name>` before calling a sprite done.
+- **It isn't in git.** It lives in `.claude/skills/pxl-pixel-art/`, which is
+  gitignored (and `.claude/` is dockerignored), so a fresh clone doesn't have
+  it. Install it on a new machine, pinned to the commit that was checked:
+  ```bash
+  git clone https://github.com/uilianks/pxl.git .claude/skills/pxl-pixel-art
+  git -C .claude/skills/pxl-pixel-art checkout a012fc78b92e5deff27e56bba563f22895c3916c
+  ```
+  Needs Node ≥ 22.18. Update by checking out a newer commit deliberately,
+  not by pulling blind — a skill runs code on this machine.
+- **CLI**: `node .claude/skills/pxl-pixel-art/bin/pxl.js build|serve|lint|ascii|trace …`.
+  `serve` is the live viewer (http://127.0.0.1:4321/); its annotate mode
+  writes `out/_feedback/<asset>.json`, which is what "check the feedback"
+  means.
+- **The output is a file like any other asset.** The server and the iOS app
+  never run pxl: the built PNGs go into `static/` (or an asset catalogue) and
+  get committed, and nothing new runs at runtime — the same rule as the
+  rasterised icons. Keep the `.px.js` source alongside so the art can be
+  rebuilt; `out/_preview/` and `out/_feedback/` are working files.
+- **Same art rule as everywhere else**: our own designs, not the published
+  games' art (see Fugitive's cards). `pxl trace` / `image()` turn a PNG into
+  pixel art — never feed them a scan of a real card.
+
 ## Known rough edges / good next steps
 
 - Flask dev server (`app.run(...)`) is fine for a living-room game but
