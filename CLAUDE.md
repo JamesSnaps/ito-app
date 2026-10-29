@@ -500,8 +500,15 @@ seat), Fugitive (since app 1.2.0; against the computer, online or off,
 since 1.5.0), Wildwood (since 1.11.0: online, offline and nearby), the
 games' records, ito hosting (since app 1.4.0) and its
 topic display, and player profiles. Rules pages, ito's
-stats and a scorekeeper's spectator board open the server's own pages in an
-in-app Safari sheet rather than being rebuilt.
+stats, the Flip 7 scorekeeper and a scorekeeper's spectator board open the
+server's own pages in an in-app Safari sheet rather than being rebuilt.
+
+- **Keep score is the web scorekeeper** (app 1.12.0): the Flip 7 tile's
+  second button opens `/flip7/` in the Safari sheet, for nights with the real
+  cards. Its game is in that sheet's localStorage, which is the app's own —
+  not Safari's, not the home-screen web app's — and survives the sheet
+  closing or a swipe down, so opening it again carries on. Every web sheet
+  keeps the screen awake, as the tables do.
 
 - **The server is still the game.** The app holds no rules: it shows the
   table from `/flip7/api/play/<code>` and sends moves, exactly like
@@ -784,7 +791,8 @@ phones side by side.
   1280pt wide, three across from 1100pt and two-and-one below that, in a
   `Grid` so a row's tiles end level (app 1.8.2: capped at 1000 with three
   across, a tile's two half-width buttons were too narrow and "Records"
-  broke over two lines). Every tile is one button across, then Records and
+  broke over two lines). Every tile is one row of buttons across (Flip 7's
+  Start a game and Keep score, ito's Back to / New room), then Records and
   Rules — ito's Records is the server's stats page — and the buttons are
   one line each. New game
   and Join: a centred column. Records: two columns. Table: mats capped at
