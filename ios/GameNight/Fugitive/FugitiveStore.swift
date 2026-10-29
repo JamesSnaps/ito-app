@@ -459,7 +459,8 @@ final class FugitiveStore {
                     await show(found.count > 1 ? "Found · \(k + 1) of \(found.count)" : "Found", .found, for: 0.75)
                 }
                 if found.isEmpty { await show("Found", .found, for: 1.0) }
-                revealing = false
+                // Still held while a later hit's cards wait their turn.
+                revealing = !turning.isEmpty
             } else {
                 sound.play(.miss)
                 shakes += 1
