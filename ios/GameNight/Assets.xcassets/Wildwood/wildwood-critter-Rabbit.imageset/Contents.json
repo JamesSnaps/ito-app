@@ -1,0 +1,13 @@
+{
+  "images": [
+    {
+      "filename": "wildwood-critter-Rabbit.png",
+      "idiom": "universal",
+      "scale": "3x"
+    }
+  ],
+  "info": {
+    "author": "render_wildwood_cards.js",
+    "version": 1
+  }
+}

@@ -20,7 +20,7 @@ settings:
     SWIFT_APPROACHABLE_CONCURRENCY: YES
     # Must stay above 1.0: the first TestFlight build went out as 1.0 (1)
     # by accident, and a lower version reads as older on testers' phones.
-    MARKETING_VERSION: "1.10.0"
+    MARKETING_VERSION: "1.11.0"
     # The build number: scripts/testflight.sh sets it to the UTC time.
     CURRENT_PROJECT_VERSION: "1"
     # James Collard's paid individual membership, as Dishes, Keepsake and
@@ -71,13 +71,16 @@ targets:
         ITSAppUsesNonExemptEncryption: false
         # The camera: scanning a room's QR (VisionKit) and the selfie on "You".
         NSCameraUsageDescription: Game Night uses the camera to scan room codes and to take your profile photo.
-        # Fugitive with no internet: two phones find each other nearby
-        # (MultipeerConnectivity — NearbyLink.swift). iOS asks before the
-        # first one, with this reason, and only allows the service named here.
-        NSLocalNetworkUsageDescription: Game Night finds the other phone nearby so you can play Fugitive together with no internet.
+        # Fugitive and Wildwood with no internet: phones find each other
+        # nearby (MultipeerConnectivity — NearbyLink.swift). iOS asks before
+        # the first one, with this reason, and only allows the services named
+        # here, one per game.
+        NSLocalNetworkUsageDescription: Game Night finds the other phones nearby so you can play Fugitive or Wildwood together with no internet.
         NSBonjourServices:
           - _gn-fugitive._tcp
           - _gn-fugitive._udp
+          - _gn-wildwood._tcp
+          - _gn-wildwood._udp
         # Fugitive's three faces, the web's own (static/fonts), bundled.
         UIAppFonts:
           - BebasNeue-Regular.ttf

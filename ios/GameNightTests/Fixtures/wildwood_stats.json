@@ -1,0 +1,86 @@
+{
+ "computer": {
+  "games_played": 1,
+  "players": {
+   "cy": {
+    "catches": 1,
+    "easy_games": 1,
+    "easy_wins": 1,
+    "games": 1,
+    "hard_games": 0,
+    "hard_wins": 0,
+    "name": "Cy",
+    "wins": 1
+   }
+  },
+  "recent": [
+   {
+    "at": "2026-10-29T10:26:59+00:00",
+    "computer_won": false,
+    "computers": [
+     1
+    ],
+    "level": "easy",
+    "players": [
+     "Cy",
+     "Hedgehog"
+    ],
+    "winner": "Cy"
+   }
+  ]
+ },
+ "computer_leaderboard": [
+  {
+   "catches": 1,
+   "easy_games": 1,
+   "easy_wins": 1,
+   "games": 1,
+   "hard_games": 0,
+   "hard_wins": 0,
+   "name": "Cy",
+   "win_rate": 100,
+   "wins": 1
+  }
+ ],
+ "games_played": 1,
+ "leaderboard": [
+  {
+   "catches": 1,
+   "games": 1,
+   "name": "Ben",
+   "win_rate": 100,
+   "wins": 1
+  },
+  {
+   "catches": 1,
+   "games": 1,
+   "name": "Ana",
+   "win_rate": 0,
+   "wins": 0
+  }
+ ],
+ "players": {
+  "ana": {
+   "catches": 1,
+   "games": 1,
+   "name": "Ana",
+   "wins": 0
+  },
+  "ben": {
+   "catches": 1,
+   "games": 1,
+   "name": "Ben",
+   "wins": 1
+  }
+ },
+ "recent": [
+  {
+   "at": "2026-10-29T10:26:59+00:00",
+   "players": [
+    "Ana",
+    "Ben"
+   ],
+   "winner": "Ben"
+  }
+ ]
+}

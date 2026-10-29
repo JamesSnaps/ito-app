@@ -497,7 +497,8 @@ why everything here is shaped around a JSON API.
 
 A native SwiftUI front end to the same server: Flip 7 Play (dealer or
 seat), Fugitive (since app 1.2.0; against the computer, online or off,
-since 1.5.0), both games' records, ito hosting (since app 1.4.0) and its
+since 1.5.0), Wildwood (since 1.11.0: online, offline and nearby), the
+games' records, ito hosting (since app 1.4.0) and its
 topic display, and player profiles. Rules pages, ito's
 stats and a scorekeeper's spectator board open the server's own pages in an
 in-app Safari sheet rather than being rebuilt.
@@ -598,7 +599,7 @@ in-app Safari sheet rather than being rebuilt.
   games against the computer; v1.12.0+ for app 1.6.0's records against the
   computer; v1.15.0+ for app 1.9.0's games without hints, which an older
   server deals with hints on — the app holds offline computer games back until the server's
-  stats carry `computer_leaderboard`) before a build goes out.
+  stats carry `computer_leaderboard`; v1.17.0+ for app 1.11.0's Wildwood) before a build goes out.
 - **`.dockerignore` keeps `ios/` out of the server image.**
 - **QR codes are scanned in the app** (`ScanSheet`, VisionKit's
   `DataScannerViewController`, QR only), from the hub's toolbar and the Join
@@ -1151,6 +1152,43 @@ Built exactly the way Fugitive is — read that section first.
 - **`POST /wildwood/api/offline`** is ready for the iOS app's offline games
   (same checks as Fugitive's: the real rules to the end, every computer move
   the one ai.py makes, once per game id). Nothing uses it yet.
+
+### Wildwood on iOS (app 1.11.0)
+
+- **Online, it's play.html in Swift** (`WildwoodStore`, `WildwoodTableScreen`,
+  `WildwoodSetupView`, `WildwoodRecordsView`): the same seats and tokens, the
+  pass-and-play curtain, the play-out (a card onto the pile, cards into
+  hands, Last card!, Caught!) capped at the last ten entries as on the web.
+  The card faces are the web's own drawing rendered to PNGs
+  (`node ios/scripts/render_wildwood_cards.js`, with Playwright, or
+  `playwright-core` and `CHROMIUM_PATH` set to a cached Chromium); re-render
+  whenever `cardSVG`/`backSVG`/`critterSVG` change.
+- **Offline, the rules and the computer are Swift ports**
+  (`WildwoodEngine.swift`, `WildwoodAI.swift`), pinned exactly as Fugitive's
+  are: `tests/test_wildwood_offline.py` writes `wildwood_engine_games.json`
+  (every state, refusal and some views) and `wildwood_ai_games.json` (every
+  computer choice), and `WildwoodEngineTests` replays both. **Change
+  engine.py or ai.py → `WRITE_IOS_FIXTURES=1 pytest tests -q -k
+  wildwood_offline` → make the Swift agree.** The view is the app's own
+  `WildwoodGame`, so the offline table, store and computer read one shape.
+- **`WildwoodOfflineTable`** is game.py's room on the phone (a file per code
+  under Application Support/Wildwood/Offline): the same payloads, tokens,
+  refusals, computer turns (one per look after 1.5s) and rematches. A
+  finished game keeps its deck, reshuffle seed, first seat and moves, and
+  `WildwoodOfflineUploads` posts it to `/wildwood/api/offline` once there's
+  signal (hub, records, game end). A Swift-made game against two Hard
+  computers was posted to a dev server and recorded, once.
+- **Nearby play is up to four phones.** `NearbyLink.swift` now carries bytes
+  under one Bonjour service per game (`gn-fugitive`, `gn-wildwood`, both in
+  `NSBonjourServices`), matching answers to requests by their `id`; the host
+  answers each guest on its own. `WildwoodNearby.swift` is Wildwood's calls
+  over it. Offline with "A phone each", the dealing phone sits in seat 1 and
+  advertises while any person's seat is free; the others "Join a nearby
+  game" from setup and tap their name. Needs real devices to try — the
+  Simulator has no peers.
+- **The AASA file doesn't claim `/wildwood/play/*` yet**: claim it in a
+  server patch once a build with Wildwood is on TestFlight (claiming a path
+  sends it to every installed version of the app).
 
 ## Player profiles (added v1.8.0)
 

@@ -42,11 +42,13 @@
 	<array>
 		<string>_gn-fugitive._tcp</string>
 		<string>_gn-fugitive._udp</string>
+		<string>_gn-wildwood._tcp</string>
+		<string>_gn-wildwood._udp</string>
 	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>Game Night uses the camera to scan room codes and to take your profile photo.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Game Night finds the other phone nearby so you can play Fugitive together with no internet.</string>
+	<string>Game Night finds the other phones nearby so you can play Fugitive or Wildwood together with no internet.</string>
 	<key>UIAppFonts</key>
 	<array>
 		<string>BebasNeue-Regular.ttf</string>
