@@ -536,6 +536,17 @@ in-app Safari sheet rather than being rebuilt.
   build in Xcode. A new non-UI file worth checking needs a symlink there.
 - **The invite QR opens the web table**, not the app, so a phone without
   the app can still join.
+- **Every invite QR has a Send invite beside it** (v1.16.0, app 1.10.0):
+  the share sheet with the QR's own link and a line naming the game and code,
+  so someone not at the table yet can be sent it over Messages. iOS:
+  `InviteLink` (Support.swift) in Flip 7's phones sheet, Fugitive's room-code
+  sheet and seats panel, and ito's invite sheet. Web: `static/share.js`
+  (`Invite.button` / `Invite.wire`) in the same places plus the
+  scorekeeper's spectator share — `navigator.share` where there is one, else
+  the link copied, else a prompt to copy it by hand (plain http on the LAN
+  has no clipboard API). Paths are made absolute from the page's origin, so
+  no page carries a URL. There are no push notifications: nobody has an
+  account to send one to, only devices holding a profile's token.
 - **One join for every game.** `GET /api/join/<code>` (app.py) is /join's
   JSON twin — same throttle — and answers `{code, game, path}`. The app
   then opens Flip 7 play natively, ito natively, or the web `path` (a

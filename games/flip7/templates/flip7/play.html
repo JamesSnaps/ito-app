@@ -4,7 +4,8 @@
 {% block theme_color %}#0f2e24{% endblock %}
 {% block head %}<link rel="stylesheet" href="{{ asset('flip7.css') }}">
 <script src="{{ asset('profiles.js') }}"></script>
-<script src="{{ asset('flip7.js') }}"></script>{% endblock %}
+<script src="{{ asset('flip7.js') }}"></script>
+<script src="{{ asset('share.js') }}"></script>{% endblock %}
 {% block body %}
 <div class="wrap">
   <header class="f7-bar">
@@ -780,8 +781,11 @@
       body.appendChild(options);
     }
 
-    // The dealer's view of who's on a phone: the QR to get them there, and
-    // a way to free a seat someone took by mistake.
+    // The dealer's view of who's on a phone: the QR to get them there (or
+    // the link, to send), and a way to free a seat someone took by mistake.
+    // One share button for the dialog's life: it's refilled every poll, and
+    // a new button would drop its "Link copied".
+    let inviteShare = null;
     function fillInvite(){
       const body = document.getElementById('invite-body');
       body.textContent = '';
@@ -804,8 +808,11 @@
         el('img', {class: 'f7-invite-qr', src: `/qr.svg?path=${encodeURIComponent(tableUrl(CODE))}`,
                    alt: `QR code for game ${CODE}`}),
         el('div', {class: 'f7-share-code', text: CODE}),
+        inviteShare || (inviteShare = Invite.button({
+          path: tableUrl(CODE), text: `Join my Flip 7 game on Game Night \u2014 code ${CODE}`,
+          className: 'f7-btn f7-btn-ghost f7-btn-wide f7-invite-send'})),
         el('p', {class: 'f7-note', text:
-          'Scan it, or enter the code at /join, then tap your name. Seats left at the table are played from here.'}),
+          'Scan it, send the link, or enter the code at /join, then tap your name. Seats left at the table are played from here.'}),
         list
       );
     }

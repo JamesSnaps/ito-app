@@ -3,6 +3,7 @@
 {% from "ito/_appbar.html" import appbar %}
 {% block title %}ito — host ({{ code }}){% endblock %}
 {% block head %}
+<script src="{{ asset('share.js') }}"></script>
 <style>
   /* Wide enough for two cards side by side once the viewport allows it. */
   @media (min-width: 900px) { .wrap { max-width: 1100px; } }
@@ -113,6 +114,7 @@
     <div class="code">{{ code }}</div>
     <div class="hint">Scan the code, or go to <strong>/join</strong> and type it in.</div>
     <div class="qr">{{ qr_svg|safe }}</div>
+    <button class="btn btn-primary" id="invite-share" type="button" style="width:100%; margin-top:16px;">Send invite</button>
     <a class="btn btn-secondary" href="{{ url_for('ito.player_view', code=code) }}"
        target="_blank" rel="noopener" style="width:100%; margin-top:16px;">
       Open display view &rarr;
@@ -160,6 +162,10 @@
     dialog.showModal();
   });
   document.getElementById('invite-close').addEventListener('click', () => dialog.close());
+  Invite.wire(document.getElementById('invite-share'), {
+    path: {{ url_for('ito.player_view', code=code)|tojson }},
+    text: `Join our ito game on Game Night \u2014 code ${CODE}`
+  });
 
   // --- category wheel ----------------------------------------------------
   const track = document.getElementById('wheel-track');

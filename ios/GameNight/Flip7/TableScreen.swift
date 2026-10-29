@@ -579,7 +579,10 @@ private struct InviteSheet: View {
                             .accessibilityLabel("QR code for game \(store.code)")
                     }
                     Text(store.code).font(Theme.mono(30)).kerning(6).foregroundStyle(Theme.goldBright)
-                    Text("Scan it, or enter the code in the app or at /join, then tap your name. Seats left at the table are played from here.")
+                    InviteLink(url: AppSettings.client.tableURL(code: store.code),
+                               message: "Join my Flip 7 game on Game Night — code \(store.code)")
+                        .buttonStyle(FeltButtonStyle(kind: .ghost))
+                    Text("Scan it, send the link, or enter the code in the app or at /join, then tap your name. Seats left at the table are played from here.")
                         .font(.subheadline).foregroundStyle(Theme.cream.opacity(0.75))
                         .multilineTextAlignment(.center)
                     VStack(spacing: 0) {

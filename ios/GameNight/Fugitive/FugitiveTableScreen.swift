@@ -801,9 +801,11 @@ private struct RoomCodeSheet: View {
                     .background(Noir.card, in: RoundedRectangle(cornerRadius: 14))
                     .accessibilityLabel("QR code for game \(code)")
             }
-            Text("Scan to open this game, or enter the code under “Join with a code”.")
+            Text("Scan to open this game, send the link, or enter the code under “Join with a code”.")
                 .font(.footnote).foregroundStyle(Noir.card.opacity(0.75))
                 .multilineTextAlignment(.center)
+            InviteLink(url: url, message: "Play Fugitive with me on Game Night — code \(code)")
+                .buttonStyle(NoirButtonStyle())
             Button("Done") { dismiss() }.buttonStyle(NoirButtonStyle(fill: nil))
         }
         .padding(24)
@@ -1345,7 +1347,11 @@ private struct SeatsPanel: View {
                         .padding(10)
                         .background(Noir.card, in: RoundedRectangle(cornerRadius: 12))
                         .accessibilityLabel("QR code for game \(payload.code)")
-                    Text("Scan to sit down, or enter \(payload.code) in the app or at /join.")
+                    if let url = store.inviteURL {
+                        InviteLink(url: url, message: "Play Fugitive with me on Game Night — code \(payload.code)")
+                            .buttonStyle(NoirButtonStyle(fill: nil))
+                    }
+                    Text("Scan to sit down, send the link, or enter \(payload.code) in the app or at /join.")
                         .font(.footnote).foregroundStyle(Noir.card.opacity(0.7))
                         .multilineTextAlignment(.center)
                 }

@@ -4,7 +4,8 @@
 {% block theme_color %}#0f2e24{% endblock %}
 {% block head %}<link rel="stylesheet" href="{{ asset('flip7.css') }}">
 <script src="{{ asset('profiles.js') }}"></script>
-<script src="{{ asset('flip7.js') }}"></script>{% endblock %}
+<script src="{{ asset('flip7.js') }}"></script>
+<script src="{{ asset('share.js') }}"></script>{% endblock %}
 {% block body %}
 <div class="wrap">
   <header class="f7-bar">
@@ -630,6 +631,10 @@
                   'scoreboard only — scores are entered here.'
           })
         ])
+      ]));
+      sharePanel.appendChild(el('div', {class: 'f7-add-row'}, [
+        Invite.button({path: share.url, text: `Follow our Flip 7 scores on Game Night \u2014 code ${share.code}`,
+                       className: 'f7-btn f7-btn-ghost'})
       ]));
       // The QR is server-rendered SVG for a URL this page just asked for.
       const slot = sharePanel.querySelector('.f7-share-qr');
