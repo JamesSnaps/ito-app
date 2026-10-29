@@ -568,7 +568,9 @@ server's own pages in an in-app Safari sheet rather than being rebuilt.
 - **`/flip7/api/stats` carries `leaderboard`** in the records page's order,
   so the app doesn't re-implement the ranking.
 - **Tables and the topic display keep the screen awake**
-  (`.keepsScreenAwake()`): they sit on the table for an hour.
+  (`.keepsScreenAwake()`): they sit on the table for an hour. It's counted
+  (app 1.12.0), not a switch: a web sheet closing over a table used to turn
+  it off under the table still showing.
 - **ito's card is drawn natively** from the same geometry as
   `ito/_card.html` — the scale line and the back's swirl are the SVG paths,
   ported point for point, and the deal is the same edge-on swap.
