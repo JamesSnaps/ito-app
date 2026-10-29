@@ -1,0 +1,552 @@
+{
+ "code": "P9PM",
+ "game": {
+  "colour": "g",
+  "deciding": false,
+  "direction": -1,
+  "discard_count": 53,
+  "draw_count": 41,
+  "drawn": null,
+  "exposed": null,
+  "hand": null,
+  "hand_counts": [
+   10,
+   0
+  ],
+  "hands": [
+   [
+    "r4",
+    "r7",
+    "g5",
+    "gR",
+    "b7",
+    "b7",
+    "b9",
+    "y1",
+    "y2",
+    "y8"
+   ],
+   []
+  ],
+  "log": [
+   {
+    "card": "y5",
+    "colour": "y",
+    "id": 40,
+    "kind": "play",
+    "seat": 0
+   },
+   {
+    "cards": [
+     "rD"
+    ],
+    "count": 1,
+    "id": 41,
+    "kind": "draw",
+    "reason": "draw",
+    "seat": 1
+   },
+   {
+    "cards": [
+     "r9"
+    ],
+    "count": 1,
+    "id": 42,
+    "kind": "draw",
+    "reason": "draw",
+    "seat": 0
+   },
+   {
+    "cards": [
+     "g7"
+    ],
+    "count": 1,
+    "id": 43,
+    "kind": "draw",
+    "reason": "draw",
+    "seat": 1
+   },
+   {
+    "cards": [
+     "y3"
+    ],
+    "count": 1,
+    "id": 44,
+    "kind": "draw",
+    "reason": "draw",
+    "seat": 0
+   },
+   {
+    "card": "y3",
+    "colour": "y",
+    "id": 45,
+    "kind": "play",
+    "seat": 0
+   },
+   {
+    "card": "g3",
+    "colour": "g",
+    "id": 46,
+    "kind": "play",
+    "seat": 1
+   },
+   {
+    "card": "g8",
+    "colour": "g",
+    "id": 47,
+    "kind": "play",
+    "seat": 0
+   },
+   {
+    "card": "g7",
+    "colour": "g",
+    "id": 48,
+    "kind": "play",
+    "seat": 1
+   },
+   {
+    "card": "g5",
+    "colour": "g",
+    "id": 49,
+    "kind": "play",
+    "seat": 0
+   },
+   {
+    "cards": [
+     "bD"
+    ],
+    "count": 1,
+    "id": 50,
+    "kind": "draw",
+    "reason": "draw",
+    "seat": 1
+   },
+   {
+    "card": "gD",
+    "colour": "g",
+    "id": 51,
+    "kind": "play",
+    "seat": 0
+   },
+   {
+    "card": "bD",
+    "colour": "b",
+    "id": 52,
+    "kind": "play",
+    "seat": 1
+   },
+   {
+    "cards": [
+     "r7",
+     "b8",
+     "y4",
+     "y4"
+    ],
+    "count": 4,
+    "id": 53,
+    "kind": "draw",
+    "reason": "take",
+    "seat": 0
+   },
+   {
+    "card": "b2",
+    "colour": "b",
+    "id": 54,
+    "kind": "play",
+    "seat": 1
+   },
+   {
+    "card": "b8",
+    "colour": "b",
+    "id": 55,
+    "kind": "play",
+    "seat": 0
+   },
+   {
+    "cards": [
+     "gR"
+    ],
+    "count": 1,
+    "id": 56,
+    "kind": "draw",
+    "reason": "draw",
+    "seat": 1
+   },
+   {
+    "card": "y8",
+    "colour": "y",
+    "id": 57,
+    "kind": "play",
+    "seat": 0
+   },
+   {
+    "cards": [
+     "y9"
+    ],
+    "count": 1,
+    "id": 58,
+    "kind": "draw",
+    "reason": "draw",
+    "seat": 1
+   },
+   {
+    "id": 59,
+    "kind": "keep",
+    "seat": 1
+   },
+   {
+    "card": "y9",
+    "colour": "y",
+    "id": 60,
+    "kind": "play",
+    "seat": 0
+   },
+   {
+    "card": "y9",
+    "colour": "y",
+    "id": 61,
+    "kind": "play",
+    "seat": 1
+   },
+   {
+    "card": "y4",
+    "colour": "y",
+    "id": 62,
+    "kind": "play",
+    "seat": 0
+   },
+   {
+    "cards": [
+     "r8"
+    ],
+    "count": 1,
+    "id": 63,
+    "kind": "draw",
+    "reason": "draw",
+    "seat": 1
+   },
+   {
+    "card": "y5",
+    "colour": "y",
+    "id": 64,
+    "kind": "play",
+    "seat": 0
+   },
+   {
+    "cards": [
+     "g6"
+    ],
+    "count": 1,
+    "id": 65,
+    "kind": "draw",
+    "reason": "draw",
+    "seat": 1
+   },
+   {
+    "card": "y4",
+    "colour": "y",
+    "id": 66,
+    "kind": "play",
+    "seat": 0
+   },
+   {
+    "cards": [
+     "gD"
+    ],
+    "count": 1,
+    "id": 67,
+    "kind": "draw",
+    "reason": "draw",
+    "seat": 1
+   },
+   {
+    "cards": [
+     "b7"
+    ],
+    "count": 1,
+    "id": 68,
+    "kind": "draw",
+    "reason": "draw",
+    "seat": 0
+   },
+   {
+    "cards": [
+     "r7"
+    ],
+    "count": 1,
+    "id": 69,
+    "kind": "draw",
+    "reason": "draw",
+    "seat": 1
+   },
+   {
+    "cards": [
+     "g3"
+    ],
+    "count": 1,
+    "id": 70,
+    "kind": "draw",
+    "reason": "draw",
+    "seat": 0
+   },
+   {
+    "cards": [
+     "g1"
+    ],
+    "count": 1,
+    "id": 71,
+    "kind": "draw",
+    "reason": "draw",
+    "seat": 1
+   },
+   {
+    "cards": [
+     "g2"
+    ],
+    "count": 1,
+    "id": 72,
+    "kind": "draw",
+    "reason": "draw",
+    "seat": 0
+   },
+   {
+    "cards": [
+     "y6"
+    ],
+    "count": 1,
+    "id": 73,
+    "kind": "draw",
+    "reason": "draw",
+    "seat": 1
+   },
+   {
+    "card": "y6",
+    "colour": "y",
+    "id": 74,
+    "kind": "play",
+    "seat": 1
+   },
+   {
+    "cards": [
+     "b9"
+    ],
+    "count": 1,
+    "id": 75,
+    "kind": "draw",
+    "reason": "draw",
+    "seat": 0
+   },
+   {
+    "card": "g6",
+    "colour": "g",
+    "id": 76,
+    "kind": "play",
+    "seat": 1
+   },
+   {
+    "card": "g2",
+    "colour": "g",
+    "id": 77,
+    "kind": "play",
+    "seat": 0
+   },
+   {
+    "cards": [
+     "g4"
+    ],
+    "count": 1,
+    "id": 78,
+    "kind": "draw",
+    "reason": "draw",
+    "seat": 1
+   },
+   {
+    "id": 79,
+    "kind": "keep",
+    "seat": 1
+   },
+   {
+    "card": "g3",
+    "colour": "g",
+    "id": 80,
+    "kind": "play",
+    "seat": 0
+   },
+   {
+    "card": "g1",
+    "colour": "g",
+    "id": 81,
+    "kind": "play",
+    "seat": 1
+   },
+   {
+    "cards": [
+     "r4"
+    ],
+    "count": 1,
+    "id": 82,
+    "kind": "draw",
+    "reason": "draw",
+    "seat": 0
+   },
+   {
+    "card": "gD",
+    "colour": "g",
+    "id": 83,
+    "kind": "play",
+    "seat": 1
+   },
+   {
+    "cards": [
+     "y8",
+     "y2"
+    ],
+    "count": 2,
+    "id": 84,
+    "kind": "draw",
+    "reason": "take",
+    "seat": 0
+   },
+   {
+    "card": "rD",
+    "colour": "r",
+    "id": 85,
+    "kind": "play",
+    "seat": 1
+   },
+   {
+    "cards": [
+     "y1",
+     "gR"
+    ],
+    "count": 2,
+    "id": 86,
+    "kind": "draw",
+    "reason": "take",
+    "seat": 0
+   },
+   {
+    "cards": [
+     "r6"
+    ],
+    "count": 1,
+    "id": 87,
+    "kind": "draw",
+    "reason": "draw",
+    "seat": 1
+   },
+   {
+    "card": "r6",
+    "colour": "r",
+    "id": 88,
+    "kind": "play",
+    "seat": 1
+   },
+   {
+    "cards": [
+     "b7"
+    ],
+    "count": 1,
+    "id": 89,
+    "kind": "draw",
+    "reason": "draw",
+    "seat": 0
+   },
+   {
+    "card": "r8",
+    "colour": "r",
+    "id": 90,
+    "kind": "play",
+    "seat": 1
+   },
+   {
+    "cards": [
+     "g5"
+    ],
+    "count": 1,
+    "id": 91,
+    "kind": "draw",
+    "reason": "draw",
+    "seat": 0
+   },
+   {
+    "card": "r7",
+    "colour": "r",
+    "id": 92,
+    "kind": "play",
+    "seat": 1
+   },
+   {
+    "card": "r9",
+    "colour": "r",
+    "id": 93,
+    "kind": "play",
+    "seat": 0
+   },
+   {
+    "card": "rR",
+    "colour": "r",
+    "id": 94,
+    "kind": "play",
+    "seat": 1
+   },
+   {
+    "direction": 1,
+    "id": 95,
+    "kind": "reverse"
+   },
+   {
+    "card": "gR",
+    "colour": "g",
+    "id": 96,
+    "kind": "play",
+    "seat": 1
+   },
+   {
+    "direction": -1,
+    "id": 97,
+    "kind": "reverse"
+   },
+   {
+    "card": "g4",
+    "colour": "g",
+    "id": 98,
+    "kind": "play",
+    "seat": 1
+   },
+   {
+    "id": 99,
+    "kind": "game_over",
+    "winner": 1
+   }
+  ],
+  "phase": "game_over",
+  "playable": [],
+  "players": 2,
+  "seq": 89,
+  "stack": 0,
+  "top": "g4",
+  "turn": null,
+  "viewer": "table",
+  "winner": 1
+ },
+ "next": null,
+ "players": [
+  "Ana",
+  "Ben"
+ ],
+ "seats": [
+  {
+   "computer": false,
+   "taken": true
+  },
+  {
+   "computer": false,
+   "taken": true
+  }
+ ],
+ "you": {
+  "role": null,
+  "seat": null
+ }
+}

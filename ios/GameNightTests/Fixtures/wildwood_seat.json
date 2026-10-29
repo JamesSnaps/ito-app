@@ -1,0 +1,107 @@
+{
+ "code": "P9PM",
+ "game": {
+  "colour": "g",
+  "deciding": false,
+  "direction": 1,
+  "discard_count": 6,
+  "draw_count": 85,
+  "drawn": null,
+  "exposed": null,
+  "hand": [
+   "g7",
+   "g8",
+   "gS",
+   "W"
+  ],
+  "hand_counts": [
+   4,
+   9
+  ],
+  "hands": null,
+  "log": [
+   {
+    "first": 0,
+    "id": 1,
+    "kind": "deal",
+    "top": "r6"
+   },
+   {
+    "card": "W4",
+    "colour": "y",
+    "id": 2,
+    "kind": "play",
+    "seat": 0
+   },
+   {
+    "cards": null,
+    "count": 4,
+    "id": 3,
+    "kind": "draw",
+    "reason": "take",
+    "seat": 1
+   },
+   {
+    "card": "y7",
+    "colour": "y",
+    "id": 4,
+    "kind": "play",
+    "seat": 0
+   },
+   {
+    "card": "W",
+    "colour": "b",
+    "id": 5,
+    "kind": "play",
+    "seat": 1
+   },
+   {
+    "card": "b6",
+    "colour": "b",
+    "id": 6,
+    "kind": "play",
+    "seat": 0
+   },
+   {
+    "card": "W",
+    "colour": "g",
+    "id": 7,
+    "kind": "play",
+    "seat": 1
+   }
+  ],
+  "phase": "play",
+  "playable": [
+   "g7",
+   "g8",
+   "gS",
+   "W"
+  ],
+  "players": 2,
+  "seq": 6,
+  "stack": 0,
+  "top": "W",
+  "turn": 0,
+  "viewer": 0,
+  "winner": null
+ },
+ "next": null,
+ "players": [
+  "Ana",
+  "Ben"
+ ],
+ "seats": [
+  {
+   "computer": false,
+   "taken": true
+  },
+  {
+   "computer": false,
+   "taken": true
+  }
+ ],
+ "you": {
+  "role": "seat",
+  "seat": 0
+ }
+}

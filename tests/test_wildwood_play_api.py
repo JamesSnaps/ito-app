@@ -364,3 +364,67 @@ def test_broken_offline_games_are_refused():
         res = c.post("/wildwood/api/offline", json={**body, **change})
         assert res.status_code == 400, change
     assert c.get("/wildwood/api/stats").get_json()["games_played"] == 0
+
+
+# --- the iOS app's fixtures ---------------------------------------------------
+
+IOS_FIXTURES = ROOT / "ios" / "GameNightTests" / "Fixtures"
+# Every key a log entry may carry; the Swift `WildwoodEvent` has each one,
+# optional. A new key here needs adding there too.
+EVENT_KEYS = {"id", "kind", "seat", "card", "colour", "called", "count", "cards", "reason",
+              "by", "first", "top", "direction", "winner"}
+
+
+def wildwood_fixtures(c):
+    """One scripted table, captured the way the app sees it: the deal (the
+    dealer's view), a seat mid-game, the end, and the records with a game of
+    each kind."""
+    made, tokens = seated(c, ("Ana", "Ben"))
+    code = made["code"]
+    out = {"wildwood_created": made}
+    rng = random.Random(11)
+    for _ in range(4000):
+        game = room_state(code)["game"]
+        if game["phase"] == "game_over":
+            break
+        if game["seq"] >= 6 and "wildwood_seat" not in out and game["turn"] == 0:
+            out["wildwood_seat"] = state(c, code, tokens[0])
+        seat, move = random_move(game, rng)
+        assert send(c, code, tokens[seat], move, game["seq"]).status_code == 200
+    out["wildwood_game_over"] = state(c, code)
+    solo = new_game(c, ["Cy"], computers=1, level="easy")
+    me = sit(c, solo["code"], 0)
+    for _ in range(4000):
+        game = room_state(solo["code"])["game"]
+        if game["phase"] == "game_over":
+            break
+        if game["turn"] == 0:
+            seat, move = random_move(game, rng)
+            if seat == 0:
+                send(c, solo["code"], me, move, game["seq"])
+        else:
+            state(c, solo["code"])
+    out["wildwood_stats"] = c.get("/wildwood/api/stats").get_json()
+    return out
+
+
+def test_the_ios_app_wildwood_fixtures_still_match_the_api():
+    """ios/GameNightTests/Fixtures/wildwood_*.json are real responses the
+    Swift models are tested against. To capture them again after a
+    deliberate change: WRITE_IOS_FIXTURES=1 pytest tests -q -k wildwood_fixtures."""
+    import json
+    import os
+
+    from test_fugitive_play_api import shape
+
+    fresh = wildwood_fixtures(client())
+    if os.environ.get("WRITE_IOS_FIXTURES"):
+        for name, body in fresh.items():
+            (IOS_FIXTURES / f"{name}.json").write_text(json.dumps(body, indent=1, ensure_ascii=False) + "\n")
+    for name, body in fresh.items():
+        saved = json.loads((IOS_FIXTURES / f"{name}.json").read_text())
+        if "game" in body:
+            for payload in (body, saved):
+                assert {k for e in payload["game"]["log"] for k in e} <= EVENT_KEYS, name
+                payload["game"]["log"] = []
+        assert shape(body) == shape(saved), name

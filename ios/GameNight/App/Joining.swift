@@ -8,6 +8,8 @@ enum JoinDestination: Equatable {
     case flip7(PlayPayload)
     /// A Fugitive game, already loaded as this device may see it.
     case fugitive(FugitivePayload)
+    /// A Wildwood game, the same.
+    case wildwood(WildwoodPayload)
     /// An ito room: the topic display.
     case ito(code: String)
     /// A one-time code for signing this device in as someone's profile.
@@ -45,6 +47,9 @@ enum Joining {
         case "fugitive":
             let held = FugitiveTokens().held(for: target.code)
             return .fugitive(try await client.fugitiveState(code: target.code, token: held.askingToken))
+        case "wildwood":
+            let held = WildwoodTokens().held(for: target.code)
+            return .wildwood(try await client.wildwoodState(code: target.code, token: held.askingToken))
         default:
             return .web(client.webURL(target.path))
         }
@@ -71,7 +76,7 @@ enum Joining {
     }
 
     /// A room code out of a link: the web pages players are sent to
-    /// (`/flip7/play/ABCD`, `/flip7/watch/ABCD`, `/fugitive/play/ABCD`,
+    /// (`/flip7/play/ABCD`, `/flip7/watch/ABCD`, `/fugitive/play/ABCD`, `/wildwood/play/ABCD`,
     /// `/ito/play/ABCD`, `/join?code=ABCD`) or the app's own
     /// `gamenight://join/ABCD`.
     static func code(in url: URL) -> String? {

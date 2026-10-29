@@ -14,6 +14,8 @@ struct HubView: View {
         /// An offline game kept on this phone; one kept on a nearby phone.
         case fugitiveOffline(String)
         case fugitiveNearby(String)
+        case wildwoodNew, wildwoodRecords
+        case wildwoodTable(String)
         /// "You", with a sign-in code when a link or QR brought it.
         case you(String?)
     }
@@ -23,6 +25,7 @@ struct HubView: View {
     /// cards on it rather than a spinner.
     @State private var handedOver: [String: PlayPayload] = [:]
     @State private var handedOverFugitive: [String: FugitivePayload] = [:]
+    @State private var handedOverWildwood: [String: WildwoodPayload] = [:]
     @State private var scanning = false
     /// Games dealt on this device, which open with the shuffle and the deal.
     @State private var dealtHere: Set<String> = []
@@ -32,8 +35,6 @@ struct HubView: View {
     @State private var webPage: WebPage?
     @State private var linkError: String?
     @Environment(\.horizontalSizeClass) private var sizeClass
-    /// The screen's width, for how many tiles go side by side on an iPad.
-    @State private var width: CGFloat = 0
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -67,7 +68,6 @@ struct HubView: View {
                     .foregroundStyle(Theme.cream)
                 }
             }
-            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button { path.append(.you(nil)) } label: {
@@ -101,6 +101,7 @@ struct HubView: View {
                     // seen as the dealer, which told the store its seat was gone.
                     handedOver = [:]
                     handedOverFugitive = [:]
+                    handedOverWildwood = [:]
                     // Offline games waiting for a signal go home quietly.
                     Task { await OfflineUploads.sendWaiting() }
                     await Faces.shared.load()
@@ -166,29 +167,32 @@ struct HubView: View {
             OfflineFugitiveScreen(code: code)
         case .fugitiveNearby(let code):
             NearbyFugitiveScreen(code: code)
+        case .wildwoodNew:
+            WildwoodSetupView(onDealt: { go(.wildwood($0)) }, onRecords: { path.append(.wildwoodRecords) })
+        case .wildwoodRecords:
+            WildwoodRecordsView()
+        case .wildwoodTable(let code):
+            if let payload = handedOverWildwood[code] {
+                WildwoodTableScreen(store: WildwoodStore(payload: payload))
+            } else {
+                WildwoodTableScreen(store: WildwoodStore(code: code))
+            }
         case .you(let code):
             YouScreen(linkCode: code)
         }
     }
 
-    /// Stacked on a phone. On an iPad three across when each tile gets room
-    /// for its buttons (landscape), else two and one under — three across a
-    /// portrait iPad broke "Records" over two lines. A Grid, so the tiles in
-    /// a row are one height and their buttons line up.
+    /// Stacked on a phone; two by two on an iPad, in landscape too — three
+    /// across a portrait iPad broke "Records" over two lines, and four
+    /// across is narrower still. A Grid, so the tiles in a row are one
+    /// height and their buttons line up.
     @ViewBuilder private var tiles: some View {
         if sizeClass != .regular {
             VStack(spacing: 16) {
                 flip7Tile
                 fugitiveTile
+                wildwoodTile
                 itoTile
-            }
-        } else if width >= 1100 {
-            Grid(horizontalSpacing: 20) {
-                GridRow {
-                    flip7Tile
-                    fugitiveTile
-                    itoTile
-                }
             }
         } else {
             Grid(horizontalSpacing: 20, verticalSpacing: 20) {
@@ -197,8 +201,8 @@ struct HubView: View {
                     fugitiveTile
                 }
                 GridRow {
+                    wildwoodTile
                     itoTile
-                    Color.clear.gridCellUnsizedAxes([.horizontal, .vertical])
                 }
             }
         }
@@ -230,6 +234,19 @@ struct HubView: View {
             // Flip 7's Start keeps the gold: one gold button at a time.
             .buttonStyle(FeltButtonStyle(kind: .ghost))
             moreRow(records: { path.append(.fugitiveRecords) }, rules: "/fugitive/rules")
+        }
+    }
+
+    private var wildwoodTile: some View {
+        GameTile(title: "Wildwood", accent: Woods.accent,
+                 blurb: "Match the colour or the creature, call “Last card!”, and empty your hand first. Two to four, on phones, one device passed round, or against the computer.") {
+            WildwoodArt()
+        } actions: {
+            Button { path.append(.wildwoodNew) } label: {
+                Label("Start a game", systemImage: "leaf")
+            }
+            .buttonStyle(FeltButtonStyle(kind: .ghost))
+            moreRow(records: { path.append(.wildwoodRecords) }, rules: "/wildwood/rules")
         }
     }
 
@@ -305,6 +322,9 @@ struct HubView: View {
         case .fugitive(let payload):
             handedOverFugitive[payload.code] = payload
             path = [.fugitiveTable(payload.code)]
+        case .wildwood(let payload):
+            handedOverWildwood[payload.code] = payload
+            path = [.wildwoodTable(payload.code)]
         case .ito(let code):
             // Your own room's code (or its QR) brings you back to the deck.
             path = [ItoHostTokens().token(for: code) == nil ? .ito(code) : .itoHost(code)]
@@ -475,6 +495,19 @@ private struct FugitiveArt: View {
             Image(systemName: "shoeprints.fill").font(.system(size: 16)).foregroundStyle(Noir.card.opacity(0.55))
                 .rotationEffect(.degrees(90))
             FugitiveCard(number: 42, width: 66).rotationEffect(.degrees(8))
+        }
+        .accessibilityHidden(true)
+    }
+}
+
+/// A fan of Wildwood's cards: a number, a Draw two, a Skip and a Badger.
+private struct WildwoodArt: View {
+    var body: some View {
+        HStack(spacing: -22) {
+            WildwoodCardView(card: "r7", width: 58).rotationEffect(.degrees(-16), anchor: .bottom)
+            WildwoodCardView(card: "bD", width: 58).rotationEffect(.degrees(-5), anchor: .bottom)
+            WildwoodCardView(card: "W", width: 66).rotationEffect(.degrees(6), anchor: .bottom).zIndex(1)
+            WildwoodCardView(card: "gS", width: 58).rotationEffect(.degrees(17), anchor: .bottom)
         }
         .accessibilityHidden(true)
     }
