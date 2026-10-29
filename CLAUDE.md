@@ -3,11 +3,12 @@
 ## What this is
 
 **Game Night** — a hub for companion web apps to physical board games.
-It holds four: *ito* (cooperative, secret-number ordering game),
+It holds five: *ito* (cooperative, secret-number ordering game),
 *Flip 7* (push-your-luck card game), *Fugitive* (two-player
 hidden-movement card game, played entirely on the app, against a person or
-the computer — see its section) and *Wildwood* (our own Crazy Eights-style
-card game for the family, two to four, also played entirely on the app).
+the computer — see its section), *Wildwood* (our own Crazy Eights-style
+card game for the family, two to four, also played entirely on the app) and
+*Picnic Raid* (our own set-a-trap card game, two to four, web only so far).
 `/` is the menu — it used to redirect straight to ito when ito was the
 only game.
 
@@ -1189,6 +1190,53 @@ Built exactly the way Fugitive is — read that section first.
 - **The AASA file claims `/wildwood/play/*`** since v1.17.1, added once
   app 1.11.0 was on TestFlight (claiming a path sends it to every installed
   version of the app).
+
+## Picnic Raid (added v1.18.0)
+
+Our own game, made for the family the way Wildwood was: fill a picnic
+basket, pack it up to bank the points, and hide traps (Ants, Wasp, Seagull,
+Dog) under everyone else's blanket; Shoo! sends one back, Umbrella stops it.
+First to 20 with the round played out. **Built exactly the way Wildwood is**
+— game.py is its game.py function for function, minus the offline replay —
+so read that section first. Web only: no iOS screens, no AASA path.
+
+- **The rules came out of a playtest, and engine.py's docstring says why
+  each one is there** — don't change one without re-running the harness
+  (`games/picnic/playtest/`, its README says how; `compare.py`'s `BASE` is
+  what the engine plays). The draft lost to a player who never trapped,
+  buried the youngest under six traps, and had a hoard-under-a-full-blanket
+  loophole; free traps, one-of-yours-per-blanket (two in all) and a basket of
+  five are what fixed them. The harness is a separate model, not the engine.
+- **"Whose move" is `engine.turn`, never `state["turn"]`.** A pack-up pauses
+  at each trap for whoever it's on to defend (stage `spring`), and a Shoo!
+  sent back makes the *hider* decide, off their turn. The computer, the
+  pass-and-play curtain and the poll all go by `turn`. Someone with no
+  defence in hand isn't asked: the trap lands at once.
+- **Traps are free and come first**: `hide` (once, round 2 on), then one of
+  `lay`/`pack`/`pass`, then `discard` if over six. Loot (Ants, Seagull)
+  ignores the five-snack limit; `basket_room` never goes below 0.
+- **Secrets**: hands, and which trap is which, are seen only by the hider
+  (`blankets[n][i].card` is None for everyone else, `mine` marks your own).
+  The hider isn't named until the trap springs. `hide`, `draw` and
+  `discard` log entries are redacted the same way.
+- **The computer** (`ai.py`): Easy is the playtest's kid — traps the biggest
+  basket, packs at a random 5–8, always defends. Hard banks any basket of 4
+  while its blanket is clear (the one real skill the playtest found — it
+  takes Hard from barely better than Easy to ~1.25–1.55× a fair share),
+  otherwise packs at 7, and saves Shoo! for traps worth sending back.
+  Computers are Bramble, Pip, Clover and Tansy.
+- **Card faces are pictures, not code-drawn SVG** — the owner wants real
+  artwork. `static/picnic/cards/<code>.webp` (or `<kind>.webp` for all of a
+  food, with the number laid over) is used the moment it exists; game.py's
+  `card_art()` lists what's there so nothing missing is fetched, and every
+  card without one is a plain CSS placeholder. `games/picnic/ART.md` is the
+  brief: sizes, names, style, prompts. A test keeps its names in step.
+- **The table holds still during a play-out**: new log entries play as
+  bursts over the board as it stood, and the board is redrawn after, so a
+  trap turns over before anyone sees what it took. `.pr-playing` stops taps
+  meanwhile. A pack-up is ~3s of bursts plus 1.5s per computer decision.
+- **Records**: wins, games and best score per player; a shared win counts
+  for each. Games with a computer go in `record["computer"]`, as Wildwood's.
 
 ## Player profiles (added v1.8.0)
 

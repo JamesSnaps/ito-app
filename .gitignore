@@ -15,9 +15,10 @@ data/ito/topics.json
 # restart doesn't end them. Runtime state, like stats.json.
 data/flip7/
 
-# Fugitive and Wildwood games, saved the same way.
+# Fugitive, Wildwood and Picnic Raid games, saved the same way.
 data/fugitive/
 data/wildwood/
+data/picnic/
 
 # Player profiles and their photos — people, not content.
 data/profiles.json

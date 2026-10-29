@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Picnic Raid — records — {{ app_name }}{% endblock %}
+{% block body_class %}picnic{% endblock %}
+{% block theme_color %}#1f3a1c{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ asset('picnic.css') }}">
+<script src="{{ asset('profiles.js') }}"></script>{% endblock %}
+{% block body %}
+<div class="wrap pr-page">
+  <header class="pr-bar">
+    <a class="pr-icon-btn" href="{{ back }}" aria-label="Back" title="Back">←</a>
+    <h1 class="pr-title">Records</h1>
+  </header>
+
+  {% if not rows and not computer_rows %}
+  <p class="pr-muted">No games yet. Finished games are recorded here automatically.</p>
+  {% endif %}
+  {% if rows %}
+  <p class="pr-muted">{{ record.games_played }} game{{ "" if record.games_played == 1 else "s" }} played.</p>
+  <table>
+    <thead>
+      <tr><th>Player</th><th class="pr-num-cell">Wins</th><th class="pr-num-cell">Win %</th>
+          <th class="pr-num-cell" title="Their highest finishing score">Best</th></tr>
+    </thead>
+    <tbody>
+      {% for p in rows %}
+      <tr>
+        <td><span class="pr-who" data-name="{{ p.name }}">{{ p.name }}</span></td>
+        <td class="pr-num-cell">{{ p.wins }}/{{ p.games }}</td>
+        <td class="pr-num-cell">{{ p.win_rate }}%</td>
+        <td class="pr-num-cell">{{ p.best }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h2>Recent games</h2>
+  <table>
+    <tbody>
+      {% for g in record.recent %}
+      <tr>
+        <td>{{ g.at[:10] }}</td>
+        <td><strong>{{ g.winners|join(" & ") }}</strong> won</td>
+        <td class="pr-small">{% for name in g.players %}{{ name }} {{ g.scores[loop.index0] }}{% if not loop.last %}, {% endif %}{% endfor %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% if computer_rows %}
+  {# Kept off the leaderboard above: these aren't games between people. #}
+  <h2>Against the computer</h2>
+  <p class="pr-muted">{{ record.computer.games_played }} game{{ "" if record.computer.games_played == 1 else "s" }}
+    with the computer at the table, ranked by wins on hard.</p>
+  <table>
+    <thead>
+      <tr><th>Player</th><th class="pr-num-cell">Hard</th><th class="pr-num-cell">Easy</th>
+          <th class="pr-num-cell">All</th></tr>
+    </thead>
+    <tbody>
+      {% for p in computer_rows %}
+      <tr>
+        <td><span class="pr-who" data-name="{{ p.name }}">{{ p.name }}</span></td>
+        <td class="pr-num-cell">{{ p.hard_wins }}/{{ p.hard_games }}</td>
+        <td class="pr-num-cell">{{ p.easy_wins }}/{{ p.easy_games }}</td>
+        <td class="pr-num-cell">{{ p.wins }}/{{ p.games }} · {{ p.win_rate }}%</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h2>Recent games against the computer</h2>
+  <table>
+    <tbody>
+      {% for g in record.computer.recent %}
+      <tr>
+        <td>{{ g.at[:10] }}</td>
+        <td><strong>{{ g.winners|join(" & ") }}</strong> won{% if g.computer_won %} (computer){% endif %}</td>
+        <td class="pr-small">{{ g.players|join(", ") }} · {{ g.level }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+<script>
+  // Faces in front of the names, once the profiles have loaded.
+  GN.profiles.load().then(() => {
+    for (const who of document.querySelectorAll('.pr-who')) who.prepend(GN.avatar(who.dataset.name, 28));
+  });
+</script>
+{% endblock %}
