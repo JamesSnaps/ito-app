@@ -31,7 +31,7 @@ struct WildwoodTableScreen: View {
             }
         }
         .foregroundStyle(Woods.cream)
-        .navigationTitle(store.game?.myTurn == true ? "● Your turn" : "Wildwood")
+        .navigationTitle(store.game?.myTurn == true ? "● Your turn" : store.inviteURL == nil ? "Wildwood · offline" : "Wildwood")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Woods.background, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
@@ -66,6 +66,10 @@ struct WildwoodTableScreen: View {
         .onAppear { store.start() }
         .onDisappear { store.stop() }
         .animation(.easeInOut(duration: 0.2), value: store.curtainFor)
+        // An offline game that just ended goes home as soon as there's signal.
+        .onChange(of: store.game?.isOver) { _, over in
+            if over == true && store.inviteURL == nil { Task { await WildwoodOfflineUploads.sendWaiting() } }
+        }
     }
 
     private struct Choice: Identifiable { let card: String; var id: String { card } }
@@ -290,6 +294,10 @@ struct WildwoodTableScreen: View {
         WoodPanel(title: "At the table") {
             ForEach(payload.players.indices, id: \.self) { seat in seatRow(payload, seat) }
             let open = payload.seats.indices.contains { !payload.seats[$0].taken && !payload.isComputer($0) }
+            if store.isDealer, open, !game.isOver, store.inviteURL == nil {
+                Text("No internet needed: on the other phones, open Wildwood and tap “Join a nearby game”, then sit down.")
+                    .font(.footnote).foregroundStyle(Woods.cream.opacity(0.7))
+            }
             if store.isDealer, open, !game.isOver, let url = store.inviteURL {
                 VStack(spacing: 8) {
                     if let qr = QRCode.image(url.absoluteString) {

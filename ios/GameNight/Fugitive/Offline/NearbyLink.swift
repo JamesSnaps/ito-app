@@ -2,20 +2,24 @@ import Foundation
 import MultipeerConnectivity
 import Observation
 
-// The air between two phones, for a Fugitive game with no internet:
-// MultipeerConnectivity, which finds the other phone and talks to it over
-// Bluetooth or peer-to-peer Wi-Fi with no network at all. The host phone
-// advertises its game; the guest browses, joins, and then sends the
-// server's API calls across (Nearby.swift says what travels).
+// The air between phones, for a game with no internet: MultipeerConnectivity,
+// which finds the other phones and talks to them over Bluetooth or
+// peer-to-peer Wi-Fi with no network at all. The host phone advertises its
+// game; a guest browses, joins, and then sends the server's API calls across.
+// The link only carries bytes, under one Bonjour service per game: what
+// travels is each game's own (Nearby.swift for Fugitive, WildwoodNearby.swift
+// for Wildwood), matched up by the `id` every request and answer carries.
+// A host answers each guest on its own, so a Wildwood table can have three.
 //
 // MultipeerConnectivity calls its delegates on its own queue, so each
 // callback hops to the main actor, carrying peers and sessions in the
 // small boxes below — they're thread-safe objects, but not marked Sendable.
 
 enum NearbyService {
-    /// Bonjour type: `_gn-fugitive._tcp` and `._udp` are in Info.plist's
-    /// NSBonjourServices, as iOS requires.
-    static let type = "gn-fugitive"
+    /// Bonjour types: `_gn-fugitive._tcp`, `_gn-wildwood._tcp` and their
+    /// `._udp` are in Info.plist's NSBonjourServices, as iOS requires.
+    static let fugitive = "gn-fugitive"
+    static let wildwood = "gn-wildwood"
 
     /// A peer name MultipeerConnectivity accepts: not empty, under 63 bytes.
     static func peerName(_ name: String) -> String {
@@ -45,11 +49,12 @@ nonisolated struct InvitationReply: @unchecked Sendable {
 // MARK: - the host
 
 /// The phone that keeps the game: advertises it while its table is on
-/// screen, lets the other phone connect, and answers its calls from the
+/// screen, lets other phones connect, and answers their calls from the
 /// offline table.
 @Observable
 final class NearbyHost: NSObject {
-    static let shared = NearbyHost()
+    static let shared = NearbyHost(service: NearbyService.fugitive) { await NearbyResponder().answer($0) }
+    static let wildwood = NearbyHost(service: NearbyService.wildwood) { await WildwoodNearbyResponder().answer($0) }
 
     private(set) var code: String?
     /// Who's connected, by name.
@@ -58,7 +63,14 @@ final class NearbyHost: NSObject {
 
     @ObservationIgnored private var session: MCSession?
     @ObservationIgnored private var advertiser: MCNearbyServiceAdvertiser?
-    @ObservationIgnored private let responder = NearbyResponder()
+    @ObservationIgnored private let service: String
+    /// A request's bytes in, the answer's bytes out (nil: not one of ours).
+    @ObservationIgnored private let respond: (Data) async -> Data?
+
+    init(service: String, respond: @escaping (Data) async -> Data?) {
+        self.service = service
+        self.respond = respond
+    }
 
     func start(code: String, hostName: String, players: String) {
         guard self.code != code else { return }
@@ -76,7 +88,7 @@ final class NearbyHost: NSObject {
         let peer = session.myPeerID
         let advertiser = MCNearbyServiceAdvertiser(
             peer: peer, discoveryInfo: ["code": code, "players": String(players.prefix(80))],
-            serviceType: NearbyService.type)
+            serviceType: service)
         advertiser.delegate = self
         advertiser.startAdvertisingPeer()
         self.session = session
@@ -99,7 +111,7 @@ final class NearbyHost: NSObject {
     }
 
     fileprivate func answer(_ data: Data, from peer: PeerRef) async {
-        guard let session, let reply = await responder.answer(data) else { return }
+        guard let session, let reply = await respond(data) else { return }
         try? session.send(reply, toPeers: [peer.id], with: .reliable)
     }
 
@@ -152,7 +164,8 @@ extension NearbyHost: MCNearbyServiceAdvertiserDelegate {
 /// the same host again and rejoins.
 @Observable
 final class NearbyGuest: NSObject {
-    static let shared = NearbyGuest()
+    static let shared = NearbyGuest(service: NearbyService.fugitive)
+    static let wildwood = NearbyGuest(service: NearbyService.wildwood)
 
     struct Host: Identifiable, Equatable {
         let peer: PeerRef
@@ -182,13 +195,19 @@ final class NearbyGuest: NSObject {
     /// Was playing with `wanted` — so a dropped link is worth chasing.
     @ObservationIgnored private var wasConnected = false
     @ObservationIgnored private var retries = 0
-    @ObservationIgnored private var pending: [UUID: CheckedContinuation<NearbyResponse, any Error>] = [:]
+    @ObservationIgnored private var pending: [UUID: CheckedContinuation<Data, any Error>] = [:]
+    @ObservationIgnored private let service: String
 
-    /// The table's way to the host. Make one per game screen.
+    init(service: String) {
+        self.service = service
+    }
+
+    /// Fugitive's table's way to the host. Make one per game screen.
     var transport: NearbyTransport {
         NearbyTransport { [weak self] request in
             guard let self else { throw NearbyService.lostTouch }
-            return try await self.send(request)
+            let answer = try await self.exchange(JSONEncoder().encode(request), id: request.id)
+            return try JSONDecoder().decode(NearbyResponse.self, from: answer)
         }
     }
 
@@ -198,7 +217,7 @@ final class NearbyGuest: NSObject {
             let me = MCPeerID(displayName: NearbyService.peerName(name))
             let session = MCSession(peer: me, securityIdentity: nil, encryptionPreference: .required)
             session.delegate = self
-            let browser = MCNearbyServiceBrowser(peer: me, serviceType: NearbyService.type)
+            let browser = MCNearbyServiceBrowser(peer: me, serviceType: service)
             browser.delegate = self
             self.me = me
             self.session = session
@@ -233,24 +252,27 @@ final class NearbyGuest: NSObject {
         status = .idle
     }
 
-    private func send(_ request: NearbyRequest) async throws -> NearbyResponse {
+    /// A request's bytes to the host, and its answer's bytes back — matched
+    /// by `id`, which the request carries and the answer echoes.
+    func exchange(_ data: Data, id: UUID) async throws -> Data {
         guard case .connected(let host) = status, let session else { throw NearbyService.lostTouch }
-        let data = try JSONEncoder().encode(request)
         try session.send(data, toPeers: [host.peer.id], with: .reliable)
         return try await withCheckedThrowingContinuation { continuation in
-            pending[request.id] = continuation
+            pending[id] = continuation
             Task {
                 try? await Task.sleep(for: .seconds(6))
-                self.pending.removeValue(forKey: request.id)?.resume(throwing: NearbyService.lostTouch)
+                self.pending.removeValue(forKey: id)?.resume(throwing: NearbyService.lostTouch)
             }
         }
     }
 
+    private struct Envelope: Decodable { let id: UUID }
+
     // Callbacks, back on the main actor.
 
     fileprivate func received(_ data: Data) {
-        guard let response = try? JSONDecoder().decode(NearbyResponse.self, from: data) else { return }
-        pending.removeValue(forKey: response.id)?.resume(returning: response)
+        guard let envelope = try? JSONDecoder().decode(Envelope.self, from: data) else { return }
+        pending.removeValue(forKey: envelope.id)?.resume(returning: data)
     }
 
     fileprivate func changed(_ peer: PeerRef, to state: MCSessionState) {

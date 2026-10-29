@@ -16,6 +16,8 @@ struct HubView: View {
         case fugitiveNearby(String)
         case wildwoodNew, wildwoodRecords
         case wildwoodTable(String)
+        case wildwoodOffline(String)
+        case wildwoodNearby(String)
         /// "You", with a sign-in code when a link or QR brought it.
         case you(String?)
     }
@@ -103,7 +105,10 @@ struct HubView: View {
                     handedOverFugitive = [:]
                     handedOverWildwood = [:]
                     // Offline games waiting for a signal go home quietly.
-                    Task { await OfflineUploads.sendWaiting() }
+                    Task {
+                        await OfflineUploads.sendWaiting()
+                        await WildwoodOfflineUploads.sendWaiting()
+                    }
                     await Faces.shared.load()
                     await checkResume()
                     await checkItoRoom()
@@ -168,7 +173,10 @@ struct HubView: View {
         case .fugitiveNearby(let code):
             NearbyFugitiveScreen(code: code)
         case .wildwoodNew:
-            WildwoodSetupView(onDealt: { go(.wildwood($0)) }, onRecords: { path.append(.wildwoodRecords) })
+            WildwoodSetupView(onDealt: { go(.wildwood($0)) },
+                              onOffline: { path = [.wildwoodOffline($0)] },
+                              onNearby: { path = [.wildwoodNearby($0)] },
+                              onRecords: { path.append(.wildwoodRecords) })
         case .wildwoodRecords:
             WildwoodRecordsView()
         case .wildwoodTable(let code):
@@ -177,6 +185,10 @@ struct HubView: View {
             } else {
                 WildwoodTableScreen(store: WildwoodStore(code: code))
             }
+        case .wildwoodOffline(let code):
+            OfflineWildwoodScreen(code: code)
+        case .wildwoodNearby(let code):
+            NearbyWildwoodScreen(code: code)
         case .you(let code):
             YouScreen(linkCode: code)
         }

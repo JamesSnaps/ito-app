@@ -53,6 +53,8 @@ struct WildwoodRecordsView: View {
         .toolbarColorScheme(.dark, for: .navigationBar)
         .task {
             await Faces.shared.load()
+            // Offline games waiting for a signal go home first, so they show.
+            await WildwoodOfflineUploads.sendWaiting()
             do { stats = try await AppSettings.client.wildwoodStats() } catch { problem = error.localizedDescription }
         }
         .refreshable {
