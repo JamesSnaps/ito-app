@@ -607,7 +607,7 @@ in-app Safari sheet rather than being rebuilt.
   path as a link opened from outside — so a room QR and a profile sign-in QR
   both work. `NSCameraUsageDescription` covers this and the selfie.
 - **App links claim what the app shows**: `/flip7/play|watch`, `/fugitive/play`,
-  `/ito/play`, `/join?code=` and `/me/link`. Claiming a path sends it to every
+  `/wildwood/play`, `/ito/play`, `/join?code=` and `/me/link`. Claiming a path sends it to every
   installed version of the app, so claim a new one only once a build that
   handles it is on TestFlight.
 
@@ -1186,9 +1186,9 @@ Built exactly the way Fugitive is — read that section first.
   advertises while any person's seat is free; the others "Join a nearby
   game" from setup and tap their name. Needs real devices to try — the
   Simulator has no peers.
-- **The AASA file doesn't claim `/wildwood/play/*` yet**: claim it in a
-  server patch once a build with Wildwood is on TestFlight (claiming a path
-  sends it to every installed version of the app).
+- **The AASA file claims `/wildwood/play/*`** since v1.17.1, added once
+  app 1.11.0 was on TestFlight (claiming a path sends it to every installed
+  version of the app).
 
 ## Player profiles (added v1.8.0)
 
