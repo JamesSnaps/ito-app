@@ -5,3 +5,5 @@ ios/
 .venv/
 **/__pycache__/
 data/
+# Playbooks and their screenshots are for people, not the server.
+docs/

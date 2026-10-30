@@ -2,14 +2,27 @@
 
 ## What this is
 
-**Game Night** — a hub for companion web apps to physical board games.
-It holds four: *ito* (cooperative, secret-number ordering game),
+**Game Night** — the family's games, on a phone. It began as companion
+apps for the board games on the shelf and is deliberately more than that
+now (v1.18.0). Three kinds of game live here, and a new one should be
+clear which it is:
+
+- **Help for a box on the shelf** — the physical game stays on the table
+  and the app replaces one part of it, narrowly (ito's topics, Flip 7's
+  scorekeeper). Scope stays tight: see ito's "Scope" below.
+- **A board game played on the app** — the whole game, server-side rules,
+  for nights without the box (Flip 7's Play mode, Fugitive).
+- **Games of our own** — designed here, not copies of published games:
+  their own names, rules and art (*Wildwood*, *Final Approach*).
+
+It holds five: *ito* (cooperative, secret-number ordering game),
 *Flip 7* (push-your-luck card game), *Fugitive* (two-player
 hidden-movement card game, played entirely on the app, against a person or
-the computer — see its section) and *Wildwood* (our own Crazy Eights-style
-card game for the family, two to four, also played entirely on the app).
-`/` is the menu — it used to redirect straight to ito when ito was the
-only game.
+the computer — see its section), *Wildwood* (our own Crazy Eights-style
+card game for the family, two to four, also played entirely on the app)
+and *Final Approach* (our own solo air-traffic game, all client-side; its
+playbook is `docs/final-approach/PLAYBOOK.md`). `/` is the menu — it used
+to redirect straight to ito when ito was the only game.
 
 The ito app itself: The owner has the German edition, whose
 topic prompts come as a printed booklet rather than cards, which isn't
@@ -53,7 +66,9 @@ problem.
   read-only spectator view opened from inside the scorekeeper.
 - Frontend is plain HTML/CSS/JS (Jinja templates extending
   `templates/base.html`, shared `static/style.css`, fetch polling), no
-  build step, no framework. Player page polls
+  build step, no framework. A game with a look wholly its own may swap the
+  shared stylesheet out through base.html's `shell_css` block (Final
+  Approach does; the others layer over it). Player page polls
   `/ito/api/<code>/state` every 2s.
 - Single container via `Dockerfile` + `docker-compose.yml`.
 - Smoke tests in `tests/test_smoke.py` (`pytest tests -q`). CI runs the whole
@@ -1200,6 +1215,59 @@ Built exactly the way Fugitive is — read that section first.
   app 1.11.0 was on TestFlight (claiming a path sends it to every installed
   version of the app).
 
+## Final Approach (added v1.18.0)
+
+A solo air-traffic game: aircraft arrive at the edges, you drag from one to
+draw its route, and it lands if the route ends lined up with the approach
+lights of a runway in its colour. Two touching is a collision (shift over);
+three diversions (out of fuel, flown into a storm) is the same. **The full
+picture — what it is, how it's built, where it's going — is the playbook,
+`docs/final-approach/PLAYBOOK.md`.** Read it before changing the game; keep
+it current when you do (its "Current state" and roadmap especially).
+
+- **Our own game in a genre, not a remake.** Path-drawing landing games are
+  a genre (the early iPhone hits among them); this one has its own name,
+  mechanics (colour-coded runway kinds, the lined-up approach rule, fuel,
+  drifting storm cells, wind shifts that reverse the runways), airports and
+  art. Don't borrow another game's names, levels or look.
+- **All client-side, one route.** `games/final_approach/game.py` serves
+  `/final-approach/`; everything else is `static/final-approach/`:
+  `levels.js` (airports, palettes, traffic), `art.js` (terrain painter,
+  sprites, live layers), `flap.js` (the split-flap component), `game.js`
+  (simulation, input, UI, save). Loaded in that order as plain scripts —
+  they share globals (`THEMES`, `LEVELS`, `Art`, `Flap`). No rooms, tokens
+  or records yet; records against profiles are the next step (playbook).
+- **Its own stylesheet, not the shell's.** The page overrides `shell_css`:
+  the shared `.btn`, `.row` and `button` rules leaked into the board. It
+  still extends base.html for the manifest and icons.
+- **Progress is per browser** (`final-approach:save` in localStorage:
+  stars per airport, the Endless best, mute). The home-screen app and Safari
+  keep separate storage on iOS, as for Flip 7's scorekeeper.
+- **The game id has a hyphen** (`final-approach`, so the URL reads well);
+  the package is `final_approach`. The blueprint, the art file and the
+  static folder use the id.
+- **Oswald and Barlow, bundled** (`static/final-approach/fonts/`, OFL, with
+  licences). Oswald is the split-flap face — chosen over Antonio, Barlow
+  Condensed and B612 Mono for looking most like a Solari board at phone
+  size. Same no-CDN rule as everywhere; a test checks the page, scripts and
+  CSS carry no absolute URLs.
+- **Runway numbers are painted into the terrain, so the game waits for the
+  fonts** (`document.fonts.load`, 2.5s cap) before painting the first
+  airport.
+- **A fixed 960×600 world, letterboxed.** Phones held upright get a "turn
+  sideways" overlay, and the game pauses behind it.
+- **The terrain is painted once per airport (and per resize) into an
+  offscreen canvas** at the screen's resolution, seeded by the level id so
+  an airport always looks the same; per frame only the live layers draw.
+- **`window.__finalApproach`** exposes the state for Playwright checks.
+  There's no JS test runner; `tests/test_final_approach.py` pins the page,
+  its files and the level data's shape, and visual changes are checked by
+  driving the page in a headless browser at desktop and phone-landscape
+  sizes (the playbook has the routine).
+- **Not in the iOS app.** The native hub's tiles are its own; the cheap way
+  in is a tile opening `/final-approach/` in the Safari sheet, like Keep
+  score (playbook roadmap).
+
 ## Player profiles (added v1.8.0)
 
 A name and, optionally, a selfie that follow a player into every game:
@@ -1273,7 +1341,9 @@ one thing besides the games that `app.py` registers), `templates/me.html`
   `.art-stroke`) so a third game inherits the same card stock instead of
   inventing its own. ito's tile is the card's scale line; Flip 7's is a
   three-card fan with the 7 face up; Fugitive's is the trail — two
-  face-down hideouts, footprints, and 42 turned up.
+  face-down hideouts, footprints, and 42 turned up; Final Approach's is a
+  runway with its approach chevrons lit and a jet coming in on a dotted
+  route.
 
 ## Known rough edges / good next steps
 
