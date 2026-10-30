@@ -88,6 +88,7 @@ struct FugitiveTableScreen: View {
                         .transition(.move(edge: .trailing))
                 }
                 if store.game?.phase == .manhunt { SirenWash() }
+                if store.lockingUp { CellBars() }
                 if store.flyingAway { PlaneAway() }
                 if let stamp = store.stamp { InkStamp(stamp: stamp).id(stamp.id) }
                 if let role = store.folderFor, let payload = store.payload {
@@ -168,6 +169,7 @@ struct FugitiveTableScreen: View {
             if let tension = store.tension { Music.shared.play(intensity: tension) }
         }
         .keepsScreenAwake()
+        .reconnecting(store.connection)
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { store.start() } else { store.stop() }
         }
@@ -1518,23 +1520,137 @@ private struct SirenWash: View {
     }
 }
 
-/// The plane out at 42, taking off across the screen.
-private struct PlaneAway: View {
-    @State private var gone = false
+/// A catch: the cell's bars slam down over the desk, and stay for the
+/// verdict.
+private struct CellBars: View {
+    @State private var down = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         GeometryReader { geo in
-            Image(systemName: "airplane")
-                .font(.system(size: 58))
-                .foregroundStyle(Noir.card)
-                .shadow(color: Noir.fugitive.opacity(0.7), radius: 12)
-                .rotationEffect(.degrees(-28))
-                .scaleEffect(gone ? 0.45 : 1.3)
-                .position(x: gone ? geo.size.width + 90 : -90, y: geo.size.height * (gone ? 0.12 : 0.78))
+            let count = max(6, Int(geo.size.width / 64))
+            let gap = geo.size.width / CGFloat(count)
+            ZStack(alignment: .top) {
+                Color.black.opacity(down ? 0.5 : 0)
+                ForEach(0..<count, id: \.self) { i in
+                    bar(width: max(12, gap * 0.2), height: geo.size.height + 40)
+                        .position(x: gap * (CGFloat(i) + 0.5), y: geo.size.height / 2)
+                }
+                // The crossbars, riveted to the uprights.
+                ForEach([0.18, 0.62], id: \.self) { y in
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(iron(horizontal: true))
+                        .frame(height: max(14, gap * 0.22))
+                        .shadow(color: .black.opacity(0.6), radius: 6, y: 4)
+                        .position(x: geo.size.width / 2, y: geo.size.height * y)
+                }
+            }
+            .offset(y: down || reduceMotion ? 0 : -geo.size.height - 60)
+            .opacity(reduceMotion && !down ? 0 : 1)
         }
         .ignoresSafeArea()
         .allowsHitTesting(false)
-        .onAppear { withAnimation(.easeIn(duration: 1.35)) { gone = true } }
+        .onAppear {
+            // Heavy and quick, with a small bounce as it hits the floor —
+            // the store slams the door as it lands.
+            withAnimation(reduceMotion ? .easeOut(duration: 0.3) : .spring(response: 0.34, dampingFraction: 0.62)) { down = true }
+        }
+        .transition(reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity))
+    }
+
+    private func bar(width: CGFloat, height: CGFloat) -> some View {
+        RoundedRectangle(cornerRadius: width / 2)
+            .fill(iron(horizontal: false))
+            .frame(width: width, height: height)
+            .shadow(color: .black.opacity(0.65), radius: 8, x: 4)
+    }
+
+    /// Dark iron, lit from the left (or above) by the desk lamp.
+    private func iron(horizontal: Bool) -> LinearGradient {
+        LinearGradient(colors: [Color(hex: 0x6B7486), Color(hex: 0x2A3140), Color(hex: 0x11151E)],
+                       startPoint: horizontal ? .top : .leading, endPoint: horizontal ? .bottom : .trailing)
+    }
+}
+
+/// The plane out at 42: a big one, climbing slowly out across the screen
+/// on a curve, a contrail behind it and the sky warming as it goes.
+private struct PlaneAway: View {
+    /// Seconds from the bottom-left to off the top-right.
+    static let flight = 2.8
+
+    @State private var start = Date.now
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        TimelineView(.animation) { timeline in
+            let t = timeline.date.timeIntervalSince(start) / Self.flight
+            ZStack {
+                // Sunrise behind it, up and gone again with the plane.
+                LinearGradient(colors: [Noir.fugitive.opacity(0.42), Noir.fugitive.opacity(0.08), .clear],
+                               startPoint: .bottom, endPoint: .top)
+                    .opacity(max(0, sin(.pi * min(1, t))))
+                if reduceMotion {
+                    plane(size: 150)
+                        .opacity(max(0, sin(.pi * min(1, t))))
+                } else {
+                    Canvas { context, size in draw(in: &context, size: size, t: t) } symbols: {
+                        plane(size: Self.size).tag(0)
+                    }
+                }
+            }
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+        .transition(.opacity)
+    }
+
+    /// The glyph's point size, before the climb shrinks it.
+    private static let size: CGFloat = 120
+
+    private func plane(size: CGFloat) -> some View {
+        Image(systemName: "airplane")
+            .font(.system(size: size))
+            .foregroundStyle(Noir.card)
+            .shadow(color: Noir.fugitive.opacity(0.75), radius: 16)
+    }
+
+    private func draw(in context: inout GraphicsContext, size: CGSize, t: Double) {
+        // Rolls slowly at first, then climbs away.
+        func along(_ t: Double) -> Double { 0.3 * t + 0.7 * t * t }
+        let a = CGPoint(x: -0.2 * size.width, y: 0.88 * size.height)
+        let c = CGPoint(x: 0.5 * size.width, y: 0.82 * size.height)
+        let b = CGPoint(x: 1.25 * size.width, y: -0.05 * size.height)
+        func point(_ u: Double) -> CGPoint {
+            let v = 1 - u
+            return CGPoint(x: v * v * a.x + 2 * v * u * c.x + u * u * b.x,
+                           y: v * v * a.y + 2 * v * u * c.y + u * u * b.y)
+        }
+        let u = along(min(t, 1.3))
+        let here = point(u)
+        // Bigger on a big screen; smaller as it climbs away.
+        let scale = min(1.5, max(0.9, min(size.width, size.height) / 360)) * (1.25 - 0.5 * min(u, 1))
+
+        // The contrail: a tapering line along the path it just flew.
+        let steps = 28
+        let tail = max(0, u - 0.32)
+        for i in 0..<steps {
+            let u0 = tail + (u - tail) * Double(i) / Double(steps)
+            let u1 = tail + (u - tail) * Double(i + 1) / Double(steps)
+            var segment = Path()
+            segment.move(to: point(u0))
+            segment.addLine(to: point(u1))
+            let k = Double(i + 1) / Double(steps)
+            context.stroke(segment, with: .color(Noir.card.opacity(0.5 * k)),
+                           style: StrokeStyle(lineWidth: 2 + 10 * k * scale, lineCap: .round))
+        }
+
+        guard let symbol = context.resolveSymbol(id: 0) else { return }
+        let ahead = point(u + 0.01)
+        var flying = context
+        flying.translateBy(x: here.x, y: here.y)
+        flying.rotate(by: .radians(atan2(ahead.y - here.y, ahead.x - here.x)))
+        flying.scaleBy(x: scale, y: scale)
+        flying.draw(symbol, at: .zero, anchor: .center)
     }
 }
 

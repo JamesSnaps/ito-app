@@ -55,6 +55,10 @@ final class FugitiveStore {
         let id = UUID()
         let text: String
         let kind: Kind
+        /// Under the verdict, at the end: "You win" on your own phone.
+        var line: String? = nil
+        /// The game's last stamp: bigger, and it lands harder.
+        var ending = false
     }
 
     private(set) var animating = false
@@ -63,6 +67,8 @@ final class FugitiveStore {
     private(set) var shakes = 0
     /// The plane out, across the map, at an escape.
     private(set) var flyingAway = false
+    /// The cell door slammed over the desk, at a catch.
+    private(set) var lockingUp = false
     /// The opening deal: hands fan in.
     private(set) var dealing = false
     /// Hideouts already in the game but not yet slid onto the trail.
@@ -88,6 +94,8 @@ final class FugitiveStore {
         return Array(repeating: nil, count: max(0, game.handCount(role) - (incomingBacks[role] ?? 0)))
     }
 
+    /// Whether the polls are getting through, for "Reconnecting…".
+    let connection = PollHealth()
     /// The server, this phone (offline) or a nearby host.
     @ObservationIgnored let transport: any FugitiveTransport
     @ObservationIgnored private let tokens: FugitiveTokens
@@ -171,7 +179,7 @@ final class FugitiveStore {
         guard !busy, !gone else { return }
         let asked = askingToken
         do {
-            let fresh = try await transport.fugitiveState(code: code, token: asked)
+            let fresh = try await connection.track { try await transport.fugitiveState(code: code, token: asked) }
             // Asked as someone the screen no longer shows (the folder opened,
             // a seat was taken): that answer is the wrong view of the game.
             if !busy, asked == askingToken { take(fresh, askedAs: asked) }
@@ -410,10 +418,11 @@ final class FugitiveStore {
         try? await Task.sleep(for: .milliseconds(Int(seconds * 1000)))
     }
 
-    private func show(_ text: String, _ kind: Stamp.Kind, for seconds: Double) async {
+    private func show(_ text: String, _ kind: Stamp.Kind, line: String? = nil, ending: Bool = false,
+                      for seconds: Double) async {
         // A cancelled play-out (a rematch) mustn't stamp the new game.
         guard !Task.isCancelled else { return }
-        stamp = Stamp(text: text, kind: kind)
+        stamp = Stamp(text: text, kind: kind, line: line, ending: ending)
         Sound.shared.play(.stamp)
         await pause(seconds)
         stamp = nil
@@ -471,20 +480,40 @@ final class FugitiveStore {
             sound.play(.siren)
             await show("Manhunt", .miss, for: 1.4)
         case "game_over":
+            let won = event.winner.flatMap { outcome($0) }
+            let line = won.map { $0 ? "You win" : "You lose" }
             if event.winner == .marshal {
+                // The bars come down, the door slams as they land, then the
+                // verdict over them.
+                lockingUp = true
+                await pause(0.32)
                 sound.play(.caught)
-                UINotificationFeedbackGenerator().notificationOccurred(.success)
-                await show("Caught", .found, for: 1.8)
+                UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                await pause(0.5)
+                UINotificationFeedbackGenerator().notificationOccurred(won == false ? .error : .success)
+                await show("Caught", .found, line: line, ending: true, for: 2.4)
+                // The bars lift off again, leaving the result on the desk.
+                withAnimation(.easeIn(duration: 0.45)) { lockingUp = false }
             } else {
+                // The plane takes its time across, and is still climbing out
+                // when the stamp lands.
                 sound.play(.escape)
                 flyingAway = true
-                await pause(1.4)
+                await pause(1.9)
+                UINotificationFeedbackGenerator().notificationOccurred(won == false ? .error : .success)
+                await show("Escaped", .escape, line: line, ending: true, for: 2.4)
                 flyingAway = false
-                await show("Escaped", .escape, for: 1.8)
             }
         default:
             await pause(0.1)
         }
+    }
+
+    /// Whether the winner is the one person this device plays for. A table,
+    /// or one device passed between both players, has nobody to tell.
+    private func outcome(_ winner: FugitiveRole) -> Bool? {
+        guard !device.pass, let mine = game?.viewerRole else { return nil }
+        return mine == winner
     }
 
     /// Your turn, on your own device, is worth a buzz — once per turn.

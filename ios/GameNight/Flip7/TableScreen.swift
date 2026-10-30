@@ -104,6 +104,7 @@ struct TableScreen: View {
         // Faces for the mats: a table opened from a link never passed the hub.
         .task { await Faces.shared.load() }
         .keepsScreenAwake()
+        .reconnecting(store.connection)
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { store.start() } else { store.stop() }
         }

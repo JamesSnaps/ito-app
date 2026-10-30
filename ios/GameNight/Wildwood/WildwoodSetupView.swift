@@ -92,8 +92,10 @@ struct WildwoodSetupView: View {
         .toolbarBackground(Woods.background, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .task {
-            await Faces.shared.load()
+            // Before the faces: on a poor signal their load sits out its
+            // timeout, and the switch should already be on by then.
             if !(await Connectivity.online()) { offline = true }
+            await Faces.shared.load()
         }
         .sheet(isPresented: $joiningNearby) {
             WildwoodNearbyJoinSheet { code in
@@ -222,6 +224,9 @@ struct WildwoodSetupView: View {
             WildwoodTokens().lastSetup = saved
             Sound.shared.play(.riffle)
             if offline { onOffline(payload.code) } else { onDealt(payload) }
+        } catch GameNightClient.Failure.unreachable {
+            offline = true
+            error = "Couldn’t reach the server, so Offline is on — deal again to play without it."
         } catch {
             self.error = error.localizedDescription
         }

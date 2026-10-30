@@ -20,6 +20,8 @@ final class WildwoodStore {
     private(set) var gone = false
     /// A short message to show and clear: a refused move, a lost seat.
     var notice: String?
+    /// Whether the polls are getting through, for "Reconnecting…".
+    let connection = PollHealth()
     /// Pass-and-play: whose hand the screen is showing.
     private(set) var shownAs: Int?
     /// "Last card!" said ahead of the play, for the turn it was said on.
@@ -148,7 +150,7 @@ final class WildwoodStore {
         guard !busy, !gone else { return }
         let asked = askingToken
         do {
-            let fresh = try await transport.wildwoodState(code: code, token: asked)
+            let fresh = try await connection.track { try await transport.wildwoodState(code: code, token: asked) }
             if !busy, asked == askingToken { take(fresh, askedAs: asked) }
         } catch let failure as GameNightClient.Failure where failure.status == 404 {
             gone = true

@@ -693,8 +693,17 @@ server's own pages in an in-app Safari sheet rather than being rebuilt.
   at a time — a drawn card is held out of the hand until it lands
   (`incomingCards` / `incomingBacks`), a new hideout slides onto the trail
   (`landing`), a find stamps FOUND, a miss stamps and shakes the trail, a
-  Manhunt washes the screen red and blue, an escape flies a plane off. Only a
-  fresh deal is dealt out.
+  Manhunt washes the screen red and blue. Only a fresh deal is dealt out.
+- **The endings** (app 1.13.0): a catch drops cell bars over the desk
+  (`CellBars`, `lockingUp`), the door slams as they land, and CAUGHT is
+  stamped over them; an escape flies a big plane slowly up across the
+  screen on a curve, with a contrail and a sunrise glow (`PlaneAway`, a
+  `Canvas` in a `TimelineView`, 2.8s; the `escape` sound is as long), and
+  ESCAPED lands while it's still climbing. The last stamp is bigger
+  (`Stamp.ending`) and knocks out a ring of ink, and on a device that holds
+  one seat it says "You win" / "You lose" (none on a table or a device passed
+  between both), with a success or error buzz to match. Reduce Motion fades
+  instead.
 - **The art is the web's, not a copy of it.** Card faces are PNGs rendered
   from `fugitive.js` by `ios/scripts/render_fugitive_cards.js` (into
   `Assets.xcassets/Fugitive`); mugshots and the city map are `Canvas` ports
@@ -764,6 +773,30 @@ phones side by side.
 - `NSLocalNetworkUsageDescription` and `NSBonjourServices`
   (`_gn-fugitive._tcp/_udp`) are in `project.yml` and the committed
   `Info.plist`; iOS asks before the first nearby game.
+
+### Poor signal (app 1.13.0)
+
+- **Offline is chosen by asking the server, not the phone.**
+  `Connectivity.online()` checks the phone has a network (NWPathMonitor)
+  *and* that `/healthz` answers within 2.5s (`GameNightClient.reachable`, a
+  hard limit: `timeoutInterval` only counts the gaps, so a trickle outlasts
+  it). The network alone said yes to one bar, a hotel's sign-in page and
+  Wi-Fi with its broadband down. Fugitive's and Wildwood's setup run it
+  when they open, after anything that needs no signal and before anything
+  that does, and only ever turn Offline *on*.
+- **A deal that can't reach the server turns Offline on** and says so;
+  dealing again plays without it. It doesn't deal offline by itself: with
+  "own phones" that's a nearby game, which the other phone has to join.
+- **Tables say "Reconnecting…"** (`PollHealth`, `.reconnecting(_:)` in
+  Support.swift) after two failed polls in a row, or a poll that's taken
+  more than 4s — on one bar a request hangs for its whole timeout before
+  failing. Any answer from the server, a refusal included, clears it, and a
+  poll cancelled by leaving the table doesn't count. Flip 7, Fugitive and
+  Wildwood all use it; an offline table never fails, and a dropped nearby
+  link shows it too.
+- **No global "offline mode" switch, deliberately.** Only Fugitive and
+  Wildwood can play offline and each has its own switch; everything else
+  needs the server, so a global switch would mostly turn things off.
 
 ### The table as a real deck (iOS)
 
@@ -1101,7 +1134,8 @@ the computer", takes your name, a seat (Swap roles) and Easy or Hard.
 - **Setup (iOS) is three plain choices**: Against (a friend / the computer),
   On (own phones / one device) or Plays (Easy / Hard), and Offline and
   Hints switches; `mode` is worked out from them. Offline turns itself on
-  when `Connectivity.online()` (NWPathMonitor) says there's no network. Two
+  when `Connectivity.online()` says the server is out of reach (see "Poor
+  signal"). Two
   columns on an iPad. The paper form uses light controls — dark segmented
   pickers washed out on it. Simulator taps on a SwiftUI Toggle need a
   slightly longer press (`duration: 0.2`) to register.
