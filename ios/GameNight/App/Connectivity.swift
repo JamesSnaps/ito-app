@@ -1,12 +1,21 @@
 import Foundation
 import Network
 
-/// Whether the device has a usable network right now — for choosing where a
+/// Whether a game can be kept on the server right now — for choosing where a
 /// game is kept before anyone has to find out the hard way.
 enum Connectivity {
+    /// The phone has a network, and the server answers on it within a couple
+    /// of seconds. The network alone said yes to one bar of signal, a hotel's
+    /// sign-in page or Wi-Fi whose broadband was down, and dealing then sat
+    /// out a ten-second timeout before saying "No signal?".
+    static func online() async -> Bool {
+        guard await hasNetwork() else { return false }
+        return await AppSettings.client.reachable()
+    }
+
     /// The current path, as soon as the system reports it (never longer than
-    /// a second; no answer counts as online, the way things were before).
-    nonisolated static func online() async -> Bool {
+    /// a second; no answer counts as a network, the way things were before).
+    nonisolated static func hasNetwork() async -> Bool {
         await withCheckedContinuation { continuation in
             let monitor = NWPathMonitor()
             let once = Once()

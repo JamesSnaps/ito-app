@@ -89,6 +89,30 @@ struct GameNightClient {
         baseURL.appendingPathComponent("flip7/play/\(code)")
     }
 
+    /// Whether the server answers, and soon: a phone can have a network that
+    /// doesn't reach it (one bar, a hotel's sign-in page, Wi-Fi whose
+    /// broadband is down). A hard limit, not the request's timeout — that
+    /// one only counts the gaps, so a trickle of a connection outlasts it.
+    func reachable(within seconds: Double = 2.5) async -> Bool {
+        var request = URLRequest(url: baseURL.appendingPathComponent("healthz"))
+        request.timeoutInterval = seconds
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        let session = session, probe = request
+        return await withTaskGroup(of: Bool.self) { group in
+            group.addTask {
+                guard let (_, response) = try? await session.data(for: probe) else { return false }
+                return (response as? HTTPURLResponse)?.statusCode == 200
+            }
+            group.addTask {
+                try? await Task.sleep(for: .milliseconds(Int(seconds * 1000)))
+                return false
+            }
+            let first = await group.next() ?? false
+            group.cancelAll()
+            return first
+        }
+    }
+
     // MARK: -
 
     static let decoder: JSONDecoder = {

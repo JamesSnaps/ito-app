@@ -123,10 +123,11 @@ struct FugitiveSetupView: View {
             }
         }
         .task {
-            // No connection (a plane, a dead spot): start on the offline game.
-            if !(await Connectivity.online()) { offline = true }
             // The offline game first: it needs no signal, so it mustn't wait for any.
             await checkOfflineResume()
+            // No connection, or none that reaches the server (a plane, a dead
+            // spot, one bar): start on the offline game.
+            if !(await Connectivity.online()) { offline = true }
             await Faces.shared.load()
             await checkResume()
         }
@@ -403,7 +404,8 @@ struct FugitiveSetupView: View {
             tokens.lastGame = payload.code
             onDealt(payload)
         } catch GameNightClient.Failure.unreachable {
-            error = "No signal? Turn on Offline and deal again."
+            offline = true
+            error = "Couldn’t reach the server, so Offline is on — deal again to play without it."
         } catch {
             self.error = error.localizedDescription
         }
@@ -442,7 +444,8 @@ struct FugitiveSetupView: View {
                 onDealt(sat)
             }
         } catch GameNightClient.Failure.unreachable {
-            error = "No signal? Turn on Offline and deal again."
+            offline = true
+            error = "Couldn’t reach the server, so Offline is on — deal again to play without it."
         } catch {
             self.error = error.localizedDescription
         }
