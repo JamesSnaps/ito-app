@@ -113,9 +113,6 @@ a selfie. Your face then shows up in every game — the setup pickers, the
 tables and the records. Add your other devices by scanning the QR on the
 "You" page. Photos are re-drawn by the server as small square JPEGs with
 nothing else from the file kept, and are visible to anyone using the site.
-New profiles are made at home, on the family Wi-Fi (the server is told the
-home networks by `GAMENIGHT_HOME_NETWORKS`); a device away from home joins
-an existing profile with "Add another device".
 
 ## Running it
 

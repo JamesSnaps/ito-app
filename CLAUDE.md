@@ -1538,13 +1538,13 @@ one thing besides the games that `app.py` registers), `templates/me.html`
   rules for them **above Game Night's home-network bypass** (admins
   `one_factor`, else `deny`), so it asks for a login at home too. A child's
   own token can't change it (a test checks). Linked from the hub's footer.
-- **New profiles only at home** (v1.26.0): with `GAMENIGHT_HOME_NETWORKS`
-  set (the compose file sets it to Authelia's home-bypass list), `POST
-  /api/profiles` refuses anyone outside them (403, "made at home"). Unset
-  (development, tests) there's no lock. `profiles.where()` gives "home",
-  "away" or None for any request; the address is the last
-  `X-Forwarded-For` hop (ProxyFix trusts one: Traefik's), so a client can't
-  claim to be home. Joining an existing profile by link still works away.
+- **Home or away** (v1.26.0): `GAMENIGHT_HOME_NETWORKS` (the compose file
+  sets it to Authelia's home-bypass list) lets `profiles.where()` say
+  "home", "away" or None (unset: development, tests) for any request. The
+  address is the last `X-Forwarded-For` hop (ProxyFix trusts one:
+  Traefik's), so a client can't claim to be home. Only the Activity log
+  uses it. Profiles can be made from anywhere (decided 31 October 2026: a
+  home-only lock was built and dropped).
 - **Where faces show**: the hub's "You" chip; Flip 7's setup chips, a
   "Regulars — tap to add" picker (scorekeeper and play), the table's mats
   and the records; Fugitive's setup picker, nameplates, seats ("That's me —

@@ -378,10 +378,9 @@ def _me_or_403():
 FAMILY_GROUP = "admins"
 FAMILY_ENV = "GAMENIGHT_FAMILY"
 # The home networks, as the docker repo's compose file sets them (the same
-# list as Authelia's home bypass): "10.0.10.0/24 10.0.4.0/24 ...". When set,
-# new profiles can only be made from them, and games can tell a shift played
-# at home from one played away. Unset (development, tests): no lock, and
-# nothing is known about where anyone is.
+# list as Authelia's home bypass): "10.0.10.0/24 10.0.4.0/24 ...". Games use
+# them to tell a shift played at home from one played away. Unset
+# (development, tests): nothing is known about where anyone is.
 HOME_ENV = "GAMENIGHT_HOME_NETWORKS"
 
 
@@ -487,14 +486,8 @@ def api_list():
     return jsonify({"profiles": list_public()})
 
 
-NOT_AT_HOME = ("New profiles are made at home, on the family Wi-Fi. Already have one? "
-               "Open “You” on a phone that has it and tap “Add another device”.")
-
-
 @bp.route("/api/profiles", methods=["POST"])
 def api_create():
-    if where() == "away":
-        return jsonify({"error": NOT_AT_HOME}), 403
     body = request.get_json(silent=True)
     if not isinstance(body, dict):
         return jsonify({"error": "expected an object"}), 400

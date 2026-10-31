@@ -454,16 +454,16 @@ def test_activity_sums_people_and_airports():
     assert sum(d["family"] + d["guests"] for d in data["days"]) == 3
 
 
-def test_new_profiles_are_only_made_at_home_once_home_networks_are_set(monkeypatch):
-    c = client()
-    assert c.post("/api/profiles", json={"name": "Anyone"}, environ_base={"REMOTE_ADDR": "81.2.69.160"}).status_code == 200
+def test_profiles_can_be_made_anywhere_and_shifts_say_where(monkeypatch):
     monkeypatch.setenv("GAMENIGHT_HOME_NETWORKS", HOME)
-    away = c.post("/api/profiles", json={"name": "Stranger"}, environ_base={"REMOTE_ADDR": "81.2.69.160"})
-    assert away.status_code == 403 and "at home" in away.get_json()["error"]
-    forged = c.post("/api/profiles", json={"name": "Stranger"}, environ_base={"REMOTE_ADDR": "81.2.69.160"},
-                    headers={"X-Forwarded-For": "10.0.10.5, 81.2.69.160"})
-    assert forged.status_code == 403
-    assert c.post("/api/profiles", json={"name": "Cousin"}, environ_base={"REMOTE_ADDR": "10.0.4.20"}).status_code == 200
+    c = client()
+    away = c.post("/api/profiles", json={"name": "Cousin"}, environ_base={"REMOTE_ADDR": "81.2.69.160"})
+    assert away.status_code == 200
+    forged = {"X-Forwarded-For": "10.0.10.5, 81.2.69.160"}                # a client can't claim home
+    c.post("/final-approach/api/shifts", json=shift(device="0a0b0c0d"), headers={**forged, "X-Profile-Token": away.get_json()["token"]},
+           environ_base={"REMOTE_ADDR": "81.2.69.160"})
+    from games.final_approach import game
+    assert game.activity()[0]["where"] == "away"
 
 
 def test_the_game_page_asks_whos_playing():

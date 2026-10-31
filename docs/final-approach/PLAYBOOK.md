@@ -301,8 +301,8 @@ Game Night.
 
 - [x] Who's playing: a browser without a profile is asked once; guests'
   shifts kept anonymously for the owner's Activity page (who, when, how
-  far, where people struggle); time and last played on the records; new
-  profiles only made at home (v1.26.0)
+  far, where people struggle); time and last played on the records
+  (v1.26.0)
 - [x] Free play on any cleared airport: length, traffic, aircraft, low
   fuel, storms, wind shifts and emergencies, each toggle appearing once its
   airport is taught; tagged on the records, never ranked (v1.25.0)
