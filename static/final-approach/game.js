@@ -198,9 +198,53 @@
     for (const [type, w] of entries) if ((roll -= w) <= 0) return type;
     return entries[0][0];
   }
+  // Where a storm will be `t` seconds from now. Storms drift in straight
+  // lines and bounce off the edges, so this is exact, not a guess.
+  function stormAt(st, t) {
+    let x = st.x, y = st.y, vx = st.vx, vy = st.vy;
+    const m = st.r * 0.6, step = 0.1;
+    for (let k = 0; k < t; k += step) {
+      x += vx * step; y += vy * step;
+      if ((x < m && vx < 0) || (x > W - m && vx > 0)) vx = -vx;
+      if ((y < m && vy < 0) || (y > H - m && vy > 0)) vy = -vy;
+    }
+    return { x, y };
+  }
+
+  // An arrival must never meet a storm before you've had a chance to route
+  // it: checked from the moment its marker appears until it has been in the
+  // air for SAFE_FLIGHT seconds, flying straight as it will until you draw.
+  const SAFE_FLIGHT = 5;
+  function clearOfStorms(x, y, heading, speed, lead) {
+    for (let t = 0; t <= SAFE_FLIGHT; t += 0.25) {
+      const px = x + Math.cos(heading) * speed * t, py = y + Math.sin(heading) * speed * t;
+      for (const st of S.storms) {
+        const at = stormAt(st, lead + t);
+        if (dist(px, py, at.x, at.y) < st.r * 0.8 + 30) return false;
+      }
+    }
+    return true;
+  }
+
+  // The HUD's plates sit over the top of the map. An arrival's marker must
+  // never hide under one, so those stretches of the top edge are off limits.
+  function underHud(x, y) {
+    if (y > 0) return false;
+    const r = canvas.getBoundingClientRect();
+    const sx = r.left + view.x + x * view.scale;
+    for (const plate of document.querySelectorAll('#hud .plate')) {
+      const b = plate.getBoundingClientRect();
+      if (!b.width) continue;
+      if (sx > b.left - 40 && sx < b.right + 40) return true;
+    }
+    return false;
+  }
+
   function queueArrival() {
     const type = pickType();
-    for (let attempt = 0; attempt < 8; attempt++) {
+    const lead = S.level.traffic.warning || 2;
+    let fallback = null;
+    for (let attempt = 0; attempt < 24; attempt++) {
       const side = Math.floor(Math.random() * 4);
       const along = Math.random();
       let x, y;
@@ -208,14 +252,19 @@
       else if (side === 1) { x = W + 30; y = lerp(80, H - 80, along); }
       else if (side === 2) { x = lerp(80, W - 80, along); y = H + 30; }
       else { x = -30; y = lerp(80, H - 80, along); }
-      const crowded = S.planes.some(p => dist(p.x, p.y, x, y) < 150) ||
-                      S.incoming.some(s => dist(s.x, s.y, x, y) < 150) ||
-                      S.storms.some(s => dist(s.x, s.y, x, y) < s.r + 60);
-      if (crowded && attempt < 7) continue;
       const tx = lerp(W * 0.3, W * 0.7, Math.random()), ty = lerp(H * 0.3, H * 0.7, Math.random());
-      S.incoming.push({ type, x, y, heading: Math.atan2(ty - y, tx - x), t: 2 });
-      return;
+      const heading = Math.atan2(ty - y, tx - x);
+      if (underHud(x, y)) continue;
+      if (!clearOfStorms(x, y, heading, TYPES[type].speed, lead)) continue;
+      const arrival = { type, x, y, heading, t: lead, lead };
+      const crowded = S.planes.some(p => dist(p.x, p.y, x, y) < 150) ||
+                      S.incoming.some(s => dist(s.x, s.y, x, y) < 150);
+      if (!crowded) { S.incoming.push(arrival); return true; }
+      fallback = fallback || arrival;
     }
+    // Crowded is acceptable when nothing better turned up; into a storm never is.
+    if (fallback) { S.incoming.push(fallback); return true; }
+    return false;
   }
   function spawnPlane(s) {
     const T = TYPES[s.type];
@@ -223,7 +272,7 @@
     S.planes.push({
       id: S.nextId++, type: s.type, T, x: s.x, y: s.y, heading: s.heading, rot: s.heading,
       path: [], landing: null, state: 'fly', fuel, maxFuel: fuel, odo: 0,
-      entered: false, warn: false, t: Math.random() * 10, landT: 0, alt: 1, scale: 1, alpha: 1,
+      entered: false, warn: false, t: Math.random() * 10, age: 0, landT: 0, alt: 1, scale: 1, alpha: 1,
       trail: [], trailT: 0,
     });
     sfx.spawn();
@@ -255,8 +304,8 @@
       const airborne = S.planes.filter(p => p.state === 'fly').length + S.incoming.length;
       const needed = L.endless || S.landed + airborne < L.target;
       if (airborne < L.traffic.maxPlanes && needed) {
-        queueArrival();
-        S.spawnTimer = spawnInterval();
+        // Every way in blocked by storms: try again in a moment.
+        S.spawnTimer = queueArrival() ? spawnInterval() : 1;
       } else {
         S.spawnTimer = 1;
       }
@@ -300,6 +349,7 @@
 
   function updateFlight(p, dt) {
     p.t += dt;
+    p.age += dt;
     p.fuel -= dt;
     let step = p.T.speed * dt;
     while (step > 0 && p.path.length) {
@@ -373,6 +423,7 @@
   }
 
   function divert(p, why) {
+    p.divertedBy = why;
     p.state = 'divert';
     p.path = [];
     p.landing = null;
@@ -491,21 +542,40 @@
     return { x: (e.clientX - r.left - view.x) / view.scale, y: (e.clientY - r.top - view.y) / view.scale };
   }
 
-  canvas.addEventListener('pointerdown', e => {
-    if (S.screen !== 'play') return;
-    const w = toWorld(e);
-    let best = null, bestD = Math.max(40, 34 / view.scale);  // generous for fingers
+  // A touch picks the nearest of: an aircraft (start a fresh route) or the
+  // end of an unfinished route (carry it on). A near-tie goes to the
+  // aircraft, so the gesture everyone learns first never changes meaning.
+  function pickAt(w) {
+    const reach = Math.max(40, 34 / view.scale);  // generous for fingers
+    let best = null, bestD = reach;
     for (const p of S.planes) {
       if (p.state !== 'fly') continue;
       const d = dist(p.x, p.y, w.x, w.y);
-      if (d < bestD) { best = p; bestD = d; }
+      if (d < bestD) { best = { plane: p, end: null }; bestD = d; }
     }
-    if (!best) return;
+    for (const p of S.planes) {
+      if (p.state !== 'fly' || p.landing || !p.path.length) continue;
+      const e = p.path[p.path.length - 1];
+      const d = dist(e.x, e.y, w.x, w.y);
+      if (d < bestD - 4) { best = { plane: p, end: e }; bestD = d; }
+    }
+    return best;
+  }
+
+  canvas.addEventListener('pointerdown', e => {
+    if (S.screen !== 'play') return;
+    const w = toWorld(e);
+    const pick = pickAt(w);
+    if (!pick) return;
     e.preventDefault();
     canvas.setPointerCapture(e.pointerId);
-    best.path = [];
-    best.landing = null;
-    S.drawing = { plane: best, pointerId: e.pointerId, last: { x: best.x, y: best.y }, done: false };
+    const p = pick.plane;
+    if (!pick.end) {
+      p.path = [];
+      p.landing = null;
+    }
+    const from = pick.end || { x: p.x, y: p.y };
+    S.drawing = { plane: p, pointerId: e.pointerId, last: { x: from.x, y: from.y }, done: false, extending: !!pick.end };
     extendRoute(w);
   });
   canvas.addEventListener('pointermove', e => {
@@ -585,7 +655,9 @@
     for (const p of landing) Art.aircraftShadow(ctx, p);
     for (const p of landing) Art.aircraft(ctx, p, p.t, th.night);
     for (const st of S.storms) Art.storm(ctx, st, t);
-    for (const p of air) if (p.state === 'fly') Art.route(ctx, p, p.T.color);
+    // Route-end handles at least 22 CSS pixels across, like the markers.
+    const handleR = Math.max(6.5, 11 / view.scale);
+    for (const p of air) if (p.state === 'fly') Art.route(ctx, p, p.T.color, t, S.drawing && S.drawing.plane === p, handleR);
     for (const p of air) Art.trail(ctx, p);
     for (const p of air) Art.aircraftShadow(ctx, p);
     for (const p of air) {
@@ -594,7 +666,9 @@
       if (p.state === 'fly') drawStatus(p, t, 'over');
     }
     drawConflicts(t);
-    for (const s of S.incoming) Art.incoming(ctx, s, t, TYPES[s.type].color);
+    // At least 30 CSS pixels across on any screen, so a phone shows it.
+    const markerR = Math.max(16, 16 / view.scale);
+    for (const s of S.incoming) Art.incoming(ctx, s, t, TYPES[s.type].color, markerR);
     Art.cloudLayer(ctx, S.sky, false);
     if (S.snow.length) Art.drawSnow(ctx, S.snow);
     for (const e of S.effects) Art.effect(ctx, e);
@@ -891,5 +965,5 @@
   });
 
   // Exposed for automated tests only.
-  window.__finalApproach = { S, LEVELS, runwayEnd };
+  window.__finalApproach = { S, LEVELS, runwayEnd, update, queueArrival, clearOfStorms, stormAt };
 })();

@@ -112,7 +112,11 @@ Every feature should serve at least one of these and harm none.
   the edge of the map.
 - **Fuel:** a gauge ring appears below 40% and flashes red below 15%.
 - **Storms:** flying inside 80% of a storm cell's radius diverts the
-  aircraft.
+  aircraft. An arrival never enters on a path that meets a storm in its
+  first five seconds of flight (storm movement is predicted exactly), so a
+  storm only catches aircraft you've had time to route.
+- **Warning:** an arrival's marker shows three seconds ahead on the first
+  three airports, two after that.
 - **Wind shifts:** five seconds' warning, then every runway reverses. Any
   aircraft on approach to a runway's old end has to go around.
 - **Traffic:** the gap between arrivals eases from the airport's start
@@ -286,7 +290,7 @@ Game Night.
 
 ---
 
-## 5. Current state (v1.18.0)
+## 5. Current state (v1.19.0)
 
 **Done:**
 
@@ -296,9 +300,15 @@ Game Night.
 - [x] Painted terrain, airport complexes, approach lights, shaded aircraft, weather effects
 - [x] Arrivals board, boarding pass, flap HUD and toasts, synthesised sound
 - [x] Part of the Game Night hub, with a tile, tests and docs
+- [x] Carry on a route from its end; bigger arrival markers with a countdown,
+  never under the HUD; three seconds' warning early on; storm-safe arrivals
+  (v1.19.0)
 
 **First family play** (31 October 2026): James and Louis played it and
-think it's great. Their requests are in Phase 3.
+think it's great. Their requests are in Phase 3; the first ones shipped in
+v1.19.0. They also found that a storm could sit where an arrival came in
+and divert it instantly, which broke the "always a warning" pillar. Fixed
+in v1.19.0.
 
 **Known rough edges:**
 
@@ -505,7 +515,7 @@ instead of starting it again. All four are here.
 
 **Controls**
 
-- **Carry on a route from its end.** Touching the end of an aircraft's
+- ✅ **Carry on a route from its end** (v1.19.0). Touching the end of an aircraft's
   unfinished route (the white ring) continues that route; touching the
   aircraft still starts a fresh one, exactly as now. Fixing a route
   shouldn't mean redrawing all of it.
@@ -526,8 +536,8 @@ instead of starting it again. All four are here.
 
 **Seeing what's coming**
 
-- **Bigger arrival markers.** Today an arrival is a small circle (radius
-  11) with a chevron, two seconds ahead. Make it:
+- ✅ **Bigger arrival markers** (v1.19.0). An arrival was a small circle
+  (radius 11) with a chevron, two seconds ahead. Now it's:
   - at least 30 CSS pixels across on any screen, sized from `view.scale`
     rather than fixed world units, so it reads on a phone
   - the arriving aircraft's own silhouette in its colour, pointing the way
@@ -535,6 +545,8 @@ instead of starting it again. All four are here.
   - ringed by a band that fills over the warning, so you can see *when* it
     arrives, not just where
   - three seconds' warning on the first airports, two later
+  - never under the HUD's plates (those stretches of the top edge are off
+    limits)
 - **A "large aircraft" setting** that draws aircraft 25% bigger on phones.
   Drawing only: separation distances stay the same, so the game doesn't
   get harder or easier.
@@ -562,10 +574,27 @@ warm, mid-century, never shrill.
   - a deeper boom for a collision, and radio static as an aircraft diverts
 - **The flap board** gets a better clack: a short wooden tick, and a rattle
   when many tiles turn at once.
-- **Synthesised first,** with WebAudio like the rest of Game Night: nothing
-  to licence or download. If a sound can't be made convincing that way, a
-  small bundled public-domain (CC0) sample is the fallback, decided sound by
-  sound and noted here.
+- **Where the sounds come from** (to decide; see open questions):
+  - **Synthesised live** (WebAudio, as in the rest of Game Night) for
+    anything that has to vary as you play: engines panned with each
+    aircraft, the flap board, radio garble, alerts. Nothing to licence or
+    download.
+  - **Generated once, then bundled**, for the set pieces where realism
+    matters: touchdown, the airport chime, the landscape beds (ElevenLabs'
+    sound-effects generator), and two or three music tracks (Suno), such as
+    a board theme, a calm shift and a busy shift, cross-faded by traffic.
+    Generated on a developer's machine, saved as small AAC/MP3 files under
+    `static/final-approach/audio/`, and loaded from our own server, so the
+    no-internet rule holds. **Never called from the game at runtime**: that
+    would put an API key in every browser and a third party in every shift.
+    Licences need checking against the plan used: free tiers are
+    non-commercial with conditions, and paid tiers give ownership. The repo
+    is public, so bundled files are effectively published.
+  - **Not** `Citedy/game-sounds` (suggested 31 October 2026): the code is
+    MIT-licensed but the sounds are clips from copyrighted games and films,
+    which nobody can license to us, and it would break "our own game".
+  - A small bundled public-domain (CC0) sample stays the fallback for any
+    single sound neither approach gets right.
 
 **Music**
 
@@ -740,8 +769,10 @@ play:
 | Approach must be lined up | It makes the angle of approach the skill, and the approach lights make it readable. |
 | A collision ends the shift; diversions are strikes | Collisions are the cardinal sin; fuel and weather are pressure, so they forgive twice. |
 | Arrivals announced two seconds ahead | Calm tension: you always get a warning. |
+| No arrival may meet a storm in its first five seconds | Storm movement is predictable, so the game can promise it; failure should always follow a warning (pillar 2). |
 | Route ends are handles: touch the end to carry on, the aircraft to start again | Fixing a route shouldn't mean redrawing it, and the gesture everyone already knows keeps its meaning. |
-| Sound and music synthesised first; small CC0 samples only where synthesis falls short | As in Game Night's other games: nothing to licence or download. A sample is a per-sound exception, recorded here. |
+| No sounds from other games (e.g. `Citedy/game-sounds`) | They're copyrighted clips whatever the repo's code licence says, and the game is our own. |
+| Generated audio (ElevenLabs, Suno) only ever as bundled files, never runtime API calls | Keeps API keys out of browsers and third parties out of play; works on the LAN with no internet. |
 | Departures are the next big mechanic | The shared runway is the heart of real ATC, and it reuses the terminals, taxiways and wind rules already built. |
 | Departures take two taps (release, then clear for takeoff) | Keeps the game readable at a glance; routing departures to exit gates comes later. |
 | Advanced features are toggles in free play, never in the career | Career airports teach one idea at a time, so their rules are part of the design; free play is where you mix your own. |
@@ -754,6 +785,10 @@ play:
 | The World Tour starts with Heathrow, then Thessaloniki, then Paris CDG | The family's own airports, most flown first; Heathrow's simple layout makes it the right trial. |
 
 ## 9. Open questions
+
+- **Sound sources.** All synthesised, or synthesised for live sounds plus
+  ElevenLabs set pieces and Suno music, bundled? If generated, on which
+  plan, given the repo is public?
 
 - **Accent colour.** Vermilion (`#e8553f`) is close-ish to Wildwood's
   orange on the hub. Is amber (the board's colour) better?

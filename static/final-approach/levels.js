@@ -7,6 +7,7 @@
 // traffic.interval  [start, end] seconds between arrivals; eases toward `end` as the level progresses
 // traffic.maxPlanes cap on aircraft in the air at once (including ones about to arrive)
 // traffic.fuel      seconds of fuel an arrival has (+/- a little)
+// traffic.warning   seconds an arrival's marker shows before it appears (default 2)
 
 // Landscape palettes. `farm` themes get a patchwork of fields and hedgerows; `desert` gets dunes and rock.
 const THEMES = {
@@ -56,7 +57,7 @@ const LEVELS = [
     id: 1, code: 'MDS', name: 'Meadow Strip', theme: 'meadow', target: 6,
     hint: 'Drag from a plane to draw its route. Bring it in along the yellow approach lights to land on the strip.',
     runways: [{ kind: 'short', x: 380, y: 320, angle: 0, length: 200 }],
-    traffic: { types: { prop: 1 }, interval: [8, 6], maxPlanes: 3, fuel: 100 },
+    traffic: { types: { prop: 1 }, interval: [8, 6], maxPlanes: 3, fuel: 100, warning: 3 },
   },
   {
     id: 2, code: 'TWF', name: 'Twin Fields', theme: 'meadow', target: 10,
@@ -65,7 +66,7 @@ const LEVELS = [
       { kind: 'long', x: 280, y: 390, angle: 0, length: 320 },
       { kind: 'short', x: 640, y: 190, angle: 180, length: 190 },
     ],
-    traffic: { types: { prop: 1, jet: 1 }, interval: [7, 4.5], maxPlanes: 4, fuel: 90 },
+    traffic: { types: { prop: 1, jet: 1 }, interval: [7, 4.5], maxPlanes: 4, fuel: 90, warning: 3 },
   },
   {
     id: 3, code: 'RTW', name: 'Rotor Wash', theme: 'coast', target: 14,
@@ -75,7 +76,7 @@ const LEVELS = [
       { kind: 'short', x: 600, y: 150, angle: 90, length: 170 },
       { kind: 'pad', x: 730, y: 430 },
     ],
-    traffic: { types: { prop: 1, jet: 1, heli: 0.9 }, interval: [6.5, 4], maxPlanes: 5, fuel: 90 },
+    traffic: { types: { prop: 1, jet: 1, heli: 0.9 }, interval: [6.5, 4], maxPlanes: 5, fuel: 90, warning: 3 },
   },
   {
     id: 4, code: 'XRD', name: 'Crossroads', theme: 'desert', target: 16,

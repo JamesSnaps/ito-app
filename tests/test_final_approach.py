@@ -80,6 +80,12 @@ def test_every_level_has_a_theme_a_code_and_runways():
         assert code not in codes, code
         codes.add(code)
         assert "runways: [" in entry
+    # An arrival's warning, where an airport sets one, is long enough to see
+    # and short enough not to clutter the edges.
+    for entry in entries:
+        warning = re.search(r"warning: ([\d.]+)", entry)
+        if warning:
+            assert 2 <= float(warning.group(1)) <= 4
     # Exactly one endless mode, and it says what unlocks it.
     endless = [e for e in entries if "endless: true" in e]
     assert len(endless) == 1 and "unlock:" in endless[0]

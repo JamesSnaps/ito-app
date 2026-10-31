@@ -814,7 +814,8 @@ const Art = (() => {
     ctx.restore();
   }
 
-  function route(ctx, p, color) {
+  function route(ctx, p, color, t, active, handleR) {
+    const hr = handleR || 6.5;
     if (!p.path.length) return;
     ctx.save();
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
@@ -825,12 +826,18 @@ const Art = (() => {
     ctx.lineWidth = 5.2; ctx.strokeStyle = 'rgba(15,20,25,0.35)'; ctx.stroke();
     ctx.lineWidth = 3.2; ctx.strokeStyle = p.landing ? color : 'rgba(255,255,255,0.95)'; ctx.stroke();
     ctx.setLineDash([]);
-    const e = p.path[p.path.length - 1];
     if (!p.landing) {
-      ctx.lineWidth = 3.5; ctx.strokeStyle = 'rgba(15,20,25,0.35)';
-      ctx.beginPath(); ctx.arc(e.x, e.y, 4.5, 0, TAU); ctx.stroke();
-      ctx.lineWidth = 1.8; ctx.strokeStyle = '#ffffff';
-      ctx.beginPath(); ctx.arc(e.x, e.y, 4.5, 0, TAU); ctx.stroke();
+      // The end of an unfinished route is a handle: grab it to carry on.
+      const e = p.path[p.path.length - 1];
+      const pulse = active ? 0 : (Math.sin((t || 0) * 4) + 1) / 2;
+      ctx.fillStyle = hexA(color, 0.22 + 0.18 * pulse);
+      ctx.beginPath(); ctx.arc(e.x, e.y, hr * (1.4 + pulse * 0.3), 0, TAU); ctx.fill();
+      ctx.lineWidth = hr * 0.6; ctx.strokeStyle = 'rgba(15,20,25,0.4)';
+      ctx.beginPath(); ctx.arc(e.x, e.y, hr, 0, TAU); ctx.stroke();
+      ctx.lineWidth = hr * 0.34; ctx.strokeStyle = '#ffffff';
+      ctx.beginPath(); ctx.arc(e.x, e.y, hr, 0, TAU); ctx.stroke();
+      ctx.fillStyle = color;
+      ctx.beginPath(); ctx.arc(e.x, e.y, hr * 0.4, 0, TAU); ctx.fill();
     }
     ctx.restore();
   }
@@ -849,20 +856,26 @@ const Art = (() => {
     ctx.restore();
   }
 
-  function incoming(ctx, s, t, color) {
-    const x = Math.max(18, Math.min(W - 18, s.x)), y = Math.max(18, Math.min(H - 18, s.y));
+  // An arrival about to appear: its own silhouette in a dark disc at the
+  // edge, pointing the way it will fly, with a band that fills as it nears.
+  const MARKER_SPAN = { prop: 33, jet: 36, heavy: 48, heli: 30 };
+  function incoming(ctx, s, t, color, r) {
+    const x = Math.max(r + 4, Math.min(W - r - 4, s.x)), y = Math.max(r + 4, Math.min(H - r - 4, s.y));
+    const done = Math.max(0, Math.min(1, 1 - s.t / (s.lead || 2)));
     ctx.save();
     ctx.translate(x, y);
-    const k = (t * 1.6) % 1;
-    ctx.strokeStyle = hexA(color, 0.7 * (1 - k)); ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.arc(0, 0, 11 + k * 14, 0, TAU); ctx.stroke();
-    ctx.fillStyle = 'rgba(20,24,28,0.82)';
-    ctx.beginPath(); ctx.arc(0, 0, 11, 0, TAU); ctx.fill();
-    ctx.strokeStyle = color; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.arc(0, 0, 11, 0, TAU); ctx.stroke();
-    ctx.rotate(s.heading);
-    ctx.fillStyle = color;
-    ctx.beginPath(); ctx.moveTo(6, 0); ctx.lineTo(-4, -5.5); ctx.lineTo(-1.5, 0); ctx.lineTo(-4, 5.5); ctx.closePath(); ctx.fill();
+    const k = (t * 1.4) % 1;
+    ctx.strokeStyle = hexA(color, 0.65 * (1 - k)); ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(0, 0, r * (1.05 + k * 0.9), 0, TAU); ctx.stroke();
+    ctx.fillStyle = 'rgba(20,24,28,0.86)';
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.fill();
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = 'rgba(255,255,255,0.18)'; ctx.lineWidth = r * 0.16;
+    ctx.beginPath(); ctx.arc(0, 0, r * 0.88, 0, TAU); ctx.stroke();
+    ctx.strokeStyle = color;
+    ctx.beginPath(); ctx.arc(0, 0, r * 0.88, -Math.PI / 2, -Math.PI / 2 + TAU * Math.max(0.02, done)); ctx.stroke();
+    const spr = sprite(s.type, 'body');
+    stamp(ctx, spr, 0, 0, s.heading, (r * 1.25) / MARKER_SPAN[s.type]);
     ctx.restore();
   }
 
