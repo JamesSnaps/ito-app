@@ -584,12 +584,43 @@ The weather is decoration plus storms today. Make it a system:
 
 - The OpenStreetMap import script, the attribution, and the level data under
   ODbL.
-- First a single airport as a trial, ideally the family's home airport,
-  to judge how real layouts play once fitted into 960×600.
-- Then the World Tour chapter: famous tricky airports and family
-  destinations.
+- **The family's airports first**, in this order: Heathrow, Thessaloniki,
+  Paris Charles de Gaulle (see "The family's airports" below). Heathrow is
+  the trial for judging how real layouts play once fitted into 960×600.
+- Then famous tricky airports.
 - **Done when:** five real airports are playable and each is recognisable
   to someone who's flown from it.
+
+#### The family's airports
+
+What OpenStreetMap had for each (queried 2026-10-31), and how each could
+play:
+
+| Airport | Runways in the map data | How it could play |
+|---|---|---|
+| **London Heathrow** (LHR / EGLL), the family's most flown | Two parallel east–west runways, 09L/27R (3.6 km) and 09R/27L (3.3 km), about 1.4 km apart, terminals between them; one helipad | The trial import: simple geometry, and the most recognisable. Heathrow really lands on one runway and departs from the other, swapping them in the afternoon, so with departures (Phase 4) it gets a **runway alternation** timer, like a wind shift. The reservoirs to the south-west and the M25 to the west make the landscape. |
+| **Thessaloniki** (SKG / LGTS) | Two **crossing** runways: 10/28 (3.4 km, built out into the Thermaic Gulf) and 16/34 (2.4 km); two helipads | Crossing runways (like Crossroads) on a coast landscape: sea along the gulf side, and a natural home for seaplanes once they exist. Friendlier than Heathrow. |
+| **Paris Charles de Gaulle** (CDG / LFPG) | **Four** parallel runways in two pairs (09L/27R and 09R/27L north, 08L/26R and 08R/26L south), about 3.5 km between the pairs; a heliport | The hardest of the three: two pairs of runways close together, with arrivals and departures split between them. A World Tour finale or a checkride. |
+
+**Lessons from that first query, for the import script:**
+
+- **Use the map's runway numbers (`ref`), don't compute them.** They're
+  magnetic designators, while the painter works numbers out from the true
+  heading (`designator()` in `art.js`). An imported runway carries its real
+  number, and the painter should prefer it.
+- **Skip runways without a number.** Each airport also had several
+  unnumbered "runways" 300–600 m long, probably stopways or blast pads at
+  the ends.
+- **Mapped lengths run a little short** of published figures (Heathrow's
+  09L comes out at 3.6 km against 3.9 km published), presumably because some
+  runway ends are drawn differently. That doesn't matter at game scale.
+- **The query server (Overpass) needs an identifying User-Agent** (406
+  without one) and times out at busy moments (502), so the script should
+  identify itself, pause between airports and retry. It runs on a
+  developer's machine, never in the game.
+- **Scale:** about 8–9 m per world unit fits each airport's runways into
+  960×600 with room for approaches. At that scale a 3.6 km runway is about
+  400 units, and Heathrow's runways sit about 155 units apart.
 
 ### Phase 11: together
 
@@ -638,13 +669,12 @@ The weather is decoration plus storms today. Make it a system:
 | Gameplay colours are never customisable | Colour tells you where an aircraft lands; cosmetics stay off it. |
 | Carriers are levels, not a theme | A theme is a paint job over a fixed layout; a carrier is the layout. |
 | Real airports from OpenStreetMap, not satellite imagery | Licences, resolution, the no-internet rule and the art style all rule out photos; map data painted in our style keeps the look. |
+| The World Tour starts with Heathrow, then Thessaloniki, then Paris CDG | The family's own airports, most flown first; Heathrow's simple layout makes it the right trial. |
 
 ## 9. Open questions
 
 - **Accent colour.** Vermilion (`#e8553f`) is close-ish to Wildwood's
   orange on the hub. Is amber (the board's colour) better?
-- **The first real airport.** Which one does the family fly from most?
-  That's the World Tour trial (Phase 10).
 - **Tools in ranked play.** None at all, or one fixed loadout for
   everyone?
 - **Career without a profile.** Allow it on the device only (my
