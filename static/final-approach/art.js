@@ -225,16 +225,21 @@ const Art = (() => {
     ctx.restore();
   }
 
+  // "Large aircraft" (a setting): draw everything flying a quarter bigger.
+  // Drawing only; separation distances don't change.
+  let boost = 1;
+  function setBoost(k) { boost = k; }
+
   function aircraftShadow(ctx, p) {
     const alt = p.alt == null ? 1 : p.alt;
     ctx.save();
     ctx.globalAlpha = (p.alpha == null ? 1 : p.alpha) * (0.2 + 0.12 * (1 - alt));
-    stamp(ctx, sprite(p.type, 'shadow'), p.x + 9 * alt + 1, p.y + 12 * alt + 1, p.rot, (p.scale || 1) * (1 - 0.08 * alt));
+    stamp(ctx, sprite(p.type, 'shadow'), p.x + 9 * alt + 1, p.y + 12 * alt + 1, p.rot, (p.scale || 1) * boost * (1 - 0.08 * alt));
     ctx.restore();
   }
 
   function aircraft(ctx, p, t, night) {
-    const s = p.scale || 1;
+    const s = (p.scale || 1) * boost;
     ctx.save();
     ctx.globalAlpha = p.alpha == null ? 1 : p.alpha;
     stamp(ctx, sprite(p.type, 'body'), p.x, p.y, p.rot, s);
@@ -765,6 +770,25 @@ const Art = (() => {
     ctx.restore();
   }
 
+  // A shape per runway kind, so colour is never the only cue:
+  // ▲ short strip, ■ long runway, ● helipad. On a dark disc, always upright.
+  function glyph(ctx, kind, x, y, r, color) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.fillStyle = 'rgba(20,24,28,0.85)';
+    ctx.beginPath(); ctx.arc(0, 0, r * 1.2, 0, TAU); ctx.fill();
+    ctx.fillStyle = color;
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+    ctx.lineWidth = Math.max(0.8, r * 0.14);
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    if (kind === 'short') { ctx.moveTo(0, -r * 0.72); ctx.lineTo(r * 0.72, r * 0.52); ctx.lineTo(-r * 0.72, r * 0.52); ctx.closePath(); }
+    else if (kind === 'long') ctx.rect(-r * 0.58, -r * 0.58, r * 1.16, r * 1.16);
+    else ctx.arc(0, 0, r * 0.62, 0, TAU);
+    ctx.fill(); ctx.stroke();
+    ctx.restore();
+  }
+
   function approach(ctx, end, color, t, highlight, night) {
     ctx.save();
     if (end.kind === 'pad') {
@@ -812,6 +836,9 @@ const Art = (() => {
       }
     }
     ctx.restore();
+    // The runway's shape, just beyond the farthest light, standing upright.
+    const far = 8 + n * gap + 9;
+    glyph(ctx, end.kind, end.x - Math.cos(end.angle) * far, end.y - Math.sin(end.angle) * far, 6.5, color);
   }
 
   function route(ctx, p, color, t, active, handleR) {
@@ -859,7 +886,7 @@ const Art = (() => {
   // An arrival about to appear: its own silhouette in a dark disc at the
   // edge, pointing the way it will fly, with a band that fills as it nears.
   const MARKER_SPAN = { prop: 33, jet: 36, heavy: 48, heli: 30 };
-  function incoming(ctx, s, t, color, r) {
+  function incoming(ctx, s, t, color, r, kind) {
     const x = Math.max(r + 4, Math.min(W - r - 4, s.x)), y = Math.max(r + 4, Math.min(H - r - 4, s.y));
     const done = s.held ? 1 : Math.max(0, Math.min(1, 1 - s.t / (s.lead || 2)));
     ctx.save();
@@ -876,6 +903,7 @@ const Art = (() => {
     ctx.beginPath(); ctx.arc(0, 0, r * 0.88, -Math.PI / 2, -Math.PI / 2 + TAU * Math.max(0.02, done)); ctx.stroke();
     const spr = sprite(s.type, 'body');
     stamp(ctx, spr, 0, 0, s.heading, (r * 1.25) / MARKER_SPAN[s.type]);
+    if (kind) glyph(ctx, kind, r * 0.78, r * 0.78, r * 0.34, color);
     ctx.restore();
   }
 
@@ -1053,6 +1081,6 @@ const Art = (() => {
   return {
     COLORS, mulberry32, buildTerrain, sprite, icon, aircraft, aircraftShadow, approach, route, trail,
     incoming, storm, stormSprite, sky, updateSky, cloudLayer, snowfall, updateSnow, drawSnow, effect,
-    foam, vignette, designator, hexA,
+    foam, vignette, designator, hexA, glyph, setBoost,
   };
 })();

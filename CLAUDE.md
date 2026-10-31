@@ -1363,6 +1363,39 @@ it current when you do (its "Current state" and roadmap especially).
   - The sound function is `playSound`, not `play`: `play()` starts a shift,
     and a function named the same in the same scope replaced it once (every
     effect started a new shift until the stack overflowed).
+- **Family records** (v1.22.0). `POST /final-approach/api/shifts` records a
+  finished shift for the profile whose token is in `X-Profile-Token` (403
+  without one): the *profile's* name, whatever the body says, so nobody
+  posts as someone else. `parse_shift` checks it against the airport,
+  read from levels.js by `airports()` (one source of truth), and works the
+  stars out itself; a shift id already seen counts once (the page retries
+  from an outbox in its save, so retries are expected). The stats bucket
+  keeps per player: best stars per airport, best landed, shifts, landed,
+  `endless_best` and `endless_best_calm` apart (calm skies never ranks), plus
+  the last 12 shifts. `/final-approach/stats` is the records page in the
+  board's style; `/api/stats` feeds it and the game, which merges your stars
+  and bests into its save on load, so progress follows the profile to a
+  new device. Records are public like the other games'; no admin route, so
+  nothing new for the Authelia rule.
+  - **`GN` is a `const` in profiles.js, so it's a global name but not
+    `window.GN`.** The first version tested `window.GN`, found nothing, and
+    treated every device as a guest. Test it with `typeof GN`.
+  - **Local runs write to the repo's `data/`** (gitignored): `core/paths`
+    has no environment override, so a `DATA_DIR=` on the command line does
+    nothing. Clear test profiles out of `data/` after a local check.
+- **Settings sheet** (v1.22.0): sound on/off, effects/voices/music volumes
+  (`save.vol`; the old music switch migrates to volume 0), large aircraft
+  (`Art.setBoost(1.25)`, drawing only), vibration (`buzz()`; Android only,
+  iPhones ignore it) and **calm skies**: the simulation steps at 0.75×, the
+  music stays on its calm track, and the shift is marked `assisted`. It
+  still earns stars (personal progress) but never ranks. Two columns on a
+  phone held sideways, so it fits without scrolling.
+- **Runway-kind shapes** (▲ short, ■ long, ● pad; `Art.glyph`) beyond each
+  active approach's lights, on arrival markers and in the briefing legend,
+  so colour is never the only cue.
+- **The first airport teaches without words**: until the first landing on
+  Meadow Strip (`save.taught`), a ghost finger drags from the arriving plane
+  along the approach (`drawGhost`).
 - **`window.__finalApproach`** exposes the state for Playwright checks,
   plus `update` (step the simulation, e.g. ten minutes in a loop),
   `queueArrival`, `clearOfStorms`, `stormAt`, `clearOfTraffic`, `track`
