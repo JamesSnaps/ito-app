@@ -297,6 +297,9 @@ Game Night.
 - [x] Arrivals board, boarding pass, flap HUD and toasts, synthesised sound
 - [x] Part of the Game Night hub, with a tile, tests and docs
 
+**First family play** (31 October 2026): James and Louis played it and
+think it's great. Their requests are in Phase 3.
+
 **Known rough edges:**
 
 - **Balance hasn't been played by hand.** Traffic intervals, fuel and
@@ -493,20 +496,99 @@ groundwork for career progress following your profile.
 - **Done when:** two profiles on two devices see each other's Endless bests
   on the board, and a profile's stars appear on a second device.
 
-### Phase 3: feel, balance and access
+### Phase 3: feel, sound and balance
 
-- Play every airport by hand on a phone and tune `traffic` per airport.
-  Record the numbers here.
+**First family play** (31 October 2026, James and Louis): "we think it's
+great". They asked for bigger markers for incoming aircraft, music,
+better sound effects to match the visuals, and a way to carry on a route
+instead of starting it again. All four are here.
+
+**Controls**
+
+- **Carry on a route from its end.** Touching the end of an aircraft's
+  unfinished route (the white ring) continues that route; touching the
+  aircraft still starts a fresh one, exactly as now. Fixing a route
+  shouldn't mean redrawing all of it.
+  - The end ring becomes a proper handle: bigger, and pulsing gently while
+    it can be grabbed.
+  - A touch goes to whichever is nearest, an aircraft or a route end. A
+    tie goes to the aircraft, so the gesture everyone already knows never
+    changes meaning.
+  - Only unfinished routes have a handle. A route already locked onto a
+    runway has none; to change it, start again from the aircraft.
+  - It's small: a second kind of touch target in `pointerdown`, and
+    `extendRoute` starting from the route's last point instead of the
+    aircraft. About 30 lines, plus a staged scene to check it.
 - **Teach without words on airport 1:** a ghost finger drawing the first
   route, until the first landing.
 - **Haptics** (`navigator.vibrate` where there is one) on conflict, lock
   and divert.
+
+**Seeing what's coming**
+
+- **Bigger arrival markers.** Today an arrival is a small circle (radius
+  11) with a chevron, two seconds ahead. Make it:
+  - at least 30 CSS pixels across on any screen, sized from `view.scale`
+    rather than fixed world units, so it reads on a phone
+  - the arriving aircraft's own silhouette in its colour, pointing the way
+    it will fly, instead of a chevron
+  - ringed by a band that fills over the warning, so you can see *when* it
+    arrives, not just where
+  - three seconds' warning on the first airports, two later
+- **A "large aircraft" setting** that draws aircraft 25% bigger on phones.
+  Drawing only: separation distances stay the same, so the game doesn't
+  get harder or easier.
 - **Shapes as well as colours:** a small runway-kind glyph on each
   aircraft's arrival marker and on the runway's end (▲ short, ■ long, ● pad),
   so colour is never the only cue.
-- A settings sheet: sound, music, haptics, left-handed HUD.
-- **Done when:** someone new lands their first plane without help, and the
-  game holds 60fps on the family's oldest phone.
+
+**Sound**
+
+Today it's a handful of beeps. The aim is sound that matches the art:
+warm, mid-century, never shrill.
+
+- **An airfield bed per landscape,** quiet and looping: wind and birdsong
+  in the meadow, surf on the coast, a dry wind in the desert, muffled wind
+  in the snow, crickets at night.
+- **Aircraft you can hear:** a soft engine for each type (the prop's buzz,
+  a jet's whoosh, the heavy's rumble, the rotor's thud), panned left or
+  right with the aircraft's position and mixed down as traffic grows.
+- **Moments:**
+  - a radio click and a few garbled syllables of "controller" when a route
+    locks onto a runway
+  - a tyre chirp and a reverse-thrust roar at touchdown
+  - an airport chime when a shift starts, and again when it's cleared
+  - a two-tone traffic alert for a conflict, replacing the beep
+  - a deeper boom for a collision, and radio static as an aircraft diverts
+- **The flap board** gets a better clack: a short wooden tick, and a rattle
+  when many tiles turn at once.
+- **Synthesised first,** with WebAudio like the rest of Game Night: nothing
+  to licence or download. If a sound can't be made convincing that way, a
+  small bundled public-domain (CC0) sample is the fallback, decided sound by
+  sound and noted here.
+
+**Music**
+
+- A generative lounge score in the travel-poster spirit: Rhodes or
+  vibraphone chords, a walking bass, brushed drums. Synthesised live, so it
+  never audibly loops.
+- **It follows the traffic:** sparse with one or two aircraft, fuller and a
+  little quicker as the sky fills, a tense layer while two aircraft are in
+  conflict, and a resolving phrase when a shift is cleared. The board gets
+  its own calmer version.
+- Separate volumes for music and sound effects.
+
+**Balance and settings**
+
+- Play every airport by hand on a phone and tune `traffic` per airport.
+  Record the numbers here.
+- A settings sheet: sound, music, haptics, large aircraft, left-handed HUD.
+
+**Done when:**
+- someone new lands their first plane without help
+- Louis can see every arrival coming, on a phone
+- you can follow a shift by ear alone
+- it holds 60fps on the family's oldest phone
 
 ### Phase 4: departures
 
@@ -637,8 +719,6 @@ play:
 - **iOS app:** a tile opening `/final-approach/` in the in-app Safari sheet,
   like Flip 7's Keep score, with the screen kept awake. Consider a native
   port only if web performance on iPhone falls short.
-- **Music:** a synthesised ambient score rising with traffic, like
-  Fugitive's on iOS.
 - **Offline:** Game Night has deliberately no service worker. This game
   would genuinely work offline, so if we want it on a plane, decide
   whether a worker scoped to `/final-approach/` is worth the exception.
@@ -660,6 +740,8 @@ play:
 | Approach must be lined up | It makes the angle of approach the skill, and the approach lights make it readable. |
 | A collision ends the shift; diversions are strikes | Collisions are the cardinal sin; fuel and weather are pressure, so they forgive twice. |
 | Arrivals announced two seconds ahead | Calm tension: you always get a warning. |
+| Route ends are handles: touch the end to carry on, the aircraft to start again | Fixing a route shouldn't mean redrawing it, and the gesture everyone already knows keeps its meaning. |
+| Sound and music synthesised first; small CC0 samples only where synthesis falls short | As in Game Night's other games: nothing to licence or download. A sample is a per-sound exception, recorded here. |
 | Departures are the next big mechanic | The shared runway is the heart of real ATC, and it reuses the terminals, taxiways and wind rules already built. |
 | Departures take two taps (release, then clear for takeoff) | Keeps the game readable at a glance; routing departures to exit gates comes later. |
 | Advanced features are toggles in free play, never in the career | Career airports teach one idea at a time, so their rules are part of the design; free play is where you mix your own. |
