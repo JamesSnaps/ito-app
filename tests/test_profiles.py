@@ -232,7 +232,27 @@ def test_the_profile_page_renders_and_explains_photos_are_shared():
 ADMIN = {"Remote-User": "james", "Remote-Groups": "admins,family"}
 
 
-def test_the_family_page_needs_an_admin_sign_in():
+import pytest  # noqa: E402
+
+
+@pytest.fixture
+def family_on(monkeypatch):
+    """The server's word that Authelia guards /family (the compose file sets it)."""
+    monkeypatch.setenv("GAMENIGHT_FAMILY", "authelia")
+
+
+def test_the_family_page_is_off_until_the_server_says_authelia_guards_it():
+    """Before the docker rules route /family through forward-auth, Traefik
+    passes a forged Remote-User straight through, so the headers alone
+    prove nothing. Without the setting, even an admin's headers are refused."""
+    c = client()
+    profile, _ = make(c, "Louis")
+    assert c.get("/family", headers=ADMIN).status_code == 403
+    assert c.post(f"/api/family/{profile['id']}", json={"kid": True}, headers=ADMIN).status_code == 403
+    assert c.post("/api/family/nobody", json={"kid": True}, headers=ADMIN).status_code == 403
+
+
+def test_the_family_page_needs_an_admin_sign_in(family_on):
     c = client()
     page = c.get("/family")
     assert page.status_code == 403 and "Only a grown-up signed in" in page.get_data(as_text=True)
@@ -243,7 +263,7 @@ def test_the_family_page_needs_an_admin_sign_in():
     assert c.get("/api/profiles").get_json()["profiles"][0]["kid"] is False
 
 
-def test_an_admin_marks_a_childs_profile_and_everyone_can_see_it():
+def test_an_admin_marks_a_childs_profile_and_everyone_can_see_it(family_on):
     c = client()
     profile, token = make(c, "Louis")
     body = c.get("/family", headers=ADMIN).get_data(as_text=True)
@@ -258,7 +278,7 @@ def test_an_admin_marks_a_childs_profile_and_everyone_can_see_it():
     assert c.get("/api/profiles").get_json()["profiles"][0]["kid"] is False
 
 
-def test_a_child_cant_mark_themself_a_grown_up_with_their_own_token():
+def test_a_child_cant_mark_themself_a_grown_up_with_their_own_token(family_on):
     c = client()
     profile, token = make(c, "Louis")
     c.post(f"/api/family/{profile['id']}", json={"kid": True}, headers=ADMIN)
