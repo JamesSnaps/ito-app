@@ -1420,8 +1420,19 @@ it current when you do (its "Current state" and roadmap especially).
     always like-for-like. Bests from before v1.23.0 had no emergencies:
     `_endless()` reads the old `endless_best` as "off". Medals are counted
     per player and per shift, and can't outnumber landings.
-  - **Kid-safe by design so far**: every emergency here is for everyone.
-    The grown-up set and kids' profiles are the playbook's next step.
+  - **Grown-up emergencies** (v1.24.0): bird strike (an aircraft already
+    flying loses an engine: 65% speed, limited turning; only one clear of
+    everyone, by `birdStrike()`), engine fire (35s, flames, a 14s closure),
+    decompression (30s, 130% speed, flies low), gear failure (its route's
+    lock reserves the runway with foam, sending anyone else round; belly
+    landing with sparks and a 14s closure), hydraulic failure (0.45 rad/s
+    turning) and unruly passenger (40s; police drive out). Only when
+    `grownUpOK()`: a signed-in profile not marked as a child, with Settings'
+    "Grown-up emergencies" on. **Guests count as children**, so signing out
+    never unlocks them. Endless runs with them rank on their own boards
+    (`some-grownup`, `lots-grownup`; `endlessKey()`, fixed at the start of a
+    run as `S.endlessKey`).
+  - No hijacks or bomb threats, even for grown-ups (a family hub).
 - **`window.__finalApproach`** exposes the state for Playwright checks,
   plus `update` (step the simulation, e.g. ten minutes in a loop),
   `queueArrival`, `clearOfStorms`, `stormAt`, `clearOfTraffic`, `track`,
@@ -1436,7 +1447,7 @@ it current when you do (its "Current state" and roadmap especially).
   in is a tile opening `/final-approach/` in the Safari sheet, like Keep
   score (playbook roadmap).
 
-## Picnic Raid (added v1.24.0)
+## Picnic Raid (added v1.25.0)
 
 Our own game, made for the family the way Wildwood was: fill a picnic
 basket, pack it up to bank the points, and hide traps (Ants, Wasp, Seagull,
@@ -1529,6 +1540,21 @@ one thing besides the games that `app.py` registers), `templates/me.html`
 - **`profiles.json` follows the stats rules**: atomic writes with a `.bak`,
   a damaged file is never written over (503 via `DataUnavailable`) and reads
   fall back to the backup.
+- **A child's profile** (v1.24.0): `kid` on a profile, public in
+  `/api/profiles` so a game can read it (Final Approach keeps grown-up
+  emergencies from children and guests). Only the **Family page** sets it
+  (`/family`, `POST /api/family/<id>`), and only when the server has
+  `GAMENIGHT_FAMILY=authelia` (set by the compose file alongside the router
+  rule) **and** the request carries `Remote-User` with `admins` in
+  `Remote-Groups` (`family_signed_in()`). The setting is what makes it fail
+  closed: v1.24.0 trusted the headers alone, and on the live server a forged
+  `Remote-User` got through, because Traefik only strips client-sent headers
+  on routers that run forward-auth and /family wasn't on one yet (fixed in
+  v1.24.1, the same day). That only works because of the docker repo:
+  Traefik puts both paths on the `gamenight-admin` router, and Authelia has
+  rules for them **above Game Night's home-network bypass** (admins
+  `one_factor`, else `deny`), so it asks for a login at home too. A child's
+  own token can't change it (a test checks). Linked from the hub's footer.
 - **Where faces show**: the hub's "You" chip; Flip 7's setup chips, a
   "Regulars — tap to add" picker (scorekeeper and play), the table's mats
   and the records; Fugitive's setup picker, nameplates, seats ("That's me —
@@ -1692,7 +1718,9 @@ into `docker-compose.sh` as the `gamenight` group.
 
 - **Two Traefik routers on one host.** The host and admin surface goes
   through `auth@file` (Authelia): `/ito/host`, `/ito/settings`,
-  `/ito/api/topics*`, `/ito/api/stats/reset` and `/flip7/api/stats/reset`.
+  `/ito/api/topics*`, `/ito/api/stats/reset`, `/flip7/api/stats/reset`, and
+  (v1.24.0) the Family page, `/family` and `/api/family/`, which also has
+  its own Authelia rules above the home bypass (see Player profiles).
   Everything else is public — the hub, `/join`, the player and watch views,
   state polling, the Flip 7 scorekeeper and its record/board posts, and
   ito's room API (`/ito/api/rooms`, and draw/result/reset, which check the

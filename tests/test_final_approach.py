@@ -292,3 +292,20 @@ def test_the_game_page_has_settings_records_and_profiles():
                    'href="/final-approach/stats"', '/static/profiles.js', 'id="controller"'):
         assert needle in body, needle
     assert 'id="btn-mute"' not in body
+
+
+def test_grown_up_emergency_runs_rank_on_their_own_boards():
+    c = client()
+    james = profile(c, "James")
+    base = dict(level=10, outcome="crash", strikes=0, duration=300)
+    post(c, james, shift(landed=15, emergencies="some-grownup", **base))
+    post(c, james, shift(landed=11, emergencies="some", **base))
+    boards = c.get("/final-approach/api/stats").get_json()["leaderboards"]
+    assert [row["best"] for row in boards["some-grownup"]] == [15]
+    assert [row["best"] for row in boards["some"]] == [11]
+    assert "grown-up emergencies" in c.get("/final-approach/stats").get_data(as_text=True)
+
+
+def test_the_grown_up_switch_is_on_the_page_but_hidden_until_it_applies():
+    body = page()
+    assert 'id="set-grownup-row"' in body and 'class="set-row hidden" id="set-grownup-row"' in body

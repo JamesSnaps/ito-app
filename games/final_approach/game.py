@@ -41,7 +41,9 @@ def audio_names():
 RECENT_SHIFTS = 12
 # Endless is ranked per emergencies setting, so each board is like-for-like.
 # Runs from before emergencies existed (v1.23.0) count as "off".
-SETTINGS = ("some", "lots", "off")
+# Grown-ups' profiles can also have the grown-up emergencies mixed in; those
+# runs rank on their own boards too.
+SETTINGS = ("some", "lots", "off", "some-grownup", "lots-grownup")
 SEEN_IDS = 400
 MAX_LIVES = 3
 
