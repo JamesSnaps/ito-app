@@ -26,6 +26,7 @@ and photos on it. The /me page says so before a photo is taken.
 
 import hashlib
 import io
+import ipaddress
 import os
 import re
 import secrets
@@ -376,6 +377,36 @@ def _me_or_403():
 # everything, headers or not.
 FAMILY_GROUP = "admins"
 FAMILY_ENV = "GAMENIGHT_FAMILY"
+# The home networks, as the docker repo's compose file sets them (the same
+# list as Authelia's home bypass): "10.0.10.0/24 10.0.4.0/24 ...". Games use
+# them to tell a shift played at home from one played away. Unset
+# (development, tests): nothing is known about where anyone is.
+HOME_ENV = "GAMENIGHT_HOME_NETWORKS"
+
+
+def home_networks():
+    nets = []
+    for part in os.environ.get(HOME_ENV, "").replace(",", " ").split():
+        try:
+            nets.append(ipaddress.ip_network(part, strict=False))
+        except ValueError:
+            continue
+    return nets
+
+
+def where():
+    """"home" or "away" for this request, or None when no home networks are
+    set. The address is Traefik's (ProxyFix trusts one hop), so a client
+    can't claim to be at home with its own X-Forwarded-For."""
+    nets = home_networks()
+    if not nets:
+        return None
+    try:
+        address = ipaddress.ip_address(request.remote_addr or "")
+    except ValueError:
+        return "away"
+    return "home" if any(address in net for net in nets) else "away"
+
 
 
 def family_enabled():

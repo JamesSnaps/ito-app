@@ -40,7 +40,7 @@
       stars: {}, best: 0, bestCalm: 0, muted: false,
       vol: { sfx: 0.8, voice: 0.9, music: 0.8 },
       large: false, haptics: true, calm: false, taught: false, outbox: [],
-      emergencies: 'some', bestBy: {}, grownUp: true,
+      emergencies: 'some', bestBy: {}, grownUp: true, free: {},
     };
     let saved = {};
     try { saved = JSON.parse(localStorage.getItem(SAVE_KEY)) || {}; } catch { /* fresh start */ }
@@ -640,6 +640,80 @@
     }
     return L.emergencies || null;
   }
+  // ---------- free play ----------
+  // Any cleared airport, your way. The toggles build a new level object from
+  // the airport, which runs like any other; `free` on it means nothing is
+  // earned or ranked. A toggle only shows once the airport that teaches it
+  // has been cleared (or this airport has it anyway).
+  const cleared = id => (save.stars[id] || 0) > 0;
+  const TEACHES = { jet: 2, heli: 3, heavy: 8, fuel: 5, storms: 6, wind: 7, emergencies: 11 };
+  const TYPE_WEIGHT = { prop: 1, jet: 1, heavy: 0.6, heli: 0.8 };
+  const LANDS_ON = { prop: 'short', jet: 'long', heavy: 'long', heli: 'pad' };
+  const FREE_TRAFFIC = { light: { gap: 1.35, cap: -1 }, normal: { gap: 1, cap: 0 }, rush: { gap: 0.75, cap: 2 } };
+  const LOW_FUEL = 45, FULL_FUEL = 85, FREE_WIND = 45;
+  const canFree = L => !L.endless && cleared(L.id);
+  function freeDefaults(L) {
+    return {
+      length: 'shift', traffic: 'normal', types: Object.keys(L.traffic.types),
+      fuel: L.traffic.fuel < 60, storms: L.storms || 0, wind: !!L.windShift,
+      emergencies: L.emergencies ? (L.emergencies.every[0] < EMG_RATE.lots[1] ? 'lots' : 'some') : 'off',
+    };
+  }
+  // What can be changed at this airport, for this player.
+  function freeOptions(L) {
+    const has = kind => L.runways.some(r => r.kind === kind);
+    const own = L.traffic.types;
+    return {
+      types: ['prop', 'jet', 'heli', 'heavy'].filter(t => has(LANDS_ON[t]) && (t in own || t === 'prop' || cleared(TEACHES[t]))),
+      fuel: L.traffic.fuel < 60 || cleared(TEACHES.fuel),
+      storms: !!L.storms || cleared(TEACHES.storms),
+      wind: !!L.windShift || cleared(TEACHES.wind),
+      emergencies: !!L.emergencies || cleared(TEACHES.emergencies),
+    };
+  }
+  // The remembered choices, with anything not (or no longer) allowed reset.
+  function freeChoices(L) {
+    const d = freeDefaults(L), opts = freeOptions(L);
+    const c = Object.assign({}, d, (save.free || {})[L.id] || {});
+    if (!['shift', 'endless'].includes(c.length)) c.length = d.length;
+    if (!(c.traffic in FREE_TRAFFIC)) c.traffic = d.traffic;
+    c.types = (Array.isArray(c.types) ? c.types : []).filter(t => opts.types.includes(t));
+    if (!c.types.length) c.types = d.types;
+    for (const k of ['fuel', 'storms', 'wind', 'emergencies']) if (!opts[k]) c[k] = d[k];
+    c.fuel = !!c.fuel; c.wind = !!c.wind;
+    c.storms = clamp(Math.round(+c.storms) || 0, 0, 3);
+    if (!['off', 'some', 'lots'].includes(c.emergencies)) c.emergencies = d.emergencies;
+    return c;
+  }
+  function freePlayLevel(L, c) {
+    const t = L.traffic, tr = FREE_TRAFFIC[c.traffic];
+    const types = {};
+    for (const type of c.types) types[type] = t.types[type] || TYPE_WEIGHT[type];
+    return Object.assign({}, L, {
+      base: L, free: Object.assign({}, c, { types: c.types.slice() }), endless: c.length === 'endless',
+      storms: c.storms, windShift: c.wind ? (L.windShift || FREE_WIND) : 0,
+      emergencies: c.emergencies === 'off' ? undefined : { every: EMG_RATE[c.emergencies], first: 25 },
+      traffic: Object.assign({}, t, {
+        types,
+        interval: t.interval.map(v => v * tr.gap),
+        maxPlanes: Math.max(2, t.maxPlanes + tr.cap),
+        fuel: c.fuel ? Math.min(t.fuel, LOW_FUEL) : Math.max(t.fuel, FULL_FUEL),
+      }),
+    });
+  }
+  // "Rush · 2 storms · endless": a free-play run in a few words.
+  function freeSummary(c) {
+    const bits = [];
+    if (c.traffic !== 'normal') bits.push(c.traffic === 'rush' ? 'Rush' : 'Light traffic');
+    if (c.storms) bits.push(c.storms === 1 ? '1 storm' : `${c.storms} storms`);
+    if (c.wind) bits.push('wind shifts');
+    if (c.fuel) bits.push('low fuel');
+    if (c.emergencies !== 'off') bits.push(c.emergencies === 'lots' ? 'lots of emergencies' : 'emergencies');
+    if (c.length === 'endless') bits.push('endless');
+    const s = bits.join(' · ');
+    return s ? s[0].toUpperCase() + s.slice(1) : 'As usual';
+  }
+
   function emergencyActive() {
     return S.planes.some(p => p.emg && p.state === 'fly') || S.incoming.some(s => s.emg);
   }
@@ -1084,7 +1158,9 @@
     S.overTimer = delay;
     $('btn-pause').disabled = true;
     const L = S.level;
-    if (L.endless) {
+    if (L.free) {
+      S.newBest = false;          // free play: nothing to earn
+    } else if (L.endless) {
       if (S.assisted) {
         S.newBest = S.landed > (save.bestCalm || 0);
         if (S.newBest) save.bestCalm = S.landed;
@@ -1106,6 +1182,7 @@
       assisted: !!S.assisted,
       medals: S.medals,
       emergencies: L.emergencies === 'choice' ? (S.endlessKey || endlessKey()) : undefined,
+      free: L.free ? Object.assign({}, L.free, { types: L.free.types.slice() }) : undefined,
     });
   }
 
@@ -1122,37 +1199,61 @@
     if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
     return Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
   }
+  // A random tag for this browser, so the owner's Activity page can tell
+  // guests apart ("Guest 3F1A") without a name. It proves nothing, so it
+  // never signs anyone in.
+  function deviceTag() {
+    if (!/^[0-9a-f]{8}$/.test(save.device || '')) {
+      const bytes = new Uint8Array(4);
+      if (window.crypto && crypto.getRandomValues) crypto.getRandomValues(bytes);
+      else bytes.forEach((_, i) => { bytes[i] = Math.floor(Math.random() * 256); });
+      save.device = [...bytes].map(b => b.toString(16).padStart(2, '0')).join('');
+      persist();
+    }
+    return save.device;
+  }
+  // Every finished shift goes to the server: a profile's to the family
+  // records, a guest's (marked `guest`) only to the owner's Activity log.
   function recordShift(shift) {
     shift.id = newId();
-    if (!me()) { recordStatus[shift.id] = { state: 'guest' }; return shift.id; }
+    shift.device = deviceTag();
+    const mine = me();
+    if (mine) shift.profile = mine.id; else shift.guest = true;
     save.outbox = (save.outbox || []).concat([shift]).slice(-20);
     persist();
-    recordStatus[shift.id] = { state: 'sending' };
+    recordStatus[shift.id] = { state: mine ? 'sending' : 'guest' };
     flushOutbox();
     return shift.id;
   }
   let flushing = false;
   async function flushOutbox() {
-    if (flushing || !me() || !(save.outbox || []).length) return;
+    if (flushing || !(save.outbox || []).length) return;
     flushing = true;
     try {
       while ((save.outbox || []).length) {
         const shift = save.outbox[0];
+        const mine = me();
+        // Shifts queued before v1.26.0 carry neither mark: they were a profile's.
+        const asMe = !!mine && !shift.guest && (!shift.profile || shift.profile === mine.id);
+        const body = Object.assign({}, shift, { device: shift.device || deviceTag() });
+        delete body.guest; delete body.profile;
         let res;
         try {
           res = await fetch('/final-approach/api/shifts', {
             method: 'POST',
-            headers: Object.assign({ 'Content-Type': 'application/json' }, GN.me.headers()),
-            body: JSON.stringify(shift),
+            headers: Object.assign({ 'Content-Type': 'application/json' }, asMe ? GN.me.headers() : {}),
+            body: JSON.stringify(body),
           });
         } catch {
-          recordStatus[shift.id] = { state: 'kept' };
+          if (asMe) recordStatus[shift.id] = { state: 'kept' };
           break;                                   // offline: try again later
         }
-        const body = await res.json().catch(() => ({}));
-        if (res.ok) recordStatus[shift.id] = { state: 'ok', name: me() && me().name };
-        else if (res.status >= 500) { recordStatus[shift.id] = { state: 'kept' }; break; }
-        else recordStatus[shift.id] = { state: 'refused', error: body.error || 'the server said no' };
+        const reply = await res.json().catch(() => ({}));
+        if (res.status >= 500) { if (asMe) recordStatus[shift.id] = { state: 'kept' }; break; }
+        if (asMe) {
+          recordStatus[shift.id] = res.ok ? { state: 'ok', name: mine.name }
+            : { state: 'refused', error: reply.error || 'the server said no' };
+        }
         save.outbox.shift();
         persist();
       }
@@ -1675,7 +1776,7 @@
 
   // ---------- UI ----------
   const show = (id, on) => $(id).classList.toggle('hidden', !on);
-  const overlays = ['menu', 'brief', 'pause', 'result', 'settings'];
+  const overlays = ['menu', 'brief', 'pause', 'result', 'settings', 'free', 'guest'];
   function only(id) { for (const o of overlays) show(o, o === id); }
 
   const boards = {
@@ -1716,10 +1817,11 @@
     }
   }
 
+  const hudName = L => L.name + (L.free ? ' · free play' : '') + (save.calm ? ' · calm skies' : '');
   function setupHud(L) {
     for (const k in hudState) delete hudState[k];
     boards.code.set(L.code, { stagger: 60 });
-    $('hud-name').textContent = L.name + (save.calm ? ' · calm skies' : '');
+    $('hud-name').textContent = hudName(L);
     show('hud-wind', !!L.windShift);
     $('hud-landed-label').textContent = L.endless ? 'Landed' : 'Landed / target';
     updateHud();
@@ -1766,7 +1868,23 @@
     updateController();
     only('menu');
     if (actx) sfx.rattle();
+    askWhoIsPlaying();
   }
+
+  // Once per browser, a guest is asked who's playing: add yourself (on the
+  // hub's You page, then straight back) or carry on as a guest.
+  function askWhoIsPlaying() {
+    if (me() || save.guestOk) return;
+    S.screen = 'guest';
+    only('guest');
+    new Flap.Board($('guest-flaps'), 13).set("Who's playing", { stagger: 30 });
+  }
+  $('btn-guest-ok').addEventListener('click', () => {
+    save.guestOk = true;
+    persist();
+    S.screen = 'menu';
+    only('menu');
+  });
 
   // The Endless row: your best, and the family's best with their face.
   function refreshEndlessRow() {
@@ -1828,6 +1946,7 @@
     $('pass-target').textContent = L.endless ? '∞' : L.target;
     $('pass-hint').textContent = L.hint;
     $('stub-wx').textContent = weather(L);
+    show('btn-free', canFree(L));
     const legend = $('pass-legend');
     legend.textContent = '';
     for (const type of Object.keys(L.traffic.types)) {
@@ -1878,19 +1997,23 @@
     const titles = { win: 'Cleared', crash: 'Collision', strikes: 'Shift over' };
     only('result');
     new Flap.Board($('result-flaps'), titles[S.outcome].length).set(titles[S.outcome], { stagger: 40, maxSteps: 9 });
-    $('result-stars').innerHTML = win ? stars(S.lives, 'big') : '';
-    $('result-stars').classList.toggle('hidden', !win);
+    $('result-stars').innerHTML = win && !L.free ? stars(S.lives, 'big') : '';
+    $('result-stars').classList.toggle('hidden', !win || !!L.free);
     let text;
     const best = S.assisted ? save.bestCalm : save.bestBy[S.endlessKey || endlessKey()];
-    if (L.endless) text = `You landed ${S.landed}. ${S.newBest ? 'A new best!' : `Your best is ${best || S.landed}.`}`;
+    if (L.free && L.endless) text = `You landed ${S.landed}.`;
+    else if (L.free && win) text = S.lives === MAX_LIVES ? 'Every arrival down safely.' : `All down, with ${MAX_LIVES - S.lives} diverted.`;
+    else if (L.endless) text = `You landed ${S.landed}. ${S.newBest ? 'A new best!' : `Your best is ${best || S.landed}.`}`;
     else if (win) text = S.lives === MAX_LIVES ? 'Every arrival down safely. A perfect shift.' : `All down, with ${MAX_LIVES - S.lives} diverted. Fewer diversions earn more stars.`;
     else if (S.outcome === 'crash') text = `Two aircraft got too close. You landed ${S.landed} of ${L.target}.`;
     else text = `Three aircraft diverted. You landed ${S.landed} of ${L.target}.`;
-    if (S.medals) text += ` ${S.medals === 1 ? 'And a medal' : `And ${S.medals} medals`} for emergencies landed safely.`;
+    if (S.medals && !L.free) text += ` ${S.medals === 1 ? 'And a medal' : `And ${S.medals} medals`} for emergencies landed safely.`;
+    if (L.free) text += ` Free play: ${freeSummary(L.free).toLowerCase()}.`;
     $('result-text').textContent = text;
     const next = LEVELS[LEVELS.indexOf(L) + 1];
-    const canNext = win && next && !next.endless && isUnlocked(next);
+    const canNext = win && !L.free && next && !next.endless && isUnlocked(next);
     show('btn-next', canNext);
+    show('btn-result-free', !!L.free);
     showRecordLine();
     $('btn-retry').textContent = win ? 'Replay' : 'Try again';
     $('btn-retry').className = 'btn ' + (canNext ? 'ghost' : 'primary');
@@ -1907,6 +2030,58 @@
     S.screen = 'play';
     only(null);
   }
+
+  // ---------- free play sheet ----------
+  let freeBase = null, freeChoice = null;
+  function openFree(L) {
+    freeBase = L;
+    freeChoice = freeChoices(L);
+    const opts = freeOptions(L);
+    for (const btn of document.querySelectorAll('#free-types button')) btn.classList.toggle('hidden', !opts.types.includes(btn.dataset.v));
+    show('free-types-row', opts.types.length > 1);
+    for (const k of ['fuel', 'storms', 'wind', 'emergencies']) show(`free-${k}-row`, opts[k]);
+    $('free-sub').textContent = `${L.name}, your way. Free play earns no stars and never counts on a leaderboard.`;
+    if (S.level !== L) loadLevel(L);
+    S.screen = 'free';
+    only('free');
+    new Flap.Board($('free-flaps'), 9).set('Free play', { stagger: 30 });
+    showFree();
+  }
+  function showFree() {
+    const c = freeChoice;
+    for (const seg of document.querySelectorAll('#free .seg[data-k]')) {
+      const k = seg.dataset.k;
+      for (const b of seg.querySelectorAll('button')) {
+        const v = b.dataset.v;
+        const on = k === 'types' ? c.types.includes(v) : String(c[k]) === v;
+        b.classList.toggle('on', on);
+      }
+    }
+  }
+  for (const seg of document.querySelectorAll('#free .seg[data-k]')) {
+    for (const b of seg.querySelectorAll('button')) {
+      b.addEventListener('click', () => {
+        const k = seg.dataset.k, v = b.dataset.v, c = freeChoice;
+        if (k === 'types') {
+          const has = c.types.includes(v);
+          if (has && c.types.length === 1) return;     // something has to fly
+          c.types = has ? c.types.filter(t => t !== v) : c.types.concat([v]);
+        } else if (k === 'fuel' || k === 'wind') c[k] = v === 'true';
+        else if (k === 'storms') c[k] = +v;
+        else c[k] = v;
+        save.free = Object.assign({}, save.free, { [freeBase.id]: c });
+        persist();
+        showFree();
+      });
+    }
+  }
+  $('btn-free').addEventListener('click', () => openFree(S.level));
+  $('btn-free-back').addEventListener('click', () => openBrief(freeBase));
+  $('btn-free-start').addEventListener('click', () => {
+    loadLevel(freePlayLevel(freeBase, freeChoice));
+    play();
+  });
+  $('btn-result-free').addEventListener('click', () => openFree(S.level.base || S.level));
 
   // ---------- settings ----------
   function openSettings() {
@@ -1939,7 +2114,7 @@
     save.grownUp = $('set-grownup').checked;
     persist();
     Art.setBoost(save.large ? 1.25 : 1);
-    if (S.level) $('hud-name').textContent = S.level.name + (save.calm ? ' · calm skies' : '');
+    if (S.level) $('hud-name').textContent = hudName(S.level);
     audio(); applyVolumes();
     if (actx && musicWas !== musicOn()) { const name = scape.musicName; scape.musicName = null; setMusic(name); }
   }
@@ -1974,6 +2149,7 @@
       if (S.screen === 'play') pause();
       else if (S.screen === 'pause') resume();
       else if (S.screen === 'settings') closeSettings();
+      else if (S.screen === 'free') openBrief(freeBase);
     }
   });
 
@@ -2018,6 +2194,6 @@
       S.emgPending = emergencyChoices().find(([k]) => k === kind) || [kind, types[kind] || null];
       S.emgTimer = 0; S.spawnTimer = 0;
     },
-    grownUpOK, endlessKey,
+    grownUpOK, endlessKey, freeOptions, freeChoices, freePlayLevel, freeSummary, openFree,
     sound: { audio, load, buffers, scape, bus: () => bus } };
 })();

@@ -295,10 +295,17 @@ Game Night.
 
 ---
 
-## 5. Current state (v1.24.0)
+## 5. Current state (v1.26.0)
 
 **Done:**
 
+- [x] Who's playing: a browser without a profile is asked once; guests'
+  shifts kept anonymously for the owner's Activity page (who, when, how
+  far, where people struggle); time and last played on the records
+  (v1.26.0)
+- [x] Free play on any cleared airport: length, traffic, aircraft, low
+  fuel, storms, wind shifts and emergencies, each toggle appearing once its
+  airport is taught; tagged on the records, never ranked (v1.25.0)
 - [x] Core loop: route drawing, landing rule, separation, fuel, diversions, strikes
 - [x] Nine airports plus Endless; stars, unlocks and a best score saved on the device
 - [x] Storm cells, wind shifts, five landscapes (meadow, coast, desert, snow, night)
@@ -474,7 +481,8 @@ as a toggle.
   it.
 - **Wake turbulence:** nothing lands close behind a superjumbo on the same
   runway, so the order of landings matters.
-- **Holding patterns:** circle an aircraft in place (the Hold tool).
+- **Holding patterns:** circle an aircraft in place. Now planned as hold
+  fixes on the map (see "Disruptions" in the roadmap), not a tool.
 - **Moving runways:** a carrier's deck sails and turns.
 
 ### Radio dialogue ✅ (v1.21.0)
@@ -632,6 +640,10 @@ trademarked shapes.
 
 In order, but it can change. Each phase is one or more pull requests with
 its own version bump. "Done when" is the bar for ticking it off.
+
+**The order now** (31 October 2026): Phase 5 (free play, then conditions
+and the Passport), then **Disruptions** (after Phase 5), then Phase 4
+(departures), then on from Phase 6.
 
 ### Phase 1: in the hub ✅ (v1.18.0)
 
@@ -827,16 +839,252 @@ The first big new mechanic (section 6).
 - **Done when:** a teaching airport and two existing airports run arrivals
   and departures together, and a runway incursion is impossible to miss.
 
-### Phase 5: free play and conditions
+### Phase 5: free play and conditions (free play ✅ v1.25.0)
 
-- Free play for any cleared airport, with the toggles from section 6, each
-  appearing once its feature has been taught.
-- Endless on any airport. The ranked Endless keeps fixed settings.
-- Conditions: replay a cleared airport at dusk, night, in snow or in a
-  storm for extra stars. This reuses the existing landscapes and lighting.
-- Records carry the settings, and runs with custom toggles are shown apart.
-- **Done when:** every airport is replayable in at least three conditions,
-  and a custom run never appears on the ranked board.
+Planned 31 October 2026. Two parts, built and shipped in this order:
+free play first (it's the "try out different options" part, and it needs
+no new art), then conditions.
+
+**The split.** Conditions are *fixed* harder versions of an airport, so
+they're comparable and earn something. Free play is *your* rules, so it
+earns nothing and is never ranked: it's for trying things out.
+
+| | Conditions | Free play |
+|---|---|---|
+| What | Replay a cleared airport at dusk, at night, in snow or in a storm | Any cleared airport with your own toggles, as a shift or endless |
+| Rules | Fixed per condition | Yours |
+| Earns | A stamp per condition, 1 to 3 stars like a shift | Nothing; recorded and shown as "free play" |
+| Ranked | Shown on the records grid | Never |
+| Calm skies | Allowed, marked as now | Allowed, marked as now |
+
+#### Part A: free play ✅ (v1.25.0)
+
+**Where it lives.** A cleared airport's boarding pass gets a second button
+beside Board: **Free play**. It opens a sheet like Settings, with the
+toggles below and a Start button. The last choices are remembered per
+device. The board row for a cleared airport is unchanged; free play is
+always one tap further in, so the career path stays the obvious one.
+
+**The toggles.** Each appears only once the airport that teaches it has
+been cleared (section 6: free play never springs an unexplained rule):
+
+| Toggle | Values | Taught by | How it's built |
+|---|---|---|---|
+| Length | Shift (the airport's target) · Endless | always | Endless reuses the INF rules: no target, traffic eases over five minutes |
+| Traffic | Light · Normal · Rush | always | Light: arrival gaps ×1.35, one fewer in the air. Rush: gaps ×0.75, two more |
+| Aircraft | the airport's own mix, plus each type you've met | Twin Fields (jets), Rotor Wash (helicopters), Heavy Metal (heavies) | A type only spawns if the airport has somewhere it can land |
+| Low fuel | Off · On | Running on Fumes | Arrivals carry FUM's 45 seconds |
+| Storms | Off · 1 · 2 · 3 | Thunderheads | `makeStorm`, as now; the storm-safe arrival rules already cover any count |
+| Wind shifts | Off · On | Weathervane | Every 45 seconds |
+| Emergencies | Off · Some · Lots | Lifeline | Endless's control and rules, grown-up set included for adult profiles |
+
+Every toggle starts at the airport's own setting, so opening the sheet and
+pressing Start plays the normal airport with no stars at stake.
+
+**How it's built.** Free play doesn't add special cases to the game loop.
+`freePlayLevel(L, choices)` returns a new level object built from the
+airport and the toggles (traffic, `storms`, `windShift`, `emergencies`,
+`endless`), and `loadLevel` runs it like any other. The id stays the
+airport's id, so the painted terrain and runways are the same, and
+`S.mode = 'free'` stops `finish()` awarding stars or Endless bests.
+
+**Records.** A free-play shift is sent with its settings (`free`). The server checks every setting against a fixed list, keeps the
+shift in Recent shifts with a "free play" tag and a one-line summary
+("Rush · 2 storms · endless"), and counts it towards shifts and landed, but
+never stars, Endless boards or medals.
+
+**Done when:** every cleared airport can be played your way; a toggle you
+haven't been taught never shows; a free-play run never changes stars or a
+leaderboard.
+
+#### Part B: conditions (v1.26.0)
+
+**What each condition is.** Each changes how the airport looks *and* one
+rule about how it plays, so a stamp means something. Everything else (the
+target, the aircraft, the runways) is the airport as you cleared it.
+
+| Condition | Looks | Plays | Why it's fair |
+|---|---|---|---|
+| **Dusk** | The light fades through the shift: day at the start, golden light in the middle, night by the last few landings, with runway, building and aircraft lights coming on | **Evening rush:** in the last third of the shift, arrivals come 20% closer together | You can see it coming: the sky darkens as the rush builds |
+| **Night** | The airport's own landscape after dark, as on Night Shift | **Seen late:** arrival markers show one second later than usual | The marker still always shows before an aircraft appears |
+| **Snow** | The landscape under snow, snow falling, runways edged with ploughed snow | **Icy runways:** an approach must be lined up within 45° of the runway (70° normally) or the aircraft goes around | The approach lights show the line; a go-around isn't a strike |
+| **Storm** | A dark sky, rain, lightning | **Storm cells:** at least two, and one more than the airport normally has | The storm-safe arrival rules already guarantee no arrival is spawned into one |
+| **Fog** | A pale wash over the landscape, thicker at the edges; approach lights glowing through it | **Low-visibility approaches:** an aircraft has to fly its last stretch straight in, lined up with the runway, for twice as long as usual before it can land, or it goes around | The approach lights show exactly where the straight-in line starts |
+
+**Which airports offer which.** Every airport except Endless, but only
+the conditions that differ from how it already is:
+
+| Airport | Dusk | Night | Snow | Storm | Fog |
+|---|---|---|---|---|---|
+| Meadow Strip, Twin Fields, Rotor Wash, Running on Fumes, Lifeline | ✓ | ✓ | ✓ | ✓ (2 cells) | ✓ |
+| Crossroads (desert: no snow) | ✓ | ✓ | | ✓ (2) | ✓ |
+| Thunderheads | ✓ | ✓ | ✓ | ✓ (3) | ✓ |
+| Weathervane, Heavy Metal (already snow) | ✓ | ✓ | | ✓ (2) | ✓ |
+| Night Shift (already night) | | | ✓ | ✓ (2) | ✓ |
+
+Fog (added 31 October 2026) is the static version of Phase 7's fog banks:
+it changes how you land, not what you can see of the aircraft. Moving fog
+banks that hide aircraft stay in Phase 7.
+
+**When they unlock.** An airport's conditions appear once you've cleared
+that airport. Storm also needs Thunderheads cleared, because storm cells
+are taught there (the same rule as free play's toggles). Dusk, Night and
+Snow bring rules no airport teaches, so the pass explains the rule in one
+line when you pick one, and the first time you play it the hint shows
+again at the start.
+
+**Stars and stamps.** A condition plays like the airport's normal shift:
+land the target, and earn 3 stars minus diversions. Clearing it earns that
+condition's **stamp**, holding your best stars for it. Stamps are counted
+apart from the airport stars: the board's total stays "N / 30" with
+"12 stamps" beside it, and the records page shows each person's stamps per
+airport. Calm skies is allowed and marked, as it is for normal shifts.
+
+**How it's built.** The terrain is painted once per level from a theme
+palette, so conditions are palette transforms, not new art:
+- `Art.nightTheme(theme)` darkens and blue-shifts every colour in a
+  theme and sets `night: true`, so the windows, approach glow and
+  aircraft lights Night Shift already has come with it.
+- Fog is a pale gradient over the painted terrain, denser at the edges,
+  with the approach lights drawn above it so they glow through.
+- `Art.snowTheme(theme)` swaps fields, hedges and roofs for the snow
+  theme's colours, keeps the layout, freezes rivers and turns on
+  `snowfall` and `treeSnow`.
+- Dusk paints both the day and night terrain and cross-fades between them
+  as the shift goes on (two cached canvases, one `globalAlpha`: cheap).
+- Storm uses the existing storm sprites, plus a rain layer drawn like
+  `snowfall` and a darker sky tint.
+- Each condition's rule is one value on the level object
+  (`rushFrom`, `warning`, `alignMax`, `storms`, `finalMin`), built the same way as free
+  play's levels, so the game loop gains no special cases.
+
+**Where it lives.** On a cleared airport's boarding pass, a strip of
+condition stamps under the hint: Day (the normal shift) and each condition
+available here. Tap one to choose it; the weather line on the stub and the
+pass's colours follow. A stamp you've earned shows its stars, like a
+passport stamp. The board row shows small stamps next to the airport's
+stars.
+
+**Records.** Stars by condition live beside the airport's own:
+`save.stamps[id][condition]`, and the server's `conditions` per player. A
+shift carries `condition`; the server checks it's one that airport offers.
+The records grid gets a stamp count per airport. The star total on the board
+stays the airport stars (out of 30); stamps are counted separately
+("12 stamps"), so conditions add something to collect without inflating the
+main score.
+
+**The Passport** (agreed 31 October 2026): where the stamps live.
+- A **Passport** button on the arrivals board, beside Records. One page per
+  airport, like a real passport page; swipe between them, or tap an airport
+  on the contents page.
+- Each condition has its own stamp: a setting sun (Dusk), a crescent moon
+  (Night), a snowflake (Snow), a lightning bolt (Storm), a lighthouse in
+  mist (Fog). Earned stamps are
+  inked, set at a slight random angle, and carry the airport code, the date
+  and your stars ("THD · 31 OCT 26 · ★★★"). Unearned ones are faint dotted
+  outlines saying how to earn them ("Clear Thunderheads at night"); locked
+  ones say what unlocks them ("Clear Thunderheads first").
+- Earning one: the result screen stamps it on with a thunk, and the
+  Passport button gets a dot until you've looked.
+- **Per profile:** stamps sync through the records like stars, so Louis's
+  passport is his on any device; a guest's stays on the device. On the
+  Records page, each person's stamp count opens their passport, read-only.
+- **Not yet:** other achievements ("first perfect shift", "100 landings").
+  They belong with the career's licence card (Phase 6), and the Passport can
+  grow a back page for them then.
+
+**Done when:** every airport except Endless is replayable in at least two
+conditions (four where its look allows), each condition plays
+differently, and stamps show on the pass, the board, the Passport and the records.
+
+#### Checks
+
+- Tests: `parse_shift` accepts every valid free-play setting and condition
+  and rejects anything else (unknown keys, a condition an airport doesn't
+  offer, a free-play shift claiming stars); `record_shift` never moves stars
+  or boards for free play.
+- Screenshots in the headless browser: every airport in every condition
+  it offers, and the free-play sheet on a phone-sized screen, before and
+  after the airport that teaches each toggle is cleared.
+- Frame rate: dusk on Heavy Metal (the busiest terrain) holds 60fps.
+
+### Disruptions (after Phase 5, before Phase 4)
+
+Planned 31 October 2026. Things that happen *to* the airport: a blocked
+runway, closed airspace, a burst of diverted traffic, a cyber attack.
+Emergencies are about one aircraft; disruptions are about the whole sky.
+Most of them take something away for a while (a runway, a patch of sky,
+your radar), so they need a new basic move first: holding.
+
+#### Holding comes first
+
+- Every airport gets two or three **hold fixes** near the edges of the
+  map, each a named beacon (named like Heathrow's real stacks: Bovingdon,
+  Ockham, Lambourne, Biggin).
+- Route an aircraft to a fix and it **circles there**, burning fuel, until
+  you draw it out again. Several can stack on one fix, a little apart.
+- That turns "the runway's blocked" from a lost shift into a queue to
+  manage, which is the real job. It's also a calm move to make when the
+  sky gets busy, so it's taught early (its own teaching airport, or added
+  to an early one) and isn't a career tool with charges: the career's Hold
+  tool (section 6) becomes something else, or goes.
+
+#### The disruptions
+
+| Disruption | What happens | How you handle it |
+|---|---|---|
+| **Runway obstruction** | A deer, debris, a broken-down tug, or a dog loose on the runway (it happens). One runway closes for about 20 seconds while a vehicle drives out to clear it | Hold, or send aircraft to another runway of the same kind |
+| **Drone sighted** | A circle of airspace near an approach closes for about 30 seconds | Route around it, or hold |
+| **Diversion wave** | "Gatwick closed: 4 diversions inbound". A burst of arrivals at once after a countdown | Hold fixes make it playable: stack them, bring them in one by one |
+| **Hot air balloons** | Slow, drifting, beautiful obstacles that cross the map | Route around; they can't be moved |
+| **Air display** | A formation crosses along a line shown in advance | Keep everything clear of the line while it passes |
+| **Runway lights fail** (night only) | One runway's approach lights go out | Line up from memory; the runway itself still shows |
+| **Cyber attack** (grown-ups' profiles) / **system gremlin** (children's and guests) | See below | Fly on what you planned; restore the backup if you dare |
+
+**The cyber attack.** The split-flap board scrambles with a clatter and
+flips to a ransom note:
+
+```
+SYSTEMS LOCKED
+PAY 40 BTC
+TO RESTORE
+```
+
+Underneath, for about 15 seconds:
+- **Radar fault:** aircraft only update on the radar sweep (about once a
+  second), as jumpy blips. They keep flying the routes you drew, so
+  planning ahead pays.
+- **Comms delay:** a new route takes about two seconds to be read back
+  before the aircraft follows it, so last-second saves stop working.
+- **Restore backup:** hold a button on the board for three seconds to end
+  it early, but you're not watching the sky while you do. A real choice,
+  not just a penalty.
+
+On children's profiles and for guests it's a **system gremlin** with a
+cheekier board ("GREMLIN IN THE WIRES") and the same effects. Never
+freezing your input, and never fake aircraft: everything on screen is
+real.
+
+**Seasonal, any time:** Santa's sleigh on Christmas Eve, one magical
+arrival that needs a clear path to the pad.
+
+#### The rules (as for emergencies)
+
+- Always announced on the board, with a countdown, before anything
+  changes.
+- Temporary, one at a time, never during an emergency, never in a shift's
+  first seconds.
+- Each is taught by an airport before it turns up anywhere else; then
+  free play gets a **Disruptions** toggle (Off / Some / Lots), and Endless
+  could get them as a choice like emergencies, with its own boards.
+
+**Order:** hold fixes and their teaching airport; then runway obstruction,
+drone zone and diversion wave (they all use holding); then balloons, the
+air display and the cyber attack; seasonal ones whenever.
+
+**Done when:** a blocked runway or a diversion wave is a queue you can
+manage, not a lost shift; every disruption is announced before it bites;
+and the cyber attack's board makes someone laugh.
 
 ### Phase 6: the career
 

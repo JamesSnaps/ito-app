@@ -62,6 +62,8 @@
                 {% for a in data.airports if not a.endless %}<th title="{{ a.name }}">{{ a.code }}</th>{% endfor %}
                 <th>★</th>
                 <th title="Emergencies landed safely">Medals</th>
+                <th title="Time spent on shifts">Played</th>
+                <th>Last</th>
               </tr>
             </thead>
             <tbody>
@@ -74,6 +76,9 @@
                 {% endfor %}
                 <td class="rec-total">{{ p.total_stars }}</td>
                 <td class="rec-total">{{ p.medals or '·' }}</td>
+                {% set mins = ((p.seconds or 0) / 60) | round | int %}
+                <td class="rec-total">{% if mins >= 60 %}{{ mins // 60 }}h {{ '%02d' % (mins % 60) }}m{% elif p.seconds %}{{ mins }}m{% else %}·{% endif %}</td>
+                <td class="rec-when" data-at="{{ p.last_at or '' }}"></td>
               </tr>
               {% endfor %}
             </tbody>
@@ -81,6 +86,9 @@
         </div>
         {% else %}
         <p class="rec-empty">No shifts recorded yet. Add yourself on the Game Night hub, then play.</p>
+        {% endif %}
+        {% if data.guests_week %}
+        <p class="rec-note">Guests: {{ data.guests_week }} shift{{ 's' if data.guests_week != 1 }} this week.</p>
         {% endif %}
       </section>
 
@@ -95,12 +103,14 @@
             <span class="rec-name">{{ s.name }}</span>
             <span class="rec-what">
               {{ a.name if a else 'An airport' }}:
-              {% if s.endless %}{{ s.landed }} landed
+              {% if s.free %}{{ 'cleared' if s.outcome == 'win' else s.landed ~ ' landed' }}
+              {% elif s.endless %}{{ s.landed }} landed
               {% elif s.outcome == 'win' %}cleared {{ '★' * s.stars }}
               {% elif s.outcome == 'crash' %}collision after {{ s.landed }} of {{ a.target if a else '?' }}
               {% else %}three diversions after {{ s.landed }} of {{ a.target if a else '?' }}{% endif %}
               {% if s.medals %}<span class="rec-tag rec-medal">{{ s.medals }} medal{{ 's' if s.medals != 1 }}</span>{% endif %}
               {% if s.endless and s.emergencies and s.emergencies != 'some' %}<span class="rec-tag">{{ {'off': 'no emergencies', 'lots': 'lots of emergencies', 'some-grownup': 'grown-up emergencies', 'lots-grownup': 'lots of grown-up emergencies'}[s.emergencies] }}</span>{% endif %}
+              {% if s.free %}<span class="rec-tag">free play</span><span class="rec-free">{{ s.free_summary }}</span>{% endif %}
               {% if s.assisted %}<span class="rec-tag">calm skies</span>{% endif %}
             </span>
             <span class="rec-when" data-at="{{ s.at }}"></span>

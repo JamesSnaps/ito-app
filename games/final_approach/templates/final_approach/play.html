@@ -95,6 +95,7 @@
         <div class="barcode" id="barcode"></div>
         <div class="stub-buttons">
           <button class="btn primary" id="btn-start">Board</button>
+          <button class="btn ink small hidden" id="btn-free">Free play</button>
           <button class="btn ink" id="btn-brief-back">Back</button>
         </div>
       </div>
@@ -124,6 +125,7 @@
         <p id="result-record" class="result-record"></p>
         <div class="buttons">
           <button id="btn-result-menu" class="btn ghost">Levels</button>
+          <button id="btn-result-free" class="btn ghost hidden">Change</button>
           <button id="btn-retry" class="btn primary">Try again</button>
           <button id="btn-next" class="btn primary">Next</button>
         </div>
@@ -150,6 +152,44 @@
           <label class="set-row"><span class="set-label">Calm skies<small>Everything runs at three-quarter speed and the music stays calm. Shifts still earn your stars, and show as calm on the records.</small></span><input type="checkbox" id="set-calm" class="switch"></label>
         </div>
         <div class="buttons"><button id="btn-settings-done" class="btn primary">Done</button></div>
+      </div>
+    </div>
+  </div>
+
+  {# Asked once per browser when it has no Game Night profile (game.js,
+     askWhoIsPlaying). Guests can always play; only profiles keep records. #}
+  <div id="guest" class="overlay hidden">
+    <div class="housing compact">
+      <div class="board">
+        <div id="guest-flaps" class="big"></div>
+        <p class="guest-text">Add yourself to keep your stars on the family records and carry your progress to any device. Or just play: as a guest, your progress stays on this device.</p>
+        <div class="buttons">
+          <button id="btn-guest-ok" class="btn ghost">Play as a guest</button>
+          <a class="btn primary" href="{{ url_for('profiles.me_page', back=url_for('final-approach.landing')) }}">Add yourself</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# Free play: a cleared airport with your own toggles. Rows for things the
+     player hasn't been taught yet are hidden by game.js (freeOptions). #}
+  <div id="free" class="overlay hidden">
+    <div class="housing compact">
+      <div class="board settings free">
+        <div id="free-flaps" class="big"></div>
+        <p class="free-sub" id="free-sub"></p>
+        <div class="set-group free-a">
+          <div class="set-row"><span class="set-label">Length</span><div class="seg dark" data-k="length"><button data-v="shift">Shift</button><button data-v="endless">Endless</button></div></div>
+          <div class="set-row"><span class="set-label">Traffic</span><div class="seg dark" data-k="traffic"><button data-v="light">Light</button><button data-v="normal">Normal</button><button data-v="rush">Rush</button></div></div>
+          <div class="set-row" id="free-types-row"><span class="set-label">Aircraft</span><div class="seg dark" data-k="types" id="free-types"><button data-v="prop">Props</button><button data-v="jet">Jets</button><button data-v="heli">Helis</button><button data-v="heavy">Heavies</button></div></div>
+        </div>
+        <div class="set-group free-b">
+          <div class="set-row" id="free-fuel-row"><span class="set-label">Low fuel</span><div class="seg dark" data-k="fuel"><button data-v="false">Off</button><button data-v="true">On</button></div></div>
+          <div class="set-row" id="free-storms-row"><span class="set-label">Storms</span><div class="seg dark" data-k="storms"><button data-v="0">Off</button><button data-v="1">1</button><button data-v="2">2</button><button data-v="3">3</button></div></div>
+          <div class="set-row" id="free-wind-row"><span class="set-label">Wind shifts</span><div class="seg dark" data-k="wind"><button data-v="false">Off</button><button data-v="true">On</button></div></div>
+          <div class="set-row" id="free-emergencies-row"><span class="set-label">Emergencies</span><div class="seg dark" data-k="emergencies"><button data-v="off">Off</button><button data-v="some">Some</button><button data-v="lots">Lots</button></div></div>
+        </div>
+        <div class="buttons"><button id="btn-free-back" class="btn ghost">Back</button><button id="btn-free-start" class="btn primary">Start</button></div>
       </div>
     </div>
   </div>

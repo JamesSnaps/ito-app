@@ -98,6 +98,17 @@ shifts make it harder airport by airport.
   shifts go to the family records (`/final-approach/stats`: the Endless
   leaderboard, everyone's stars per airport) and your progress follows you
   to any device.
+- **Free play** on any airport you've cleared: shift or endless, light to
+  rush traffic, which aircraft, low fuel, 0–3 storms, wind shifts and
+  emergencies. A toggle only appears once the airport that teaches it is
+  cleared. Free play earns no stars and never ranks; the records tag it.
+- A browser with no profile is asked once: add yourself, or play as a
+  guest. Guests' finished shifts are kept anonymously (a random tag per
+  browser, "Guest 3F1A") for the owner's **Activity page**
+  (`/final-approach/activity`, behind the Authelia login like the Family
+  page): who's playing and when, time played, how far everyone has got,
+  and where people struggle, airport by airport. The records page shows
+  time played, last played and a count of guests' shifts.
 - Settings: volumes, large aircraft, vibration, and **calm skies** (three-
   quarter speed, for when it gets too much; calm shifts are marked and never
   ranked).

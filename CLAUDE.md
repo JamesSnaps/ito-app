@@ -1433,6 +1433,38 @@ it current when you do (its "Current state" and roadmap especially).
     (`some-grownup`, `lots-grownup`; `endlessKey()`, fixed at the start of a
     run as `S.endlessKey`).
   - No hijacks or bomb threats, even for grown-ups (a family hub).
+- **Free play** (v1.25.0): a cleared airport with your own toggles, from
+  the boarding pass's Free play button (the `#free` sheet). It never adds
+  special cases to the loop: `freePlayLevel(L, choices)` returns a new level
+  object built from the airport (`base`), with `free` set to the choices, and
+  `loadLevel` runs it like any other. `freeOptions(L)` decides which toggles
+  show: a toggle needs its teaching airport cleared (`TEACHES`: jets 2,
+  helicopters 3, heavies 8, fuel 5, storms 6, wind 7, emergencies 11) unless
+  this airport has the feature itself, and an aircraft type needs somewhere
+  to land. `freeChoices(L)` reads `save.free[id]` and resets anything no
+  longer allowed. With `L.free`, `finish()` awards no stars or Endless bests,
+  the result hides stars, Next and medals, and offers Change. The shift
+  carries `free` (the choices); the server's `parse_free` checks it against
+  a fixed list, records it with no stars or medals and off every board, and
+  `stats_payload` adds `free_summary` ("Rush · 2 storms · endless", the same
+  words as the game's `freeSummary`) for the records page.
+- **Guests and the Activity page** (v1.26.0): every finished shift goes to
+  `/api/shifts` with `device`, a random 8-hex tag per browser
+  (`save.device`). A profile's (with its token) goes to the records as
+  before; a guest's (no token, `guest` marked in the outbox) is only added
+  to the **Activity log**, a separate stats bucket (`final-approach-
+  activity`, the last 3,000 shifts, deduplicated by id) that keeps the
+  name or "Guest 3F1A", the shift, and "home"/"away", never an address.
+  No token and no valid tag is still 403. `/final-approach/activity` is the
+  owner's page (`family_signed_in()`, so `GAMENIGHT_FAMILY=authelia` plus
+  an admins `Remote-User`; the docker repo routes it through the
+  `gamenight-admin` router and Authelia's Family rules): totals, two weeks
+  of shifts per day, per person (last played, time, airports cleared,
+  furthest, calm and free play, home or away) and per airport (clear rate,
+  collisions, strike-outs). Records players now carry `seconds` and
+  `last_at`; the records page shows them and `guests_week`. A browser
+  with no profile is asked once (`askWhoIsPlaying`, the `#guest` card;
+  `save.guestOk` remembers "Play as a guest").
 - **`window.__finalApproach`** exposes the state for Playwright checks,
   plus `update` (step the simulation, e.g. ten minutes in a loop),
   `queueArrival`, `clearOfStorms`, `stormAt`, `clearOfTraffic`, `track`,
@@ -1447,7 +1479,7 @@ it current when you do (its "Current state" and roadmap especially).
   in is a tile opening `/final-approach/` in the Safari sheet, like Keep
   score (playbook roadmap).
 
-## Picnic Raid (added v1.25.0)
+## Picnic Raid (added v1.27.0)
 
 Our own game, made for the family the way Wildwood was: fill a picnic
 basket, pack it up to bank the points, and hide traps (Ants, Wasp, Seagull,
@@ -1555,6 +1587,13 @@ one thing besides the games that `app.py` registers), `templates/me.html`
   rules for them **above Game Night's home-network bypass** (admins
   `one_factor`, else `deny`), so it asks for a login at home too. A child's
   own token can't change it (a test checks). Linked from the hub's footer.
+- **Home or away** (v1.26.0): `GAMENIGHT_HOME_NETWORKS` (the compose file
+  sets it to Authelia's home-bypass list) lets `profiles.where()` say
+  "home", "away" or None (unset: development, tests) for any request. The
+  address is the last `X-Forwarded-For` hop (ProxyFix trusts one:
+  Traefik's), so a client can't claim to be home. Only the Activity log
+  uses it. Profiles can be made from anywhere (decided 31 October 2026: a
+  home-only lock was built and dropped).
 - **Where faces show**: the hub's "You" chip; Flip 7's setup chips, a
   "Regulars — tap to add" picker (scorekeeper and play), the table's mats
   and the records; Fugitive's setup picker, nameplates, seats ("That's me —
