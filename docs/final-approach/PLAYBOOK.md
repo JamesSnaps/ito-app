@@ -889,18 +889,40 @@ leaderboard.
 #### Part B: conditions (v1.26.0)
 
 **What each condition is.** Each changes how the airport looks *and* one
-thing about how it plays, so a stamp means something:
+rule about how it plays, so a stamp means something. Everything else (the
+target, the aircraft, the runways) is the airport as you cleared it.
 
-| Condition | Looks | Plays |
-|---|---|---|
-| **Dusk** | The light fades through the shift: day at the start, night by the end, runway and building lights coming on | Aircraft become lights only as it gets dark (as on Night Shift) |
-| **Night** | The airport's own landscape after dark | Lights only from the start |
-| **Snow** | The landscape under snow, snow falling | Icy runways: an approach must be lined up within 45° (70° normally), or it goes around |
-| **Storm** | A dark sky and rain | Two more storm cells than the airport has, and wind shifts if it has none |
+| Condition | Looks | Plays | Why it's fair |
+|---|---|---|---|
+| **Dusk** | The light fades through the shift: day at the start, golden light in the middle, night by the last few landings, with runway, building and aircraft lights coming on | **Evening rush:** in the last third of the shift, arrivals come 20% closer together | You can see it coming: the sky darkens as the rush builds |
+| **Night** | The airport's own landscape after dark, as on Night Shift | **Seen late:** arrival markers show one second later than usual | The marker still always shows before an aircraft appears |
+| **Snow** | The landscape under snow, snow falling, runways edged with ploughed snow | **Icy runways:** an approach must be lined up within 45° of the runway (70° normally) or the aircraft goes around | The approach lights show the line; a go-around isn't a strike |
+| **Storm** | A dark sky, rain, lightning | **Storm cells:** at least two, and one more than the airport normally has | The storm-safe arrival rules already guarantee no arrival is spawned into one |
 
-An airport offers only the conditions that differ from how it already is:
-Night Shift has no Night or Dusk; Weathervane and Heavy Metal have no Snow;
-Crossroads (desert) has no Snow. Endless and Lifeline have none.
+**Which airports offer which.** Every airport except Endless, but only
+the conditions that differ from how it already is:
+
+| Airport | Dusk | Night | Snow | Storm |
+|---|---|---|---|---|
+| Meadow Strip, Twin Fields, Rotor Wash, Running on Fumes, Lifeline | ✓ | ✓ | ✓ | ✓ (2 cells) |
+| Crossroads (desert: no snow) | ✓ | ✓ | | ✓ (2) |
+| Thunderheads | ✓ | ✓ | ✓ | ✓ (3) |
+| Weathervane, Heavy Metal (already snow) | ✓ | ✓ | | ✓ (2) |
+| Night Shift (already night) | | | ✓ | ✓ (2) |
+
+**When they unlock.** An airport's conditions appear once you've cleared
+that airport. Storm also needs Thunderheads cleared, because storm cells
+are taught there (the same rule as free play's toggles). Dusk, Night and
+Snow bring rules no airport teaches, so the pass explains the rule in one
+line when you pick one, and the first time you play it the hint shows
+again at the start.
+
+**Stars and stamps.** A condition plays like the airport's normal shift:
+land the target, and earn 3 stars minus diversions. Clearing it earns that
+condition's **stamp**, holding your best stars for it. Stamps are counted
+apart from the airport stars: the board's total stays "N / 30" with
+"12 stamps" beside it, and the records page shows each person's stamps per
+airport. Calm skies is allowed and marked, as it is for normal shifts.
 
 **How it's built.** The terrain is painted once per level from a theme
 palette, so conditions are palette transforms, not new art:
@@ -913,7 +935,10 @@ palette, so conditions are palette transforms, not new art:
 - Dusk paints both the day and night terrain and cross-fades between them
   as the shift goes on (two cached canvases, one `globalAlpha`: cheap).
 - Storm uses the existing storm sprites, plus a rain layer drawn like
-  `snowfall`.
+  `snowfall` and a darker sky tint.
+- Each condition's rule is one value on the level object
+  (`rushFrom`, `warning`, `alignMax`, `storms`), built the same way as free
+  play's levels, so the game loop gains no special cases.
 
 **Where it lives.** On a cleared airport's boarding pass, a strip of
 condition stamps under the hint: Day (the normal shift) and each condition
@@ -930,9 +955,9 @@ stays the airport stars (out of 30); stamps are counted separately
 ("12 stamps"), so conditions add something to collect without inflating the
 main score.
 
-**Done when:** every airport is replayable in at least two conditions
-(three where its theme allows), each condition plays differently, and
-stamps show on the pass, the board and the records.
+**Done when:** every airport except Endless is replayable in at least two
+conditions (four where its look allows), each condition plays
+differently, and stamps show on the pass, the board and the records.
 
 #### Checks
 
