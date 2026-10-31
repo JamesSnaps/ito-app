@@ -95,12 +95,14 @@
             <span class="rec-name">{{ s.name }}</span>
             <span class="rec-what">
               {{ a.name if a else 'An airport' }}:
-              {% if s.endless %}{{ s.landed }} landed
+              {% if s.free %}{{ 'cleared' if s.outcome == 'win' else s.landed ~ ' landed' }}
+              {% elif s.endless %}{{ s.landed }} landed
               {% elif s.outcome == 'win' %}cleared {{ '★' * s.stars }}
               {% elif s.outcome == 'crash' %}collision after {{ s.landed }} of {{ a.target if a else '?' }}
               {% else %}three diversions after {{ s.landed }} of {{ a.target if a else '?' }}{% endif %}
               {% if s.medals %}<span class="rec-tag rec-medal">{{ s.medals }} medal{{ 's' if s.medals != 1 }}</span>{% endif %}
               {% if s.endless and s.emergencies and s.emergencies != 'some' %}<span class="rec-tag">{{ {'off': 'no emergencies', 'lots': 'lots of emergencies', 'some-grownup': 'grown-up emergencies', 'lots-grownup': 'lots of grown-up emergencies'}[s.emergencies] }}</span>{% endif %}
+              {% if s.free %}<span class="rec-tag">free play</span><span class="rec-free">{{ s.free_summary }}</span>{% endif %}
               {% if s.assisted %}<span class="rec-tag">calm skies</span>{% endif %}
             </span>
             <span class="rec-when" data-at="{{ s.at }}"></span>

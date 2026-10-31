@@ -1431,6 +1431,21 @@ it current when you do (its "Current state" and roadmap especially).
     (`some-grownup`, `lots-grownup`; `endlessKey()`, fixed at the start of a
     run as `S.endlessKey`).
   - No hijacks or bomb threats, even for grown-ups (a family hub).
+- **Free play** (v1.25.0): a cleared airport with your own toggles, from
+  the boarding pass's Free play button (the `#free` sheet). It never adds
+  special cases to the loop: `freePlayLevel(L, choices)` returns a new level
+  object built from the airport (`base`), with `free` set to the choices, and
+  `loadLevel` runs it like any other. `freeOptions(L)` decides which toggles
+  show: a toggle needs its teaching airport cleared (`TEACHES`: jets 2,
+  helicopters 3, heavies 8, fuel 5, storms 6, wind 7, emergencies 11) unless
+  this airport has the feature itself, and an aircraft type needs somewhere
+  to land. `freeChoices(L)` reads `save.free[id]` and resets anything no
+  longer allowed. With `L.free`, `finish()` awards no stars or Endless bests,
+  the result hides stars, Next and medals, and offers Change. The shift
+  carries `free` (the choices); the server's `parse_free` checks it against
+  a fixed list, records it with no stars or medals and off every board, and
+  `stats_payload` adds `free_summary` ("Rush · 2 storms · endless", the same
+  words as the game's `freeSummary`) for the records page.
 - **`window.__finalApproach`** exposes the state for Playwright checks,
   plus `update` (step the simulation, e.g. ten minutes in a loop),
   `queueArrival`, `clearOfStorms`, `stormAt`, `clearOfTraffic`, `track`,

@@ -46,6 +46,11 @@ RECENT_SHIFTS = 12
 SETTINGS = ("some", "lots", "off", "some-grownup", "lots-grownup")
 SEEN_IDS = 400
 MAX_LIVES = 3
+# Free play: a cleared airport with the player's own toggles. Recorded and
+# shown, but it never earns stars, medals or a place on a leaderboard.
+FREE_TYPES = ("prop", "jet", "heli", "heavy")
+FREE_TRAFFIC = ("light", "normal", "rush")
+FREE_EMERGENCIES = ("off", "some", "lots")
 
 
 @functools.lru_cache(maxsize=1)
@@ -70,6 +75,42 @@ def airports():
 def _whole(value, low, high):
     """An int in [low, high] (not a bool, which Python counts as an int)."""
     return isinstance(value, int) and not isinstance(value, bool) and low <= value <= high
+
+
+def parse_free(free):
+    """A free-play run's settings, checked against the fixed list (the game's
+    freeChoices). Raises ValueError."""
+    if not isinstance(free, dict) or set(free) != {"length", "traffic", "types", "fuel", "storms", "wind", "emergencies"}:
+        raise ValueError("Free play needs its settings.")
+    types = free["types"]
+    if (not isinstance(types, list) or not types or len(set(types)) != len(types)
+            or any(t not in FREE_TYPES for t in types)):
+        raise ValueError("Free play's aircraft are props, jets, helis or heavies.")
+    if (free["length"] not in ("shift", "endless") or free["traffic"] not in FREE_TRAFFIC
+            or free["emergencies"] not in FREE_EMERGENCIES or not _whole(free["storms"], 0, 3)
+            or not isinstance(free["fuel"], bool) or not isinstance(free["wind"], bool)):
+        raise ValueError("Those aren't free play's settings.")
+    return {**free, "types": [t for t in FREE_TYPES if t in types]}
+
+
+def free_summary(free):
+    """"Rush · 2 storms · endless": a free-play run in a few words (the same
+    words as the game's freeSummary)."""
+    bits = []
+    if free["traffic"] != "normal":
+        bits.append("Rush" if free["traffic"] == "rush" else "Light traffic")
+    if free["storms"]:
+        bits.append("1 storm" if free["storms"] == 1 else f"{free['storms']} storms")
+    if free["wind"]:
+        bits.append("wind shifts")
+    if free["fuel"]:
+        bits.append("low fuel")
+    if free["emergencies"] != "off":
+        bits.append("lots of emergencies" if free["emergencies"] == "lots" else "emergencies")
+    if free["length"] == "endless":
+        bits.append("endless")
+    text = " · ".join(bits)
+    return text[:1].upper() + text[1:] if text else "As usual"
 
 
 def parse_shift(body):
@@ -105,6 +146,21 @@ def parse_shift(body):
     setting = body.get("emergencies")
     if outcome == "strikes" and strikes != MAX_LIVES:
         raise ValueError("A shift ended by strikes has all three.")
+    free = body.get("free")
+    if free is not None:
+        if airport["endless"]:
+            raise ValueError("Endless has no free play.")
+        free = parse_free(free)
+        if free["length"] == "endless":
+            if outcome == "win":
+                raise ValueError("An endless run doesn't end in a win.")
+        elif landed > airport["target"]:
+            raise ValueError("More landings than the airport's target.")
+        elif outcome == "win" and (landed != airport["target"] or strikes >= MAX_LIVES):
+            raise ValueError("A cleared shift lands the whole target.")
+        return {"id": shift_id, "level": level, "outcome": outcome, "landed": landed, "strikes": strikes,
+                "stars": 0, "duration": round(float(duration), 1), "assisted": assisted,
+                "endless": False, "medals": 0, "emergencies": None, "free": free}
     if airport["endless"]:
         if outcome == "win":
             raise ValueError("Endless doesn't end in a win.")
@@ -160,7 +216,9 @@ def record_shift(record, name, shift, at):
     player["landed"] += shift["landed"]
     player["medals"] = player.get("medals", 0) + shift["medals"]
     level = str(shift["level"])
-    if shift["endless"]:
+    if shift.get("free"):
+        pass                      # free play: counted, never ranked
+    elif shift["endless"]:
         if shift["assisted"]:
             player["endless_best_calm"] = max(player.get("endless_best_calm", 0), shift["landed"])
         else:
@@ -175,9 +233,11 @@ def record_shift(record, name, shift, at):
     else:
         player["stars"][level] = max(player["stars"].get(level, 0), shift["stars"])
         player["best"][level] = max(player["best"].get(level, 0), shift["landed"])
-    record["recent"] = ([{"name": name, "at": at, **{k: shift[k] for k in
-                          ("level", "outcome", "landed", "stars", "assisted", "endless", "medals", "emergencies")}}]
-                        + record["recent"])[:RECENT_SHIFTS]
+    entry = {"name": name, "at": at, **{k: shift[k] for k in
+             ("level", "outcome", "landed", "stars", "assisted", "endless", "medals", "emergencies")}}
+    if shift.get("free"):
+        entry["free"] = shift["free"]
+    record["recent"] = ([entry] + record["recent"])[:RECENT_SHIFTS]
     record["ids"] = (record["ids"] + [shift["id"]])[-SEEN_IDS:]
     return record, True
 
@@ -208,8 +268,10 @@ def stats_payload():
                 rows.append({"name": p["name"], "best": best, "at": _endless_at(p).get(setting)})
         rows.sort(key=lambda row: (-row["best"], row["at"] or ""))
         leaderboards[setting] = rows
+    recent = [{**s, "free_summary": free_summary(s["free"])} if s.get("free") else s
+              for s in record.get("recent", [])]
     return {"airports": list(airports().values()), "players": players,
-            "leaderboards": leaderboards, "recent": record.get("recent", [])}
+            "leaderboards": leaderboards, "recent": recent}
 
 
 @bp.route("/api/shifts", methods=["POST"])

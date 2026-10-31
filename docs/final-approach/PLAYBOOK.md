@@ -295,10 +295,13 @@ Game Night.
 
 ---
 
-## 5. Current state (v1.24.0)
+## 5. Current state (v1.25.0)
 
 **Done:**
 
+- [x] Free play on any cleared airport: length, traffic, aircraft, low
+  fuel, storms, wind shifts and emergencies, each toggle appearing once its
+  airport is taught; tagged on the records, never ranked (v1.25.0)
 - [x] Core loop: route drawing, landing rule, separation, fuel, diversions, strikes
 - [x] Nine airports plus Endless; stars, unlocks and a best score saved on the device
 - [x] Storm cells, wind shifts, five landscapes (meadow, coast, desert, snow, night)
@@ -827,7 +830,7 @@ The first big new mechanic (section 6).
 - **Done when:** a teaching airport and two existing airports run arrivals
   and departures together, and a runway incursion is impossible to miss.
 
-### Phase 5: free play and conditions
+### Phase 5: free play and conditions (free play ✅ v1.25.0)
 
 Planned 31 October 2026. Two parts, built and shipped in this order:
 free play first (it's the "try out different options" part, and it needs
@@ -845,7 +848,7 @@ earns nothing and is never ranked: it's for trying things out.
 | Ranked | Shown on the records grid | Never |
 | Calm skies | Allowed, marked as now | Allowed, marked as now |
 
-#### Part A: free play (v1.25.0)
+#### Part A: free play ✅ (v1.25.0)
 
 **Where it lives.** A cleared airport's boarding pass gets a second button
 beside Board: **Free play**. It opens a sheet like Settings, with the
@@ -876,8 +879,7 @@ airport and the toggles (traffic, `storms`, `windShift`, `emergencies`,
 airport's id, so the painted terrain and runways are the same, and
 `S.mode = 'free'` stops `finish()` awarding stars or Endless bests.
 
-**Records.** A free-play shift is sent with `mode: "free"` and its
-settings. The server checks every setting against a fixed list, keeps the
+**Records.** A free-play shift is sent with its settings (`free`). The server checks every setting against a fixed list, keeps the
 shift in Recent shifts with a "free play" tag and a one-line summary
 ("Rush · 2 storms · endless"), and counts it towards shifts and landed, but
 never stars, Endless boards or medals.
@@ -955,9 +957,28 @@ stays the airport stars (out of 30); stamps are counted separately
 ("12 stamps"), so conditions add something to collect without inflating the
 main score.
 
+**The Passport** (agreed 31 October 2026): where the stamps live.
+- A **Passport** button on the arrivals board, beside Records. One page per
+  airport, like a real passport page; swipe between them, or tap an airport
+  on the contents page.
+- Each condition has its own stamp: a setting sun (Dusk), a crescent moon
+  (Night), a snowflake (Snow), a lightning bolt (Storm). Earned stamps are
+  inked, set at a slight random angle, and carry the airport code, the date
+  and your stars ("THD · 31 OCT 26 · ★★★"). Unearned ones are faint dotted
+  outlines saying how to earn them ("Clear Thunderheads at night"); locked
+  ones say what unlocks them ("Clear Thunderheads first").
+- Earning one: the result screen stamps it on with a thunk, and the
+  Passport button gets a dot until you've looked.
+- **Per profile:** stamps sync through the records like stars, so Louis's
+  passport is his on any device; a guest's stays on the device. On the
+  Records page, each person's stamp count opens their passport, read-only.
+- **Not yet:** other achievements ("first perfect shift", "100 landings").
+  They belong with the career's licence card (Phase 6), and the Passport can
+  grow a back page for them then.
+
 **Done when:** every airport except Endless is replayable in at least two
 conditions (four where its look allows), each condition plays
-differently, and stamps show on the pass, the board and the records.
+differently, and stamps show on the pass, the board, the Passport and the records.
 
 #### Checks
 

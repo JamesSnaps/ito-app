@@ -309,3 +309,67 @@ def test_grown_up_emergency_runs_rank_on_their_own_boards():
 def test_the_grown_up_switch_is_on_the_page_but_hidden_until_it_applies():
     body = page()
     assert 'id="set-grownup-row"' in body and 'class="set-row hidden" id="set-grownup-row"' in body
+
+
+# --- free play (v1.25.0) ---------------------------------------------------------
+
+def free(**overrides):
+    settings = {"length": "shift", "traffic": "normal", "types": ["prop"], "fuel": False,
+                "storms": 0, "wind": False, "emergencies": "off"}
+    settings.update(overrides)
+    return settings
+
+
+def test_free_play_is_recorded_but_never_earns_or_ranks():
+    c = client()
+    louis = profile(c, "Louis")
+    post(c, louis, shift(strikes=1))                                       # a real shift: 2 stars
+    res = post(c, louis, shift(free=free(traffic="rush", storms=2), medals=1))
+    assert res.status_code == 200, res.get_json()
+    post(c, louis, shift(free=free(length="endless"), outcome="crash", landed=40, duration=600))
+    data = c.get("/final-approach/api/stats").get_json()
+    player = data["players"][0]
+    assert player["stars"] == {"1": 2} and player["medals"] == 0
+    assert player["shifts"] == 3 and player["landed"] == 6 + 6 + 40
+    assert all(board == [] for board in data["leaderboards"].values())
+    endless_free, rush = data["recent"][0], data["recent"][1]
+    assert endless_free["free"]["length"] == "endless" and endless_free["free_summary"] == "Endless"
+    assert rush["stars"] == 0 and rush["free_summary"] == "Rush · 2 storms"
+
+
+def test_free_play_settings_are_checked():
+    c = client()
+    louis = profile(c, "Louis")
+    for bad in (
+        free(traffic="mayhem"),
+        free(types=[]),
+        free(types=["prop", "prop"]),
+        free(types=["blimp"]),
+        free(storms=4),
+        free(storms=True),
+        free(fuel="yes"),
+        free(emergencies="loads"),
+        free(length="forever"),
+        {"traffic": "normal"},                                               # settings missing
+        dict(free(), extra=1),                                               # unknown setting
+    ):
+        assert post(c, louis, shift(free=bad)).status_code == 400, bad
+    assert post(c, louis, shift(level=10, outcome="crash", landed=3, free=free())).status_code == 400   # not on Endless
+    assert post(c, louis, shift(landed=7, free=free())).status_code == 400              # past the target in a shift
+    assert post(c, louis, shift(outcome="win", landed=30, free=free(length="endless"))).status_code == 400
+    assert c.get("/final-approach/api/stats").get_json()["players"] == []
+
+
+def test_free_play_shows_on_the_records_page():
+    c = client()
+    louis = profile(c, "Louis")
+    post(c, louis, shift(free=free(traffic="light", wind=True, fuel=True, emergencies="lots")))
+    body = c.get("/final-approach/stats").get_data(as_text=True)
+    assert "free play" in body and "Light traffic · wind shifts · low fuel · lots of emergencies" in body
+
+
+def test_the_game_page_has_the_free_play_sheet():
+    body = page()
+    for needle in ('id="free"', 'id="btn-free"', 'id="btn-free-start"', 'id="btn-result-free"',
+                   'data-k="types"', 'data-k="storms"', 'id="free-emergencies-row"'):
+        assert needle in body, needle

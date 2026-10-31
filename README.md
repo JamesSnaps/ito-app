@@ -87,6 +87,10 @@ shifts make it harder airport by airport.
   shifts go to the family records (`/final-approach/stats`: the Endless
   leaderboard, everyone's stars per airport) and your progress follows you
   to any device.
+- **Free play** on any airport you've cleared: shift or endless, light to
+  rush traffic, which aircraft, low fuel, 0–3 storms, wind shifts and
+  emergencies. A toggle only appears once the airport that teaches it is
+  cleared. Free play earns no stars and never ranks; the records tag it.
 - Settings: volumes, large aircraft, vibration, and **calm skies** (three-
   quarter speed, for when it gets too much; calm shifts are marked and never
   ranked).
