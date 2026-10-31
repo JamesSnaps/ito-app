@@ -9,13 +9,14 @@ game:
 - **A board game played on the app**: the whole game on phones or one
   passed-round device, for nights without the box (Flip 7's Play mode,
   Fugitive).
-- **Games of our own**: designed here, for us (Wildwood, Final Approach).
+- **Games of our own**: designed here, for us (Wildwood, Final Approach,
+  Picnic Raid).
 
 Each game is self-contained; the hub provides what they need: room codes,
 joining, player profiles, persisted records, QR links.
 
-Five games so far: **ito**, **Flip 7**, **Fugitive**, **Wildwood** and
-**Final Approach**. `/` is the menu.
+Six games so far: **ito**, **Flip 7**, **Fugitive**, **Wildwood**,
+**Final Approach** and **Picnic Raid**. `/` is the menu.
 
 ## ito
 
@@ -68,6 +69,16 @@ Our own card game in the Crazy Eights family, made for the youngest at the
 table: match the colour or the creature, wilds change the colour, call
 "Last card!" or get caught, and empty your hand first. Two to four players,
 any of them the computer, on one device passed round or a phone each.
+
+## Picnic Raid
+
+Our own set-a-trap card game for two to four: fill a picnic basket and pack
+it up to bank the points, but every trap hidden under your blanket springs
+first. Hide Ants, Wasps, Seagulls and Dogs under everyone else's; Shoo! sends
+one back. First to 20. One device passed round, a phone each, or computer
+seats. The rules came out of a playtest (`games/picnic/playtest/`), and the
+card art is pictures dropped into `static/picnic/cards/` (brief:
+`games/picnic/ART.md`).
 
 ## Final Approach
 
@@ -138,6 +149,8 @@ games/fugitive/game.py    Fugitive's blueprint, seats, records
 data/ito/topics.json   live topics, seeded on first run, gitignored
 data/stats.json        win/loss history — runtime state, gitignored
 data/**/*.bak          last good copy of each file, written on every save
+games/picnic/engine.py    Picnic Raid's rules and per-player views
+games/picnic/game.py      Picnic Raid's blueprint, seats, records
 games/final_approach/game.py  Final Approach's blueprint: one page, the game is client-side
 static/final-approach/  Final Approach's scripts, stylesheet and fonts
 docs/final-approach/   Final Approach's playbook and screenshots

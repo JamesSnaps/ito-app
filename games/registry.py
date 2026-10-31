@@ -48,9 +48,10 @@ def all_games():
     from games.flip7.game import GAME as FLIP7
     from games.fugitive.game import GAME as FUGITIVE
     from games.ito.game import GAME as ITO
+    from games.picnic.game import GAME as PICNIC
     from games.wildwood.game import GAME as WILDWOOD
 
-    return [ITO, FLIP7, FUGITIVE, WILDWOOD, FINAL_APPROACH]
+    return [ITO, FLIP7, FUGITIVE, WILDWOOD, FINAL_APPROACH, PICNIC]
 
 
 def playable_games():

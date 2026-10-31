@@ -13,16 +13,18 @@ clear which it is:
 - **A board game played on the app** — the whole game, server-side rules,
   for nights without the box (Flip 7's Play mode, Fugitive).
 - **Games of our own** — designed here, not copies of published games:
-  their own names, rules and art (*Wildwood*, *Final Approach*).
+  their own names, rules and art (*Wildwood*, *Final Approach*,
+  *Picnic Raid*).
 
-It holds five: *ito* (cooperative, secret-number ordering game),
+It holds six: *ito* (cooperative, secret-number ordering game),
 *Flip 7* (push-your-luck card game), *Fugitive* (two-player
 hidden-movement card game, played entirely on the app, against a person or
 the computer — see its section), *Wildwood* (our own Crazy Eights-style
-card game for the family, two to four, also played entirely on the app)
-and *Final Approach* (our own solo air-traffic game, all client-side; its
-playbook is `docs/final-approach/PLAYBOOK.md`). `/` is the menu — it used
-to redirect straight to ito when ito was the only game.
+card game for the family, two to four, also played entirely on the app),
+*Final Approach* (our own solo air-traffic game, all client-side; its
+playbook is `docs/final-approach/PLAYBOOK.md`) and *Picnic Raid* (our own
+set-a-trap card game, two to four, web only so far). `/` is the menu — it
+used to redirect straight to ito when ito was the only game.
 
 The ito app itself: The owner has the German edition, whose
 topic prompts come as a printed booklet rather than cards, which isn't
@@ -1434,6 +1436,53 @@ it current when you do (its "Current state" and roadmap especially).
   in is a tile opening `/final-approach/` in the Safari sheet, like Keep
   score (playbook roadmap).
 
+## Picnic Raid (added v1.24.0)
+
+Our own game, made for the family the way Wildwood was: fill a picnic
+basket, pack it up to bank the points, and hide traps (Ants, Wasp, Seagull,
+Dog) under everyone else's blanket; Shoo! sends one back, Umbrella stops it.
+First to 20 with the round played out. **Built exactly the way Wildwood is**
+— game.py is its game.py function for function, minus the offline replay —
+so read that section first. Web only: no iOS screens, no AASA path.
+
+- **The rules came out of a playtest, and engine.py's docstring says why
+  each one is there** — don't change one without re-running the harness
+  (`games/picnic/playtest/`, its README says how; `compare.py`'s `BASE` is
+  what the engine plays). The draft lost to a player who never trapped,
+  buried the youngest under six traps, and had a hoard-under-a-full-blanket
+  loophole; free traps, one-of-yours-per-blanket (two in all) and a basket of
+  five are what fixed them. The harness is a separate model, not the engine.
+- **"Whose move" is `engine.turn`, never `state["turn"]`.** A pack-up pauses
+  at each trap for whoever it's on to defend (stage `spring`), and a Shoo!
+  sent back makes the *hider* decide, off their turn. The computer, the
+  pass-and-play curtain and the poll all go by `turn`. Someone with no
+  defence in hand isn't asked: the trap lands at once.
+- **Traps are free and come first**: `hide` (once, round 2 on), then one of
+  `lay`/`pack`/`pass`, then `discard` if over six. Loot (Ants, Seagull)
+  ignores the five-snack limit; `basket_room` never goes below 0.
+- **Secrets**: hands, and which trap is which, are seen only by the hider
+  (`blankets[n][i].card` is None for everyone else, `mine` marks your own).
+  The hider isn't named until the trap springs. `hide`, `draw` and
+  `discard` log entries are redacted the same way.
+- **The computer** (`ai.py`): Easy is the playtest's kid — traps the biggest
+  basket, packs at a random 5–8, always defends. Hard banks any basket of 4
+  while its blanket is clear (the one real skill the playtest found — it
+  takes Hard from barely better than Easy to ~1.25–1.55× a fair share),
+  otherwise packs at 7, and saves Shoo! for traps worth sending back.
+  Computers are Bramble, Pip, Clover and Tansy.
+- **Card faces are pictures, not code-drawn SVG** — the owner wants real
+  artwork. `static/picnic/cards/<code>.webp` (or `<kind>.webp` for all of a
+  food, with the number laid over) is used the moment it exists; game.py's
+  `card_art()` lists what's there so nothing missing is fetched, and every
+  card without one is a plain CSS placeholder. `games/picnic/ART.md` is the
+  brief: sizes, names, style, prompts. A test keeps its names in step.
+- **The table holds still during a play-out**: new log entries play as
+  bursts over the board as it stood, and the board is redrawn after, so a
+  trap turns over before anyone sees what it took. `.pr-playing` stops taps
+  meanwhile. A pack-up is ~3s of bursts plus 1.5s per computer decision.
+- **Records**: wins, games and best score per player; a shared win counts
+  for each. Games with a computer go in `record["computer"]`, as Wildwood's.
+
 ## Player profiles (added v1.8.0)
 
 A name and, optionally, a selfie that follow a player into every game:
@@ -1510,6 +1559,37 @@ one thing besides the games that `app.py` registers), `templates/me.html`
   face-down hideouts, footprints, and 42 turned up; Final Approach's is a
   runway with its approach chevrons lit and a jet coming in on a dotted
   route.
+
+## Pixel art (the pxl skill)
+
+- **Use pxl for raster game art** — sprites, card faces, icons, tiles,
+  animated GIFs, sprite sheets. It's a Claude Code skill
+  ([uilianks/pxl](https://github.com/uilianks/pxl), MIT, a fork of
+  crsolver/claude-pxl): art is written as a `.px.js` file and built to PNGs.
+  Its `SKILL.md` has the workflow; the short version is write → `build
+  --only <name>` → look at `out/_preview/<name>.png` → patch, and
+  `lint <name>` before calling a sprite done.
+- **It isn't in git.** It lives in `.claude/skills/pxl-pixel-art/`, which is
+  gitignored (and `.claude/` is dockerignored), so a fresh clone doesn't have
+  it. Install it on a new machine, pinned to the commit that was checked:
+  ```bash
+  git clone https://github.com/uilianks/pxl.git .claude/skills/pxl-pixel-art
+  git -C .claude/skills/pxl-pixel-art checkout a012fc78b92e5deff27e56bba563f22895c3916c
+  ```
+  Needs Node ≥ 22.18. Update by checking out a newer commit deliberately,
+  not by pulling blind — a skill runs code on this machine.
+- **CLI**: `node .claude/skills/pxl-pixel-art/bin/pxl.js build|serve|lint|ascii|trace …`.
+  `serve` is the live viewer (http://127.0.0.1:4321/); its annotate mode
+  writes `out/_feedback/<asset>.json`, which is what "check the feedback"
+  means.
+- **The output is a file like any other asset.** The server and the iOS app
+  never run pxl: the built PNGs go into `static/` (or an asset catalogue) and
+  get committed, and nothing new runs at runtime — the same rule as the
+  rasterised icons. Keep the `.px.js` source alongside so the art can be
+  rebuilt; `out/_preview/` and `out/_feedback/` are working files.
+- **Same art rule as everywhere else**: our own designs, not the published
+  games' art (see Fugitive's cards). `pxl trace` / `image()` turn a PNG into
+  pixel art — never feed them a scan of a real card.
 
 ## Known rough edges / good next steps
 
