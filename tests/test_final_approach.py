@@ -80,6 +80,45 @@ def test_every_level_has_a_theme_a_code_and_runways():
         assert code not in codes, code
         codes.add(code)
         assert "runways: [" in entry
+    # An arrival's warning, where an airport sets one, is long enough to see
+    # and short enough not to clutter the edges.
+    for entry in entries:
+        warning = re.search(r"warning: ([\d.]+)", entry)
+        if warning:
+            assert 2 <= float(warning.group(1)) <= 4
     # Exactly one endless mode, and it says what unlocks it.
     endless = [e for e in entries if "endless: true" in e]
     assert len(endless) == 1 and "unlock:" in endless[0]
+
+
+def sound_list():
+    """The generator's list of sounds, read without importing the module
+    (it isn't a package, and it never runs in the server)."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("sounds", ROOT / "tools" / "final_approach_sounds.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.SOUNDS
+
+
+def test_every_listed_sound_has_a_file_and_every_file_is_listed():
+    """The generator is the record of how each sound was made; a file it
+    doesn't know about couldn't be remade, and a listed one missing would
+    leave the game on its fallback synth."""
+    files = {path.stem for path in (STATIC / "audio").glob("*.mp3")}
+    assert files == set(sound_list())
+
+
+def test_the_page_is_told_where_each_sound_lives():
+    body = page()
+    for name in sound_list():
+        assert f"/static/final-approach/audio/{name}.mp3?v=" in body, name
+    assert 'id="btn-music"' in body
+
+
+def test_the_sounds_stay_a_small_download():
+    """Effects load when the game starts and music in the background; keep
+    the whole lot comfortably under 6 MB."""
+    total = sum(path.stat().st_size for path in (STATIC / "audio").glob("*.mp3"))
+    assert total < 6 * 1024 * 1024, total

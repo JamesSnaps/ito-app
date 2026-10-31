@@ -9,3 +9,5 @@ data/
 .claude/
 # Playbooks and their screenshots are for people, not the server.
 docs/
+# Developer tools (e.g. the sound generator) never run in the server.
+tools/
