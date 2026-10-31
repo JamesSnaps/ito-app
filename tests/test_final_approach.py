@@ -373,3 +373,99 @@ def test_the_game_page_has_the_free_play_sheet():
     for needle in ('id="free"', 'id="btn-free"', 'id="btn-free-start"', 'id="btn-result-free"',
                    'data-k="types"', 'data-k="storms"', 'id="free-emergencies-row"'):
         assert needle in body, needle
+
+
+# --- guests, activity and the profile lock (v1.26.0) ----------------------------
+
+ADMIN = {"Remote-User": "james", "Remote-Groups": "admins"}
+HOME = "10.0.10.0/24 10.0.4.0/24"
+
+
+def test_a_guest_shift_goes_only_to_the_activity_log(monkeypatch):
+    monkeypatch.setenv("GAMENIGHT_HOME_NETWORKS", HOME)
+    c = client()
+    res = c.post("/final-approach/api/shifts", json=shift(device="3f1a9c00"), environ_base={"REMOTE_ADDR": "81.2.69.160"})
+    assert res.status_code == 200 and res.get_json() == {"recorded": False, "guest": True}
+    data = c.get("/final-approach/api/stats").get_json()
+    assert data["players"] == [] and data["recent"] == [] and data["guests_week"] == 1
+    assert "Guests: 1 shift this week" in c.get("/final-approach/stats").get_data(as_text=True)
+    from games.final_approach import game
+    [entry] = game.activity()
+    assert entry["name"] == "Guest 3F1A" and entry["guest"] and entry["where"] == "away"
+    assert "81.2" not in str(entry)                                   # no address kept
+    # a retry of the same shift counts once
+    c.post("/final-approach/api/shifts", json={**shift(device="3f1a9c00"), "id": entry["id"]})
+    assert len(game.activity()) == 1
+
+
+def test_shifts_without_a_profile_or_a_proper_tag_are_refused():
+    c = client()
+    assert post(c, {}, shift(device="nope")).status_code == 403
+    assert post(c, {"X-Profile-Token": "stale"}, shift(device="3f1a9c00")).status_code == 403
+    from games.final_approach import game
+    assert game.activity() == []
+
+
+def test_a_profiles_shift_is_logged_with_its_name_and_time_played(monkeypatch):
+    monkeypatch.setenv("GAMENIGHT_HOME_NETWORKS", HOME)
+    c = client()
+    louis = c.post("/api/profiles", json={"name": "Louis"}, environ_base={"REMOTE_ADDR": "10.0.10.40"}).get_json()
+    headers = {"X-Profile-Token": louis["token"]}
+    c.post("/final-approach/api/shifts", json=shift(device="00ff00ff", duration=90), headers=headers,
+           environ_base={"REMOTE_ADDR": "10.0.10.40"})
+    c.post("/final-approach/api/shifts", json=shift(device="00ff00ff", duration=60, free=free()), headers=headers,
+           environ_base={"REMOTE_ADDR": "10.0.10.40"})
+    player = c.get("/final-approach/api/stats").get_json()["players"][0]
+    assert player["seconds"] == 150 and player["last_at"]
+    from games.final_approach import game
+    entries = game.activity()
+    assert [e["name"] for e in entries] == ["Louis", "Louis"] and all(e["where"] == "home" for e in entries)
+    assert entries[1]["free"] == "As usual"
+
+
+def test_the_activity_page_is_only_for_a_signed_in_grown_up(monkeypatch):
+    c = client()
+    post(c, {}, shift(device="3f1a9c00"))
+    assert c.get("/final-approach/activity", headers=ADMIN).status_code == 403    # Authelia not in front yet
+    monkeypatch.setenv("GAMENIGHT_FAMILY", "authelia")
+    for headers in ({}, {"Remote-User": "louis"}, {"Remote-User": "louis", "Remote-Groups": "family"}):
+        res = c.get("/final-approach/activity", headers=headers)
+        assert res.status_code == 403 and "Guest 3F1A" not in res.get_data(as_text=True)
+    louis = profile(c, "Louis")
+    post(c, louis, shift(outcome="crash", landed=2))
+    body = c.get("/final-approach/activity", headers=ADMIN).get_data(as_text=True)
+    assert "Guest 3F1A" in body and "Louis" in body and "Meadow Strip" in body and "Who's playing" in body
+
+
+def test_activity_sums_people_and_airports():
+    from games.final_approach import game
+    c = client()
+    louis = profile(c, "Louis")
+    post(c, louis, shift(strikes=1))                                   # clears Meadow Strip
+    post(c, louis, shift(level=2, outcome="crash", landed=4, duration=200))
+    post(c, {}, shift(level=2, outcome="crash", landed=1, device="abcdef01"))
+    data = game.activity_payload()
+    assert data["totals"]["today"] == 3 and data["totals"]["week_people"] == 1 and data["totals"]["week_guests"] == 1
+    people = {p["name"]: p for p in data["people"]}
+    assert people["Louis"]["progress"] == "1 of 10" and people["Louis"]["stars"] == 2
+    assert people["Louis"]["furthest"] == "Meadow Strip" and people["Guest ABCD"]["stars"] is None
+    twin = next(a for a in data["airports"] if a["code"] == "TWF")
+    assert twin["shifts"] == 2 and twin["crashes"] == 2 and twin["clear_rate"] == 0
+    assert sum(d["family"] + d["guests"] for d in data["days"]) == 3
+
+
+def test_profiles_can_be_made_anywhere_and_shifts_say_where(monkeypatch):
+    monkeypatch.setenv("GAMENIGHT_HOME_NETWORKS", HOME)
+    c = client()
+    away = c.post("/api/profiles", json={"name": "Cousin"}, environ_base={"REMOTE_ADDR": "81.2.69.160"})
+    assert away.status_code == 200
+    forged = {"X-Forwarded-For": "10.0.10.5, 81.2.69.160"}                # a client can't claim home
+    c.post("/final-approach/api/shifts", json=shift(device="0a0b0c0d"), headers={**forged, "X-Profile-Token": away.get_json()["token"]},
+           environ_base={"REMOTE_ADDR": "81.2.69.160"})
+    from games.final_approach import game
+    assert game.activity()[0]["where"] == "away"
+
+
+def test_the_game_page_asks_whos_playing():
+    body = page()
+    assert 'id="guest"' in body and 'id="btn-guest-ok"' in body and "/me?back=" in body

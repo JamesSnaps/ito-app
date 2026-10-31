@@ -1446,6 +1446,23 @@ it current when you do (its "Current state" and roadmap especially).
   a fixed list, records it with no stars or medals and off every board, and
   `stats_payload` adds `free_summary` ("Rush · 2 storms · endless", the same
   words as the game's `freeSummary`) for the records page.
+- **Guests and the Activity page** (v1.26.0): every finished shift goes to
+  `/api/shifts` with `device`, a random 8-hex tag per browser
+  (`save.device`). A profile's (with its token) goes to the records as
+  before; a guest's (no token, `guest` marked in the outbox) is only added
+  to the **Activity log**, a separate stats bucket (`final-approach-
+  activity`, the last 3,000 shifts, deduplicated by id) that keeps the
+  name or "Guest 3F1A", the shift, and "home"/"away", never an address.
+  No token and no valid tag is still 403. `/final-approach/activity` is the
+  owner's page (`family_signed_in()`, so `GAMENIGHT_FAMILY=authelia` plus
+  an admins `Remote-User`; the docker repo routes it through the
+  `gamenight-admin` router and Authelia's Family rules): totals, two weeks
+  of shifts per day, per person (last played, time, airports cleared,
+  furthest, calm and free play, home or away) and per airport (clear rate,
+  collisions, strike-outs). Records players now carry `seconds` and
+  `last_at`; the records page shows them and `guests_week`. A browser
+  with no profile is asked once (`askWhoIsPlaying`, the `#guest` card;
+  `save.guestOk` remembers "Play as a guest").
 - **`window.__finalApproach`** exposes the state for Playwright checks,
   plus `update` (step the simulation, e.g. ten minutes in a loop),
   `queueArrival`, `clearOfStorms`, `stormAt`, `clearOfTraffic`, `track`,
@@ -1521,6 +1538,13 @@ one thing besides the games that `app.py` registers), `templates/me.html`
   rules for them **above Game Night's home-network bypass** (admins
   `one_factor`, else `deny`), so it asks for a login at home too. A child's
   own token can't change it (a test checks). Linked from the hub's footer.
+- **Home or away** (v1.26.0): `GAMENIGHT_HOME_NETWORKS` (the compose file
+  sets it to Authelia's home-bypass list) lets `profiles.where()` say
+  "home", "away" or None (unset: development, tests) for any request. The
+  address is the last `X-Forwarded-For` hop (ProxyFix trusts one:
+  Traefik's), so a client can't claim to be home. Only the Activity log
+  uses it. Profiles can be made from anywhere (decided 31 October 2026: a
+  home-only lock was built and dropped).
 - **Where faces show**: the hub's "You" chip; Flip 7's setup chips, a
   "Regulars — tap to add" picker (scorekeeper and play), the table's mats
   and the records; Fugitive's setup picker, nameplates, seats ("That's me —

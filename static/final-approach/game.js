@@ -1199,37 +1199,61 @@
     if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
     return Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
   }
+  // A random tag for this browser, so the owner's Activity page can tell
+  // guests apart ("Guest 3F1A") without a name. It proves nothing, so it
+  // never signs anyone in.
+  function deviceTag() {
+    if (!/^[0-9a-f]{8}$/.test(save.device || '')) {
+      const bytes = new Uint8Array(4);
+      if (window.crypto && crypto.getRandomValues) crypto.getRandomValues(bytes);
+      else bytes.forEach((_, i) => { bytes[i] = Math.floor(Math.random() * 256); });
+      save.device = [...bytes].map(b => b.toString(16).padStart(2, '0')).join('');
+      persist();
+    }
+    return save.device;
+  }
+  // Every finished shift goes to the server: a profile's to the family
+  // records, a guest's (marked `guest`) only to the owner's Activity log.
   function recordShift(shift) {
     shift.id = newId();
-    if (!me()) { recordStatus[shift.id] = { state: 'guest' }; return shift.id; }
+    shift.device = deviceTag();
+    const mine = me();
+    if (mine) shift.profile = mine.id; else shift.guest = true;
     save.outbox = (save.outbox || []).concat([shift]).slice(-20);
     persist();
-    recordStatus[shift.id] = { state: 'sending' };
+    recordStatus[shift.id] = { state: mine ? 'sending' : 'guest' };
     flushOutbox();
     return shift.id;
   }
   let flushing = false;
   async function flushOutbox() {
-    if (flushing || !me() || !(save.outbox || []).length) return;
+    if (flushing || !(save.outbox || []).length) return;
     flushing = true;
     try {
       while ((save.outbox || []).length) {
         const shift = save.outbox[0];
+        const mine = me();
+        // Shifts queued before v1.26.0 carry neither mark: they were a profile's.
+        const asMe = !!mine && !shift.guest && (!shift.profile || shift.profile === mine.id);
+        const body = Object.assign({}, shift, { device: shift.device || deviceTag() });
+        delete body.guest; delete body.profile;
         let res;
         try {
           res = await fetch('/final-approach/api/shifts', {
             method: 'POST',
-            headers: Object.assign({ 'Content-Type': 'application/json' }, GN.me.headers()),
-            body: JSON.stringify(shift),
+            headers: Object.assign({ 'Content-Type': 'application/json' }, asMe ? GN.me.headers() : {}),
+            body: JSON.stringify(body),
           });
         } catch {
-          recordStatus[shift.id] = { state: 'kept' };
+          if (asMe) recordStatus[shift.id] = { state: 'kept' };
           break;                                   // offline: try again later
         }
-        const body = await res.json().catch(() => ({}));
-        if (res.ok) recordStatus[shift.id] = { state: 'ok', name: me() && me().name };
-        else if (res.status >= 500) { recordStatus[shift.id] = { state: 'kept' }; break; }
-        else recordStatus[shift.id] = { state: 'refused', error: body.error || 'the server said no' };
+        const reply = await res.json().catch(() => ({}));
+        if (res.status >= 500) { if (asMe) recordStatus[shift.id] = { state: 'kept' }; break; }
+        if (asMe) {
+          recordStatus[shift.id] = res.ok ? { state: 'ok', name: mine.name }
+            : { state: 'refused', error: reply.error || 'the server said no' };
+        }
         save.outbox.shift();
         persist();
       }
@@ -1752,7 +1776,7 @@
 
   // ---------- UI ----------
   const show = (id, on) => $(id).classList.toggle('hidden', !on);
-  const overlays = ['menu', 'brief', 'pause', 'result', 'settings', 'free'];
+  const overlays = ['menu', 'brief', 'pause', 'result', 'settings', 'free', 'guest'];
   function only(id) { for (const o of overlays) show(o, o === id); }
 
   const boards = {
@@ -1844,7 +1868,23 @@
     updateController();
     only('menu');
     if (actx) sfx.rattle();
+    askWhoIsPlaying();
   }
+
+  // Once per browser, a guest is asked who's playing: add yourself (on the
+  // hub's You page, then straight back) or carry on as a guest.
+  function askWhoIsPlaying() {
+    if (me() || save.guestOk) return;
+    S.screen = 'guest';
+    only('guest');
+    new Flap.Board($('guest-flaps'), 13).set("Who's playing", { stagger: 30 });
+  }
+  $('btn-guest-ok').addEventListener('click', () => {
+    save.guestOk = true;
+    persist();
+    S.screen = 'menu';
+    only('menu');
+  });
 
   // The Endless row: your best, and the family's best with their face.
   function refreshEndlessRow() {
