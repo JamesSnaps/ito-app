@@ -290,7 +290,7 @@ Game Night.
 
 ---
 
-## 5. Current state (v1.19.0)
+## 5. Current state (v1.21.0)
 
 **Done:**
 
@@ -303,6 +303,7 @@ Game Night.
 - [x] Carry on a route from its end; bigger arrival markers with a countdown,
   never under the HUD; three seconds' warning early on; storm-safe arrivals
   (v1.19.0)
+- [x] Spoken radio dialogue, and varied, fading touchdowns (v1.21.0)
 - [x] Recorded sound and music (v1.20.0): touchdowns, chimes, radio, the
   flap board, a background per landscape, engines that follow the traffic,
   and three music tracks that turn busy as the sky fills. Made with
@@ -434,10 +435,13 @@ as a toggle.
 - **Holding patterns:** circle an aircraft in place (the Hold tool).
 - **Moving runways:** a carrier's deck sails and turns.
 
-### Radio dialogue
+### Radio dialogue ✅ (v1.21.0)
 
 Pilots talk to you, the tower, in plain English, the way they do on a real
-frequency but short and friendly.
+frequency but short and friendly. Built as described here: 85 lines, eleven
+voices (British, Australian, Irish and American pilots; one British voice
+for the tower), about 1 MB. The table's "Emergencies" row waits for the
+emergencies themselves.
 
 - **Recorded with ElevenLabs text-to-speech** in a handful of voices and
   accents (British, American, Australian, Irish and others), generated once
@@ -583,12 +587,11 @@ impressions are good", but:
 2. the landing sounds repeat too, and start and stop abruptly
 3. pilots should talk about things like low fuel
 
-Fixed in v1.21.0: three touchdown recordings per aircraft family, dealt so
-none repeats until all have played, with every sound fading in and out and
-a landing straight after another played quieter; radio chatter limited to
-one call at a time with a few seconds' quiet after. Spoken dialogue is
-designed in section 6 ("Radio dialogue") and waits on the key's
-text-to-speech permission.
+All fixed in v1.21.0: three touchdown recordings per aircraft family,
+dealt so none repeats until all have played, with every sound fading in
+and out and a landing straight after another played quieter; and spoken
+radio dialogue (section 6, "Radio dialogue") in place of the garbled clips,
+rationed to one call at a time.
 
 **Controls**
 
@@ -699,9 +702,10 @@ separate volume control for each group, in the settings sheet.
   its own calmer version.
 - Separate volumes for music and sound effects.
 
-**Radio dialogue** (next; section 6): spoken English lines for locks,
-fuel, diverts, go-arounds and wind shifts, recorded with text-to-speech and
-given a radio sound live.
+**Radio dialogue** ✅ (v1.21.0; section 6): 85 spoken English lines in
+eleven voices for locks (with the real runway number), pads, redrawn
+routes, low fuel and maydays, diverts, go-arounds, thanks after landing,
+and the tower opening and closing the shift and calling wind shifts.
 
 **Balance and settings**
 
@@ -876,6 +880,7 @@ play:
 | Generated audio (ElevenLabs, Suno) only ever as bundled files, never runtime API calls | Keeps API keys out of browsers and third parties out of play; works on the LAN with no internet. |
 | Sound and music made with ElevenLabs (sound effects and music), bundled; the alert and fallbacks synthesised | One service and one restricted key for everything; recordings sound far better than the synth for set pieces; nothing runs at play time. |
 | Radio chatter is rationed: one call at a time, quiet after, never the same line twice running | Heard on every lock it became wallpaper (first listen); rarer, it stays a treat. |
+| Dialogue recorded clean, radio sound added live | One recording works for any radio treatment we want later, and tuning the filter needs no regeneration. |
 | Made-up callsigns only | Real airlines' callsigns belong to them, and the game is our own. |
 | The v1.20.0 sounds were made on ElevenLabs' Starter plan (October 2026) | A paid plan carries a commercial licence, so no attribution is needed even in a public repo. Remake sounds on a paid plan too: anything made on the free plan would need a credit on the board and couldn't be used commercially. |
 | Departures are the next big mechanic | The shared runway is the heart of real ATC, and it reuses the terminals, taxiways and wind rules already built. |

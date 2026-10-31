@@ -9,8 +9,8 @@ sound nobody likes is fixed by changing its prompt and running this again.
     .venv/bin/python tools/final_approach_sounds.py --list
 
 The key is read from ELEVENLABS_API_KEY, or from ~/.config/elevenlabs/env
-(a line ELEVENLABS_API_KEY=...). Keep it out of the repo. The key only needs
-the Sound Effects and Music permissions.
+(a line ELEVENLABS_API_KEY=...). Keep it out of the repo. The key needs the
+Sound Effects, Music and Text to Speech permissions.
 """
 
 import json
@@ -45,9 +45,6 @@ SOUNDS = {
     "chime_fail": ("sfx", 2.5, "Soft descending airport chime, three low bell tones, gentle and a little sad, no voice"),
     "collision": ("sfx", 3.0, "Distant mid-air explosion heard from the ground: a deep muffled boom, then light metal debris scattering"),
     "divert": ("sfx", 2.5, "Aviation radio static burst, then a jet engine fading away into the distance"),
-    "radio_1": ("sfx", 1.5, "Short aviation radio transmission: squelch click, about one second of indistinct garbled male air traffic controller speech, squelch tail"),
-    "radio_2": ("sfx", 1.5, "Short aviation radio transmission: squelch click, about one second of indistinct garbled female air traffic controller speech, squelch tail"),
-    "radio_3": ("sfx", 1.5, "Brief crackly aviation radio call: click, a few muffled unintelligible words from a pilot, click"),
     "wind_shift": ("sfx", 2.0, "A strong gust of wind whooshing past outdoors, then settling"),
     "flap_1": ("sfx", 0.6, "Single mechanical split-flap departure board flap clack, close, dry"),
     "flap_2": ("sfx", 0.6, "One plastic flap of a split-flap display snapping over, short crisp click"),
@@ -66,6 +63,102 @@ SOUNDS = {
     "music_calm": ("music", 90, "Instrumental 1960s jet-age lounge jazz: gentle vibraphone, warm electric piano, walking upright bass, soft brushed drums. A steady, unhurried groove to concentrate to. No vocals."),
     "music_busy": ("music", 90, "Instrumental 1960s jet-age jazz with urgency: driving walking bass, busy brushed drums and ride cymbal, punchy vibraphone and muted trumpet stabs. Tense but stylish, like a busy control tower. No vocals."),
 }
+
+
+# --- radio dialogue (text-to-speech) ---------------------------------------
+# Pilots talk to the tower in plain English. The game adds the radio sound
+# (band-pass, crackle, squelch) live, so these are recorded clean. Callsigns
+# are made up; never a real airline's.
+VOICES = {
+    "george": "JBFqnCBsd6RMkjVDRZzb",   # British
+    "alice": "Xb7hH8MSUJpSbSDYk0k2",    # British
+    "lily": "pFZP5JQG7iQjIQuC4Bku",     # British
+    "charlie": "IKne3meq5aSn9XLyUdCD",  # Australian
+    "fin": "D38z5RcWu1voky8WS1ja",      # Irish
+    "brian": "nPczCjzI2devNBz1zQrb",    # American
+    "chris": "iP95p4xoKVk53GoZ742B",    # American
+    "laura": "FGY2WhTYpPnrIDTdsKH5",    # American
+    "matilda": "XrExE9yKIg1WjnnlVkGX",  # American
+    "bill": "pqHfZKP75CvOlQylNhV4",     # American
+    "daniel": "onwK4e9ZLuTAKqWW03F9",   # British: the tower
+}
+PILOTS = [v for v in VOICES if v != "daniel"]
+CALLSIGNS = ["Skylark one two", "Puffin four", "Kestrel seven", "Bluebird two one",
+             "Heron three", "Swift five zero", "Gannet eight", "Meadow six"]
+DIGITS = "zero one two three four five six seven eight niner".split()
+
+
+def runway_numbers():
+    """Every runway number painted in the game: both ends of every runway in
+    levels.js, worked out exactly as art.js's designator() does."""
+    import math
+    import re
+    levels = (OUT.parent / "levels.js").read_text()
+    numbers = set()
+    for angle in re.findall(r"kind: '(?:long|short)'[^}]*angle: (-?\d+)", levels):
+        for end in (int(angle), int(angle) + 180):
+            heading = ((end + 90) % 360 + 360) % 360
+            n = math.floor(heading / 10 + 0.5) % 36 or 36
+            numbers.add(f"{n:02d}")
+    return sorted(numbers)
+
+
+def spoken(number):
+    return " ".join(DIGITS[int(d)] for d in number)
+
+
+def speech_lines():
+    """name: (voice, text, urgent). Names group into what the game deals
+    from: say_land_27_1, say_land_27_2 … all answer to `say_land_27`."""
+    lines = {}
+    k = 0
+
+    def add(prefix, texts, voices=None, urgent=False):
+        nonlocal k
+        for i, text in enumerate(texts, 1):
+            voice = (voices or PILOTS)[k % len(voices or PILOTS)]
+            k += 1
+            lines[f"{prefix}_{i}"] = (voice, text, urgent)
+
+    for number in runway_numbers():
+        rw = spoken(number)
+        call = CALLSIGNS[int(number) % len(CALLSIGNS)]
+        add(f"say_land_{number}", [
+            f"Cleared to land, runway {rw}.",
+            f"Runway {rw}, cleared to land, {call}.",
+            f"Cleared runway {rw}. Thanks, tower.",
+        ])
+    add("say_pad", ["Helipad in sight, coming in.", "Pad's in sight, setting down shortly.",
+                    "Copy, heading for the pad.", "Rescue one, pad in sight."])
+    add("say_turn", ["Copy, new heading.", "Wilco.", "Roger, turning now.",
+                     "Understood, adjusting course.", "Turning, thanks tower.", "Copy that, on our way."])
+    add("say_lowfuel", ["Tower, we're getting a bit low on fuel.",
+                        "Tower, Puffin four, fuel's getting low. Could do with landing soon.",
+                        "Fuel's running low up here, tower.",
+                        "Request priority, we're low on fuel."])
+    add("say_mayday", ["Mayday, mayday, mayday! Minimum fuel, we need to land now!",
+                       "Mayday! We're nearly out of fuel, request immediate landing!",
+                       "Mayday, mayday! Fuel critical!"], urgent=True)
+    add("say_divert_fuel", ["Out of fuel, tower. Diverting to our alternate.",
+                            "We can't wait any longer. Diverting."])
+    add("say_divert_storm", ["Too rough in that storm. We're diverting.",
+                             "Severe turbulence! We're out of here, diverting."], urgent=True)
+    add("say_goaround", ["Going around.", "Going around, runway's changed.", "Copy, going around."])
+    add("say_thanks", ["Thanks, tower. Lovely evening for it.", "On the ground. Thanks very much.",
+                       "Smooth landing. Cheers, tower.", "Thank you, tower. See you next time.",
+                       "Down safe, thanks!"])
+    tower = ["daniel"]
+    add("tower_windwarn", ["All aircraft, wind change in five seconds. Runways will reverse.",
+                           "All stations, stand by. The wind is shifting."], tower)
+    add("tower_windflip", ["All aircraft, runways reversed. Check your approach.",
+                           "Wind change complete. Landing direction reversed."], tower)
+    add("tower_start", ["Tower is open. First arrivals inbound.", "Good evening, tower's open."], tower)
+    add("tower_clear", ["That's the last one down. Lovely work, tower.",
+                        "Shift complete. Nicely done."], tower)
+    return lines
+
+
+SPEECH = speech_lines()
 
 
 def api_key():
@@ -97,6 +190,14 @@ def request(path, body, key):
 
 
 def generate(name, key):
+    if name in SPEECH:
+        voice, text, urgent = SPEECH[name]
+        settings = {"stability": 0.3 if urgent else 0.5, "similarity_boost": 0.75,
+                    "style": 0.45 if urgent else 0.15}
+        audio = request(f"/text-to-speech/{VOICES[voice]}?output_format=mp3_22050_32",
+                        {"text": text, "model_id": "eleven_multilingual_v2", "voice_settings": settings}, key)
+        (OUT / f"{name}.mp3").write_bytes(audio)
+        return len(audio)
     kind, seconds, prompt = SOUNDS[name]
     if kind == "music":
         audio = request("/music?output_format=mp3_44100_96",
@@ -115,11 +216,14 @@ def generate(name, key):
 def main(args):
     if "--list" in args:
         for name, (kind, seconds, prompt) in SOUNDS.items():
-            print(f"{name:15} {kind:5} {seconds:>4}s  {prompt}")
+            print(f"{name:20} {kind:6} {seconds:>4}s  {prompt}")
+        for name, (voice, text, urgent) in SPEECH.items():
+            print(f"{name:20} speech {voice:8} {text}")
         return
     OUT.mkdir(parents=True, exist_ok=True)
-    names = args or [n for n in SOUNDS if not (OUT / f"{n}.mp3").exists()]
-    unknown = [n for n in names if n not in SOUNDS]
+    everything = {**SOUNDS, **SPEECH}
+    names = args or [n for n in everything if not (OUT / f"{n}.mp3").exists()]
+    unknown = [n for n in names if n not in everything]
     if unknown:
         sys.exit(f"Unknown: {', '.join(unknown)}")
     key = api_key()

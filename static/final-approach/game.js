@@ -61,8 +61,18 @@
       master.connect(actx.destination);
       const mk = vol => { const g = actx.createGain(); g.gain.value = vol; g.connect(master); return g; };
       bus = { master, sfx: mk(0.9), bed: mk(0), engine: mk(0.3), music: mk(0) };
+      // The radio: clean recordings in, a small band-limited speaker out.
+      const hp = actx.createBiquadFilter(), lp = actx.createBiquadFilter(), drive = actx.createWaveShaper();
+      hp.type = 'highpass'; hp.frequency.value = 380;
+      lp.type = 'lowpass'; lp.frequency.value = 3000;
+      const curve = new Float32Array(1024);
+      for (let i = 0; i < curve.length; i++) { const x = i / 511.5 - 1; curve[i] = Math.tanh(x * 2.2) / Math.tanh(2.2); }
+      drive.curve = curve;
+      bus.radio = actx.createGain();
+      bus.radio.gain.value = 1.1;
+      bus.radio.connect(hp); hp.connect(lp); lp.connect(drive); drive.connect(bus.sfx);
       applyVolumes();
-      // Effects are small: fetch them all now. Loops and music load when needed.
+      // Effects and speech are small: fetch them all now. Loops and music load when needed.
       for (const name of Object.keys(AUDIO)) if (!/^(bed|engine|music)_/.test(name)) load(name);
     }
     if (actx.state === 'suspended' && !document.hidden) actx.resume();
@@ -192,17 +202,62 @@
 
   const FAMILY = { prop: 'prop', jet: 'jet', heavy: 'jet', heli: 'heli' };
   const panOf = x => Math.max(-0.7, Math.min(0.7, (x / 960 - 0.5) * 1.4));
-  let lastFlap = 0, lastTouchdown = -9, radioFree = 0;
-  // Radio chatter is a treat, not a receipt: at most one call at a time, then
-  // a few seconds' quiet. Locking a route always gets a soft click either way.
-  function radio(prefix, p, opts = {}) {
-    if (!actx || actx.currentTime < radioFree) return false;
+  let lastFlap = 0, lastTouchdown = -9;
+
+  // Radio calls. Pilots (and now and then the tower) speak through the radio
+  // bus with a squelch either side. One call at a time with a few seconds'
+  // quiet after, so it stays a treat; urgent calls (maydays, diverts, the
+  // tower) wait their turn instead of being dropped. Music and the background
+  // dip while anyone speaks.
+  let radioBusy = 0, radioFree = 0;
+  const radioQueue = [];
+  let hiss = null;
+  function squelch(at, len, vol) {
+    if (!hiss) {
+      hiss = actx.createBuffer(1, Math.floor(actx.sampleRate * 0.3), actx.sampleRate);
+      const d = hiss.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    }
+    const src = actx.createBufferSource(), g = actx.createGain();
+    src.buffer = hiss;
+    g.gain.setValueAtTime(vol, at);
+    g.gain.exponentialRampToValueAtTime(0.001, at + len);
+    src.connect(g).connect(bus.radio);
+    src.start(at, Math.random() * 0.05, len);
+  }
+  function say(prefix, p, { priority = false, chance = 1, delay = 0 } = {}) {
+    if (!actx || save.muted || Math.random() > chance) return false;
+    const now = actx.currentTime;
+    if (now < radioBusy || (!priority && now < radioFree)) {
+      if (priority && radioQueue.length < 2) radioQueue.push([prefix, p]);
+      return false;
+    }
     const name = deal(prefix);
-    if (!name || !buffers[name]) { if (name) load(name); return false; }
-    playSound(name, { vol: 0.6, pan: p ? panOf(p.x) * 0.6 : 0, fadeOut: 0.15, ...opts });
-    radioFree = actx.currentTime + buffers[name].duration + (opts.gap || 4);
+    if (!name) return false;
+    if (!buffers[name]) { load(name); return false; }
+    const buf = buffers[name], t0 = now + 0.09 + delay;
+    scape.said = (scape.said || []).concat(name).slice(-12);  // for checks
+    squelch(t0 - 0.07, 0.05, 0.12);
+    const src = actx.createBufferSource(), g = actx.createGain();
+    src.buffer = buf;
+    g.gain.value = 0.95;
+    let out = g;
+    if (p && actx.createStereoPanner) { const pan = actx.createStereoPanner(); pan.pan.value = panOf(p.x) * 0.5; g.connect(pan); out = pan; }
+    src.connect(g);
+    out.connect(bus.radio);
+    src.start(t0);
+    const end = t0 + buf.duration;
+    squelch(end + 0.02, 0.16, 0.18);
+    radioBusy = end + 0.25;
+    radioFree = radioBusy + 3.5;
+    scape.duckUntil = radioBusy;
+    setTimeout(() => {
+      const next = radioQueue.shift();
+      if (next) say(next[0], next[1], { priority: true });
+    }, (radioBusy - now) * 1000 + 60);
     return true;
   }
+
   const sfx = {
     land:      () => tone(1320, 0.14, { vol: 0.05 }),
     // A landing right after another is quieter, and each fades out gently.
@@ -213,11 +268,19 @@
       return (name && playSound(name, { vol: close ? 0.35 : 0.75, pan: panOf(p.x), rate: 0.94 + Math.random() * 0.12, fadeOut: 1.4 })) ||
              (tone(660, 0.12), tone(990, 0.18, { delay: 0.1 }));
     },
-    lock:      p => { tone(1180, 0.05, { type: 'triangle', vol: 0.05 }); radio('radio', p); },
+    // A readback with the real runway number ("cleared to land, runway two seven").
+    lock:      p => {
+      tone(1180, 0.05, { type: 'triangle', vol: 0.05 });
+      const end = p.landing;
+      say(end.kind === 'pad' ? 'say_pad' : 'say_land_' + Art.designator(end.angle * 180 / Math.PI), p);
+    },
     // A two-tone traffic alert: high, then low.
     warn:      () => { tone(1046, 0.09, { type: 'square', vol: 0.035 }); tone(784, 0.11, { type: 'square', vol: 0.035, delay: 0.1 }); },
     spawn:     () => tone(520, 0.1, { type: 'triangle', vol: 0.035 }),
-    divert:    p => playSound('divert', { vol: 0.7, pan: panOf(p.x) }) || tone(500, 0.4, { type: 'sawtooth', vol: 0.05, slide: -300 }),
+    divert:    p => {
+      say(p.divertedBy === 'Storm' ? 'say_divert_storm' : 'say_divert_fuel', p, { priority: true });
+      return playSound('divert', { vol: 0.6, pan: panOf(p.x) }) || tone(500, 0.4, { type: 'sawtooth', vol: 0.05, slide: -300 });
+    },
     crash:     () => playSound('collision') || (noise(1, 0.5), tone(140, 0.7, { type: 'sawtooth', vol: 0.12, slide: -90 })),
     start:     () => playSound('chime_start', { vol: 0.6 }),
     win:       () => playSound('chime_clear', { vol: 0.7 }) || [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.22, { vol: 0.1, delay: i * 0.12 })),
@@ -254,7 +317,8 @@
       scape.bedName = bedName;
       scape.bed = startLoop(bedName, bus.bed, 2);
     }
-    bus.bed.gain.setTargetAtTime(playing ? 0.32 : 0.12, now, 0.6);
+    const duck = now < (scape.duckUntil || 0) ? 0.5 : 1;
+    bus.bed.gain.setTargetAtTime((playing ? 0.32 : 0.12) * duck, now, 0.25);
 
     const counts = { jet: [], prop: [], heli: [] };
     if (playing) for (const p of S.planes) if (p.state === 'fly' || p.state === 'divert') counts[FAMILY[p.type]].push(p.x);
@@ -281,7 +345,7 @@
       track = busy || (wasBusy && clock - scape.busySince < 10) ? 'music_busy' : 'music_calm';
     }
     setMusic(track);
-    bus.music.gain.setTargetAtTime(save.music === false ? 0 : (S.screen === 'pause' ? 0.12 : 0.3), now, 0.8);
+    bus.music.gain.setTargetAtTime(save.music === false ? 0 : (S.screen === 'pause' ? 0.12 : 0.3) * duck, now, 0.3);
   }
 
   // ---------- canvas / view ----------
@@ -506,6 +570,7 @@
         S.windWarned = true;
         toast('Wind shift in 5');
         sfx.wind();
+        say('tower_windwarn', null, { priority: true });
       }
       if (S.windTimer <= 0) flipWind();
     }
@@ -564,6 +629,9 @@
       }
     }
 
+    const tank = p.fuel / p.maxFuel;
+    if (tank < 0.4 && !p.saidLow) { p.saidLow = true; say('say_lowfuel', p, { priority: true }); }
+    if (tank < 0.15 && !p.saidMayday) { p.saidMayday = true; say('say_mayday', p, { priority: true }); }
     if (p.fuel <= 0) return divert(p, 'Out of fuel');
     if (p.entered && S.storms.some(st => dist(p.x, p.y, st.x, st.y) < st.r * 0.8)) return divert(p, 'Storm');
   }
@@ -579,6 +647,7 @@
     if (S.drawing && S.drawing.plane === p) S.drawing = null;
     S.landed++;
     sfx.land();
+    say('say_thanks', p, { chance: 0.3 });
     if (end.kind === 'pad') sfx.touchdown(p);
     addText(end.x, end.y - 24, '+1', '#fff6dc', 16);
   }
@@ -667,7 +736,7 @@
   }
 
   function endLevel(outcome) {
-    if (outcome === 'win') sfx.win(); else sfx.lose();
+    if (outcome === 'win') { sfx.win(); say('tower_clear', null, { priority: true, delay: 1.2 }); } else sfx.lose();
     finish(outcome, outcome === 'win' ? 1 : 1.2);
   }
 
@@ -696,11 +765,13 @@
         p.landing = null;
         p.path = [];
         addText(p.x, p.y - 22, 'Go around', '#ffffff', 13);
+        say('say_goaround', p);
         if (S.drawing && S.drawing.plane === p) S.drawing = null;
       }
     }
     toast('Runways reversed');
     sfx.wind();
+    say('tower_windflip', null, { priority: true });
   }
 
   function updateStorm(st, dt) {
@@ -772,7 +843,12 @@
     const events = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
     for (const ev of events.length ? events : [e]) extendRoute(toWorld(ev));
   });
-  const endDraw = e => { if (S.drawing && S.drawing.pointerId === e.pointerId) S.drawing = null; };
+  const endDraw = e => {
+    const d = S.drawing;
+    if (!d || d.pointerId !== e.pointerId) return;
+    if (!d.done && d.plane.path.length > 4) say('say_turn', d.plane, { chance: 0.3 });
+    S.drawing = null;
+  };
   canvas.addEventListener('pointerup', endDraw);
   canvas.addEventListener('pointercancel', endDraw);
 
@@ -1064,6 +1140,7 @@
     setupHud(S.level);
     audio();  // unlock audio on this user gesture
     sfx.start();
+    say('tower_start', null, { priority: true, delay: 1.4 });
   }
 
   function restart() {
