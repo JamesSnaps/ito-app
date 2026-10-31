@@ -303,6 +303,10 @@ Game Night.
 - [x] Carry on a route from its end; bigger arrival markers with a countdown,
   never under the HUD; three seconds' warning early on; storm-safe arrivals
   (v1.19.0)
+- [x] Recorded sound and music (v1.20.0): touchdowns, chimes, radio, the
+  flap board, a background per landscape, engines that follow the traffic,
+  and three music tracks that turn busy as the sky fills. Made with
+  ElevenLabs, bundled; the alert and fallbacks stay synthesised.
 
 **First family play** (31 October 2026): James and Louis played it and
 think it's great. Their requests are in Phase 3; the first ones shipped in
@@ -554,10 +558,9 @@ instead of starting it again. All four are here.
   aircraft's arrival marker and on the runway's end (▲ short, ■ long, ● pad),
   so colour is never the only cue.
 
-**Sound**
+**Sound** ✅ (v1.20.0; see "As built" below)
 
-Today it's a handful of beeps. The aim is sound that matches the art:
-warm, mid-century, never shrill.
+The aim: sound that matches the art, warm, mid-century, never shrill.
 
 - **An airfield bed per landscape,** quiet and looping: wind and birdsong
   in the meadow, surf on the coast, a dry wind in the desert, muffled wind
@@ -596,11 +599,27 @@ warm, mid-century, never shrill.
   - A small bundled public-domain (CC0) sample stays the fallback for any
     single sound neither approach gets right.
 
-**Music**
+**As built (v1.20.0).** 26 recorded sounds made with ElevenLabs and
+bundled (about 4 MB), each prompt kept in `tools/final_approach_sounds.py`
+so any sound can be remade by changing its wording:
 
-- A generative lounge score in the travel-poster spirit: Rhodes or
-  vibraphone chords, a walking bass, brushed drums. Synthesised live, so it
-  never audibly loops.
+| Group | Sounds |
+|---|---|
+| Moments | touchdown (jet, prop, helicopter), shift start, cleared and failed chimes, collision, divert, three radio calls (one plays when a route locks), wind shift |
+| Flap board | two single clacks (one plays per tile step, pitch varied) and a rattle when the board opens |
+| Beds (20 s loops) | meadow, coast, desert, snow, night |
+| Engines (10 s loops) | jet (jets and heavies), prop, helicopter: one loop per family, louder with more aircraft, panned to where they are |
+| Music | a board theme (60 s), a calm shift and a busy shift (90 s each), in 1960s jet-age lounge jazz |
+
+The conflict alert is still synthesised (a two-tone that repeats), and the
+old synth sounds are the fallback while a file loads. Music is on by
+default, with its own toggle on the board beside Sound. Still to come: a
+separate volume control for each group, in the settings sheet.
+
+**Music** ✅ (v1.20.0, as above; the original brief follows)
+
+- A lounge score in the travel-poster spirit: Rhodes or vibraphone chords,
+  a walking bass, brushed drums.
 - **It follows the traffic:** sparse with one or two aircraft, fuller and a
   little quicker as the sky fills, a tense layer while two aircraft are in
   conflict, and a resolving phrase when a shift is cleared. The board gets
@@ -773,6 +792,8 @@ play:
 | Route ends are handles: touch the end to carry on, the aircraft to start again | Fixing a route shouldn't mean redrawing it, and the gesture everyone already knows keeps its meaning. |
 | No sounds from other games (e.g. `Citedy/game-sounds`) | They're copyrighted clips whatever the repo's code licence says, and the game is our own. |
 | Generated audio (ElevenLabs, Suno) only ever as bundled files, never runtime API calls | Keeps API keys out of browsers and third parties out of play; works on the LAN with no internet. |
+| Sound and music made with ElevenLabs (sound effects and music), bundled; the alert and fallbacks synthesised | One service and one restricted key for everything; recordings sound far better than the synth for set pieces; nothing runs at play time. |
+| The v1.20.0 sounds were made on ElevenLabs' Starter plan (October 2026) | A paid plan carries a commercial licence, so no attribution is needed even in a public repo. Remake sounds on a paid plan too: anything made on the free plan would need a credit on the board and couldn't be used commercially. |
 | Departures are the next big mechanic | The shared runway is the heart of real ATC, and it reuses the terminals, taxiways and wind rules already built. |
 | Departures take two taps (release, then clear for takeoff) | Keeps the game readable at a glance; routing departures to exit gates comes later. |
 | Advanced features are toggles in free play, never in the career | Career airports teach one idea at a time, so their rules are part of the design; free play is where you mix your own. |
@@ -786,9 +807,6 @@ play:
 
 ## 9. Open questions
 
-- **Sound sources.** All synthesised, or synthesised for live sounds plus
-  ElevenLabs set pieces and Suno music, bundled? If generated, on which
-  plan, given the repo is public?
 
 - **Accent colour.** Vermilion (`#e8553f`) is close-ish to Wildwood's
   orange on the hub. Is amber (the board's colour) better?
