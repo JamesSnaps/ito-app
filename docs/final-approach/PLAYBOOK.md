@@ -117,6 +117,11 @@ Every feature should serve at least one of these and harm none.
   storm only catches aircraft you've had time to route.
 - **Warning:** an arrival's marker shows three seconds ahead on the first
   three airports, two after that.
+- **Arrivals never ambush:** an arrival only enters on a path that keeps
+  it out of warning distance of every other aircraft for its first five
+  seconds (routes and edge turns predicted). If the sky has changed by the
+  time it's due, it swings onto a clear heading or waits at the edge, its
+  marker full, until one opens.
 - **Wind shifts:** five seconds' warning, then every runway reverses. Any
   aircraft on approach to a runway's old end has to go around.
 - **Traffic:** the gap between arrivals eases from the airport's start
@@ -290,7 +295,7 @@ Game Night.
 
 ---
 
-## 5. Current state (v1.19.0)
+## 5. Current state (v1.21.1)
 
 **Done:**
 
@@ -303,6 +308,8 @@ Game Night.
 - [x] Carry on a route from its end; bigger arrival markers with a countdown,
   never under the HUD; three seconds' warning early on; storm-safe arrivals
   (v1.19.0)
+- [x] Arrivals can't fly into traffic in their first five seconds (v1.21.1)
+- [x] Spoken radio dialogue, and varied, fading touchdowns (v1.21.0)
 - [x] Recorded sound and music (v1.20.0): touchdowns, chimes, radio, the
   flap board, a background per landscape, engines that follow the traffic,
   and three music tracks that turn busy as the sky fills. Made with
@@ -310,7 +317,8 @@ Game Night.
 
 **First family play** (31 October 2026): James and Louis played it and
 think it's great. Their requests are in Phase 3; the first ones shipped in
-v1.19.0. They also found that a storm could sit where an arrival came in
+v1.19.0. Later that day they found an arrival could appear and fly straight
+into an aircraft already on screen, ending the game; fixed in v1.21.1. They also found that a storm could sit where an arrival came in
 and divert it instantly, which broke the "always a warning" pillar. Fixed
 in v1.19.0.
 
@@ -353,6 +361,7 @@ into. The roadmap (section 7) is the order we'll build it in.
 - storms
 - wind shifts
 - changing weather
+- emergencies (off, occasional or frequent)
 - traffic (light, normal or rush)
 - conditions (day, dusk, night, snow, storm)
 
@@ -433,6 +442,67 @@ as a toggle.
 - **Holding patterns:** circle an aircraft in place (the Hold tool).
 - **Moving runways:** a carrier's deck sails and turns.
 
+### Radio dialogue ✅ (v1.21.0)
+
+Pilots talk to you, the tower, in plain English, the way they do on a real
+frequency but short and friendly. Built as described here: 85 lines, eleven
+voices (British, Australian, Irish and American pilots; one British voice
+for the tower), about 1 MB. The table's "Emergencies" row waits for the
+emergencies themselves.
+
+- **Recorded with ElevenLabs text-to-speech** in a handful of voices and
+  accents (British, American, Australian, Irish and others), generated once
+  by `tools/final_approach_sounds.py` like everything else. Each line is its
+  own small file; the generator holds the script.
+- **Made to sound like a radio live:** the clean voice goes through a
+  band-pass filter and a little crackle, with a squelch click before and
+  after, so one recording works on any radio sound we want.
+- **What they say:**
+
+  | When | Who | For example |
+  |---|---|---|
+  | A route locks onto a runway | Pilot | "Cleared to land, runway two seven." (the real number of the runway end in use, one set of lines per number) |
+  | A route locks onto a pad | Pilot | "Pad in sight, coming in." |
+  | A route is redrawn (sometimes) | Pilot | "Copy, new heading." "Wilco." |
+  | Fuel drops below 40% | Pilot | "Tower, we're getting low on fuel." |
+  | Fuel drops below 15% | Pilot | "Mayday, minimum fuel, we need to land now." |
+  | An aircraft diverts | Pilot | "Diverting to our alternate." "Too rough in that cell, we're out." |
+  | A wind shift sends it round | Pilot | "Going around." |
+  | After landing (sometimes) | Pilot | "Thanks, tower. Lovely evening for it." |
+  | Before and after a wind shift | Tower (you, on the speaker) | "All aircraft, wind change, runways reversing." |
+  | Emergencies (below) | Pilot | "Pan-pan, pan-pan, medical emergency on board." |
+
+- **Rules, so it stays a treat:** one call at a time, a few seconds' quiet
+  after each, lines dealt like a shuffled deck so none repeats until all
+  have played, and some events only speak sometimes. Music and the
+  background dip a little under speech.
+- **Callsigns are made up** ("Skylark 12", "Puffin 4"), never real
+  airlines'. Most lines don't need one.
+
+### Emergencies
+
+Suggested at the first listen (31 October 2026): now and then, an aircraft
+arrives with an emergency and has to come first.
+
+- **Kinds:**
+
+  | Emergency | How it plays |
+  |---|---|
+  | **Medical** ("pan-pan") | Must land within a time limit, shown as a ring counting down around it. Any runway of its kind. |
+  | **Damaged** ("mayday") | Slower, turns wide, long runway only. Once down, fire engines close that runway for a few seconds. |
+  | **Fuel** | Arrives already low, gauge showing from the start. |
+  | **State flight** ("State One") | Carries a wide bubble that other traffic must keep out of, and lands on the long runway. |
+
+- **How you know:** flashing red and white strobes, its own marker before it
+  arrives, an alert on the flap board ("MAYDAY", "PAN-PAN", "STATE ONE") and
+  its radio call.
+- **Stakes:** landing it safely earns a medal on the result board; losing
+  it (divert or collision) costs two strikes, not one. Everything else can
+  wait, which is the point: it makes you re-plan the sky around it.
+- **When it happens:** a career chapter introduces them. In free play and
+  Endless it's a toggle: off, occasional or frequent. Never in the first
+  airports, and never two at once.
+
 ### The aircraft roster
 
 | Aircraft | Lands on | What it adds |
@@ -444,7 +514,7 @@ as a toggle.
 | Supersonic | Long runway | Very fast and always low on fuel: route it first |
 | Glider | Short strip | No power, so it can't go around: its first route is final |
 | Seaplane | A water lane | Lands on the sea at coastal airports |
-| Emergency | Any matching runway | Flashing, low on fuel, everything else waits |
+| Emergency | Its usual runway (damaged: long only) | Medical, damaged, fuel or state flight; see "Emergencies" |
 | Carrier fighter | Carrier deck | Short touchdown zone; only at sea |
 
 Every aircraft is a generic design: no real airlines' liveries or
@@ -516,6 +586,19 @@ groundwork for career progress following your profile.
 great". They asked for bigger markers for incoming aircraft, music,
 better sound effects to match the visuals, and a way to carry on a route
 instead of starting it again. All four are here.
+
+**First listen** (31 October 2026, after v1.20.0 went live): "first
+impressions are good", but:
+1. the radio acknowledgements repeat too often and get repetitive; they
+   want far more of them, in actual English
+2. the landing sounds repeat too, and start and stop abruptly
+3. pilots should talk about things like low fuel
+
+All fixed in v1.21.0: three touchdown recordings per aircraft family,
+dealt so none repeats until all have played, with every sound fading in
+and out and a landing straight after another played quieter; and spoken
+radio dialogue (section 6, "Radio dialogue") in place of the garbled clips,
+rationed to one call at a time.
 
 **Controls**
 
@@ -626,6 +709,11 @@ separate volume control for each group, in the settings sheet.
   its own calmer version.
 - Separate volumes for music and sound effects.
 
+**Radio dialogue** ✅ (v1.21.0; section 6): 85 spoken English lines in
+eleven voices for locks (with the real runway number), pads, redrawn
+routes, low fuel and maydays, diverts, go-arounds, thanks after landing,
+and the tower opening and closing the shift and calling wind shifts.
+
 **Balance and settings**
 
 - Play every airport by hand on a phone and tune `traffic` per airport.
@@ -693,13 +781,18 @@ The weather is decoration plus storms today. Make it a system:
 - **Done when:** two runs of the same airport feel different because of
   the weather.
 
-### Phase 8: new aircraft
+### Phase 8: new aircraft and emergencies
 
 - The roster in section 6, each introduced by an airport in the career.
 - Wake turbulence with the superjumbo; holding patterns (and the Hold
   tool).
+- **Emergencies** (section 6): medical, damaged, fuel and state flights,
+  with their markers, board alerts, radio calls and stakes, and the
+  free-play and Endless toggle. They only need today's aircraft, so they
+  can jump the queue if we want them sooner.
 - **Done when:** at least four new aircraft are in the career, each with a
-  rule you can feel, not just a new look.
+  rule you can feel, not just a new look; and an emergency changes how you
+  plan the sky.
 
 ### Phase 9: at sea
 
@@ -788,11 +881,15 @@ play:
 | Approach must be lined up | It makes the angle of approach the skill, and the approach lights make it readable. |
 | A collision ends the shift; diversions are strikes | Collisions are the cardinal sin; fuel and weather are pressure, so they forgive twice. |
 | Arrivals announced two seconds ahead | Calm tension: you always get a warning. |
+| No arrival may come within warning distance of other traffic in its first five seconds; it waits at the edge if it must | Same promise as storms (pillar 2): a crash should always follow a warning you had time to act on. Holding an arrival costs a moment; an ambush costs the game. |
 | No arrival may meet a storm in its first five seconds | Storm movement is predictable, so the game can promise it; failure should always follow a warning (pillar 2). |
 | Route ends are handles: touch the end to carry on, the aircraft to start again | Fixing a route shouldn't mean redrawing it, and the gesture everyone already knows keeps its meaning. |
 | No sounds from other games (e.g. `Citedy/game-sounds`) | They're copyrighted clips whatever the repo's code licence says, and the game is our own. |
 | Generated audio (ElevenLabs, Suno) only ever as bundled files, never runtime API calls | Keeps API keys out of browsers and third parties out of play; works on the LAN with no internet. |
 | Sound and music made with ElevenLabs (sound effects and music), bundled; the alert and fallbacks synthesised | One service and one restricted key for everything; recordings sound far better than the synth for set pieces; nothing runs at play time. |
+| Radio chatter is rationed: one call at a time, quiet after, never the same line twice running | Heard on every lock it became wallpaper (first listen); rarer, it stays a treat. |
+| Dialogue recorded clean, radio sound added live | One recording works for any radio treatment we want later, and tuning the filter needs no regeneration. |
+| Made-up callsigns only | Real airlines' callsigns belong to them, and the game is our own. |
 | The v1.20.0 sounds were made on ElevenLabs' Starter plan (October 2026) | A paid plan carries a commercial licence, so no attribution is needed even in a public repo. Remake sounds on a paid plan too: anything made on the free plan would need a credit on the board and couldn't be used commercially. |
 | Departures are the next big mechanic | The shared runway is the heart of real ATC, and it reuses the terminals, taxiways and wind rules already built. |
 | Departures take two taps (release, then clear for takeoff) | Keeps the game readable at a glance; routing departures to exit gates comes later. |

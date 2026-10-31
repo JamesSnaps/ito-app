@@ -61,8 +61,18 @@
       master.connect(actx.destination);
       const mk = vol => { const g = actx.createGain(); g.gain.value = vol; g.connect(master); return g; };
       bus = { master, sfx: mk(0.9), bed: mk(0), engine: mk(0.3), music: mk(0) };
+      // The radio: clean recordings in, a small band-limited speaker out.
+      const hp = actx.createBiquadFilter(), lp = actx.createBiquadFilter(), drive = actx.createWaveShaper();
+      hp.type = 'highpass'; hp.frequency.value = 380;
+      lp.type = 'lowpass'; lp.frequency.value = 3000;
+      const curve = new Float32Array(1024);
+      for (let i = 0; i < curve.length; i++) { const x = i / 511.5 - 1; curve[i] = Math.tanh(x * 2.2) / Math.tanh(2.2); }
+      drive.curve = curve;
+      bus.radio = actx.createGain();
+      bus.radio.gain.value = 1.1;
+      bus.radio.connect(hp); hp.connect(lp); lp.connect(drive); drive.connect(bus.sfx);
       applyVolumes();
-      // Effects are small: fetch them all now. Loops and music load when needed.
+      // Effects and speech are small: fetch them all now. Loops and music load when needed.
       for (const name of Object.keys(AUDIO)) if (!/^(bed|engine|music)_/.test(name)) load(name);
     }
     if (actx.state === 'suspended' && !document.hidden) actx.resume();
@@ -86,13 +96,20 @@
     return loading[name];
   }
 
-  // A one-shot from a file. False when it isn't loaded, so the caller can fall back.
-  function playSound(name, { vol = 1, rate = 1, pan = 0 } = {}) {
+  // A one-shot from a file. False when it isn't loaded, so the caller can fall
+  // back. Every sound fades in over a few milliseconds (no click), and can
+  // fade out over its last `fadeOut` seconds, so nothing stops dead.
+  function playSound(name, { vol = 1, rate = 1, pan = 0, fadeOut = 0.08 } = {}) {
     if (!actx || !buffers[name]) { if (actx) load(name); return false; }
     const src = actx.createBufferSource(), g = actx.createGain();
     src.buffer = buffers[name];
     src.playbackRate.value = rate;
-    g.gain.value = vol;
+    const t0 = actx.currentTime, dur = src.buffer.duration / rate;
+    const fade = Math.min(fadeOut, dur / 2);
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(vol, t0 + 0.015);
+    g.gain.setValueAtTime(vol, t0 + dur - fade);
+    g.gain.linearRampToValueAtTime(0, t0 + dur);
     let out = g;
     if (pan && actx.createStereoPanner) { const p = actx.createStereoPanner(); p.pan.value = pan; g.connect(p); out = p; }
     src.connect(g);
@@ -101,6 +118,26 @@
     return true;
   }
   const pick = list => list[Math.floor(Math.random() * list.length)];
+
+  // Every recording of something (`touchdown_jet` → touchdown_jet_1, _2, …),
+  // dealt like a shuffled deck: all of them before any repeats, and never the
+  // same one twice running.
+  const decks = {};
+  function variants(prefix) {
+    return Object.keys(AUDIO).filter(n => n === prefix || n.startsWith(prefix + '_'));
+  }
+  function deal(prefix) {
+    const all = variants(prefix);
+    if (!all.length) return null;
+    let d = decks[prefix];
+    if (!d || !d.left.length) {
+      const left = all.slice().sort(() => Math.random() - 0.5);
+      if (d && left.length > 1 && left[left.length - 1] === d.last) left.unshift(left.pop());
+      d = decks[prefix] = { left, last: d && d.last };
+    }
+    d.last = d.left.pop();
+    return d.last;
+  }
 
   // A loop that never clicks: each repeat fades in over the last one's tail.
   // (MP3 adds a sliver of silence at both ends, so buffer looping would gap.)
@@ -165,17 +202,85 @@
 
   const FAMILY = { prop: 'prop', jet: 'jet', heavy: 'jet', heli: 'heli' };
   const panOf = x => Math.max(-0.7, Math.min(0.7, (x / 960 - 0.5) * 1.4));
-  let lastFlap = 0;
+  let lastFlap = 0, lastTouchdown = -9;
+
+  // Radio calls. Pilots (and now and then the tower) speak through the radio
+  // bus with a squelch either side. One call at a time with a few seconds'
+  // quiet after, so it stays a treat; urgent calls (maydays, diverts, the
+  // tower) wait their turn instead of being dropped. Music and the background
+  // dip while anyone speaks.
+  let radioBusy = 0, radioFree = 0;
+  const radioQueue = [];
+  let hiss = null;
+  function squelch(at, len, vol) {
+    if (!hiss) {
+      hiss = actx.createBuffer(1, Math.floor(actx.sampleRate * 0.3), actx.sampleRate);
+      const d = hiss.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    }
+    const src = actx.createBufferSource(), g = actx.createGain();
+    src.buffer = hiss;
+    g.gain.setValueAtTime(vol, at);
+    g.gain.exponentialRampToValueAtTime(0.001, at + len);
+    src.connect(g).connect(bus.radio);
+    src.start(at, Math.random() * 0.05, len);
+  }
+  function say(prefix, p, { priority = false, chance = 1, delay = 0 } = {}) {
+    if (!actx || save.muted || Math.random() > chance) return false;
+    const now = actx.currentTime;
+    if (now < radioBusy || (!priority && now < radioFree)) {
+      if (priority && radioQueue.length < 2) radioQueue.push([prefix, p]);
+      return false;
+    }
+    const name = deal(prefix);
+    if (!name) return false;
+    if (!buffers[name]) { load(name); return false; }
+    const buf = buffers[name], t0 = now + 0.09 + delay;
+    scape.said = (scape.said || []).concat(name).slice(-12);  // for checks
+    squelch(t0 - 0.07, 0.05, 0.12);
+    const src = actx.createBufferSource(), g = actx.createGain();
+    src.buffer = buf;
+    g.gain.value = 0.95;
+    let out = g;
+    if (p && actx.createStereoPanner) { const pan = actx.createStereoPanner(); pan.pan.value = panOf(p.x) * 0.5; g.connect(pan); out = pan; }
+    src.connect(g);
+    out.connect(bus.radio);
+    src.start(t0);
+    const end = t0 + buf.duration;
+    squelch(end + 0.02, 0.16, 0.18);
+    radioBusy = end + 0.25;
+    radioFree = radioBusy + 3.5;
+    scape.duckUntil = radioBusy;
+    setTimeout(() => {
+      const next = radioQueue.shift();
+      if (next) say(next[0], next[1], { priority: true });
+    }, (radioBusy - now) * 1000 + 60);
+    return true;
+  }
+
   const sfx = {
     land:      () => tone(1320, 0.14, { vol: 0.05 }),
-    touchdown: p => playSound('touchdown_' + FAMILY[p.type], { vol: 0.8, pan: panOf(p.x) }) ||
-                    (tone(660, 0.12), tone(990, 0.18, { delay: 0.1 })),
-    lock:      p => playSound(pick(['radio_1', 'radio_2', 'radio_3']), { vol: 0.55, pan: panOf(p.x) }) ||
-                    tone(760, 0.08, { type: 'triangle', vol: 0.08 }),
+    // A landing right after another is quieter, and each fades out gently.
+    touchdown: p => {
+      const name = actx && deal('touchdown_' + FAMILY[p.type]);
+      const close = actx && actx.currentTime - lastTouchdown < 2;
+      if (actx) lastTouchdown = actx.currentTime;
+      return (name && playSound(name, { vol: close ? 0.35 : 0.75, pan: panOf(p.x), rate: 0.94 + Math.random() * 0.12, fadeOut: 1.4 })) ||
+             (tone(660, 0.12), tone(990, 0.18, { delay: 0.1 }));
+    },
+    // A readback with the real runway number ("cleared to land, runway two seven").
+    lock:      p => {
+      tone(1180, 0.05, { type: 'triangle', vol: 0.05 });
+      const end = p.landing;
+      say(end.kind === 'pad' ? 'say_pad' : 'say_land_' + Art.designator(end.angle * 180 / Math.PI), p);
+    },
     // A two-tone traffic alert: high, then low.
     warn:      () => { tone(1046, 0.09, { type: 'square', vol: 0.035 }); tone(784, 0.11, { type: 'square', vol: 0.035, delay: 0.1 }); },
     spawn:     () => tone(520, 0.1, { type: 'triangle', vol: 0.035 }),
-    divert:    p => playSound('divert', { vol: 0.7, pan: panOf(p.x) }) || tone(500, 0.4, { type: 'sawtooth', vol: 0.05, slide: -300 }),
+    divert:    p => {
+      say(p.divertedBy === 'Storm' ? 'say_divert_storm' : 'say_divert_fuel', p, { priority: true });
+      return playSound('divert', { vol: 0.6, pan: panOf(p.x) }) || tone(500, 0.4, { type: 'sawtooth', vol: 0.05, slide: -300 });
+    },
     crash:     () => playSound('collision') || (noise(1, 0.5), tone(140, 0.7, { type: 'sawtooth', vol: 0.12, slide: -90 })),
     start:     () => playSound('chime_start', { vol: 0.6 }),
     win:       () => playSound('chime_clear', { vol: 0.7 }) || [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.22, { vol: 0.1, delay: i * 0.12 })),
@@ -212,7 +317,8 @@
       scape.bedName = bedName;
       scape.bed = startLoop(bedName, bus.bed, 2);
     }
-    bus.bed.gain.setTargetAtTime(playing ? 0.32 : 0.12, now, 0.6);
+    const duck = now < (scape.duckUntil || 0) ? 0.5 : 1;
+    bus.bed.gain.setTargetAtTime((playing ? 0.32 : 0.12) * duck, now, 0.25);
 
     const counts = { jet: [], prop: [], heli: [] };
     if (playing) for (const p of S.planes) if (p.state === 'fly' || p.state === 'divert') counts[FAMILY[p.type]].push(p.x);
@@ -239,7 +345,7 @@
       track = busy || (wasBusy && clock - scape.busySince < 10) ? 'music_busy' : 'music_calm';
     }
     setMusic(track);
-    bus.music.gain.setTargetAtTime(save.music === false ? 0 : (S.screen === 'pause' ? 0.12 : 0.3), now, 0.8);
+    bus.music.gain.setTargetAtTime(save.music === false ? 0 : (S.screen === 'pause' ? 0.12 : 0.3) * duck, now, 0.3);
   }
 
   // ---------- canvas / view ----------
@@ -369,6 +475,79 @@
     return true;
   }
 
+  // Where every aircraft will be over the next few seconds if nobody touches
+  // it: along its route, then straight on, turning back at the edges as it
+  // would. Samples every TRACK_STEP seconds. Aircraft on the ground, or that
+  // will be by then, drop out (null); so do diverting ones, which can't collide.
+  const TRACK_STEP = 0.2;
+  function track(p, secs) {
+    const out = [];
+    let x = p.x, y = p.y, h = p.heading, i = 0, entered = p.entered;
+    const step = p.T.speed * TRACK_STEP;
+    for (let t = 0; t <= secs + 1e-6; t += TRACK_STEP) {
+      out.push({ x, y });
+      let left = step;
+      while (left > 0 && i < p.path.length) {
+        const q = p.path[i], d = dist(x, y, q.x, q.y);
+        if (d > 0.001) h = Math.atan2(q.y - y, q.x - x);
+        if (d <= left) { x = q.x; y = q.y; i++; left -= d; } else { x += Math.cos(h) * left; y += Math.sin(h) * left; left = 0; }
+      }
+      if (i >= p.path.length && p.landing) { while (out.length <= secs / TRACK_STEP + 1) out.push(null); break; }
+      x += Math.cos(h) * left; y += Math.sin(h) * left;
+      if (!entered && x > EDGE && x < W - EDGE && y > EDGE && y < H - EDGE) entered = true;
+      if (entered) {
+        if ((x < EDGE && Math.cos(h) < 0) || (x > W - EDGE && Math.cos(h) > 0)) h = Math.PI - h;
+        if ((y < EDGE && Math.sin(h) < 0) || (y > H - EDGE && Math.sin(h) > 0)) h = -h;
+      }
+    }
+    return out;
+  }
+
+  // An arrival must not come within warning distance of anyone in its first
+  // SAFE_FLIGHT seconds: not those already flying (wherever their routes take
+  // them), nor arrivals still waiting at the edges. `wait` is how long until
+  // it appears. Same promise as the storms: nothing ends your shift before
+  // you've had a chance to act.
+  function clearOfTraffic(type, x, y, heading, wait, self) {
+    const r = TYPES[type].radius, v = TYPES[type].speed, span = wait + SAFE_FLIGHT;
+    const others = [];
+    for (const p of S.planes) if (p.state === 'fly') others.push({ r: p.T.radius, at: track(p, span) });
+    for (const o of S.incoming) {
+      if (o === self) continue;
+      const ov = TYPES[o.type].speed, at = [];
+      for (let t = 0; t <= span + 1e-6; t += TRACK_STEP) {
+        const flown = t - o.t;
+        at.push(flown < 0 ? null : { x: o.x + Math.cos(o.heading) * ov * flown, y: o.y + Math.sin(o.heading) * ov * flown });
+      }
+      others.push({ r: TYPES[o.type].radius, at });
+    }
+    for (let t = 0; t <= SAFE_FLIGHT + 1e-6; t += TRACK_STEP) {
+      const px = x + Math.cos(heading) * v * t, py = y + Math.sin(heading) * v * t;
+      const k = Math.round((wait + t) / TRACK_STEP);
+      for (const o of others) {
+        const q = o.at[Math.min(k, o.at.length - 1)];
+        if (q && dist(px, py, q.x, q.y) < (r + o.r) * 2.6) return false;
+      }
+    }
+    return true;
+  }
+
+  // At the moment an arrival is due: in if its way is clear, otherwise swung
+  // onto a clear heading, otherwise held at the edge for another moment.
+  function admit(s) {
+    const turns = [0, 0.25, -0.25, 0.5, -0.5, 0.75, -0.75];
+    for (const turn of turns) {
+      const heading = s.heading + turn;
+      const inward = Math.cos(heading) * (W / 2 - s.x) + Math.sin(heading) * (H / 2 - s.y) > 0;
+      if (!inward) continue;
+      if (clearOfTraffic(s.type, s.x, s.y, heading, 0, s) && clearOfStorms(s.x, s.y, heading, TYPES[s.type].speed, 0)) {
+        s.heading = heading;
+        return true;
+      }
+    }
+    return false;
+  }
+
   // The HUD's plates sit over the top of the map. An arrival's marker must
   // never hide under one, so those stretches of the top edge are off limits.
   function underHud(x, y) {
@@ -399,13 +578,15 @@
       const heading = Math.atan2(ty - y, tx - x);
       if (underHud(x, y)) continue;
       if (!clearOfStorms(x, y, heading, TYPES[type].speed, lead)) continue;
+      if (!clearOfTraffic(type, x, y, heading, lead, null)) continue;
       const arrival = { type, x, y, heading, t: lead, lead };
       const crowded = S.planes.some(p => dist(p.x, p.y, x, y) < 150) ||
                       S.incoming.some(s => dist(s.x, s.y, x, y) < 150);
       if (!crowded) { S.incoming.push(arrival); return true; }
       fallback = fallback || arrival;
     }
-    // Crowded is acceptable when nothing better turned up; into a storm never is.
+    // Crowded is acceptable when nothing better turned up; into a storm or
+    // someone's path never is.
     if (fallback) { S.incoming.push(fallback); return true; }
     return false;
   }
@@ -454,8 +635,12 @@
       }
     }
     for (const s of S.incoming) s.t -= dt;
-    for (const s of S.incoming) if (s.t <= 0) spawnPlane(s);
-    S.incoming = S.incoming.filter(s => s.t > 0);
+    for (const s of S.incoming) {
+      if (s.t > 0) continue;
+      if (admit(s)) { spawnPlane(s); s.done = true; }
+      else { s.t = 0.3; s.held = true; }   // held at the edge: try again shortly
+    }
+    S.incoming = S.incoming.filter(s => !s.done);
 
     // wind
     if (L.windShift) {
@@ -464,6 +649,7 @@
         S.windWarned = true;
         toast('Wind shift in 5');
         sfx.wind();
+        say('tower_windwarn', null, { priority: true });
       }
       if (S.windTimer <= 0) flipWind();
     }
@@ -522,6 +708,9 @@
       }
     }
 
+    const tank = p.fuel / p.maxFuel;
+    if (tank < 0.4 && !p.saidLow) { p.saidLow = true; say('say_lowfuel', p, { priority: true }); }
+    if (tank < 0.15 && !p.saidMayday) { p.saidMayday = true; say('say_mayday', p, { priority: true }); }
     if (p.fuel <= 0) return divert(p, 'Out of fuel');
     if (p.entered && S.storms.some(st => dist(p.x, p.y, st.x, st.y) < st.r * 0.8)) return divert(p, 'Storm');
   }
@@ -537,6 +726,7 @@
     if (S.drawing && S.drawing.plane === p) S.drawing = null;
     S.landed++;
     sfx.land();
+    say('say_thanks', p, { chance: 0.3 });
     if (end.kind === 'pad') sfx.touchdown(p);
     addText(end.x, end.y - 24, '+1', '#fff6dc', 16);
   }
@@ -609,6 +799,7 @@
   }
 
   function crash(a, b) {
+    S.crashes = (S.crashes || []).concat([[a.age, b.age]]);  // for checks
     a.crashed = b.crashed = true;
     a.state = b.state = 'gone';
     S.planes = S.planes.filter(p => p.state !== 'gone');
@@ -625,7 +816,7 @@
   }
 
   function endLevel(outcome) {
-    if (outcome === 'win') sfx.win(); else sfx.lose();
+    if (outcome === 'win') { sfx.win(); say('tower_clear', null, { priority: true, delay: 1.2 }); } else sfx.lose();
     finish(outcome, outcome === 'win' ? 1 : 1.2);
   }
 
@@ -654,11 +845,13 @@
         p.landing = null;
         p.path = [];
         addText(p.x, p.y - 22, 'Go around', '#ffffff', 13);
+        say('say_goaround', p);
         if (S.drawing && S.drawing.plane === p) S.drawing = null;
       }
     }
     toast('Runways reversed');
     sfx.wind();
+    say('tower_windflip', null, { priority: true });
   }
 
   function updateStorm(st, dt) {
@@ -730,7 +923,12 @@
     const events = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
     for (const ev of events.length ? events : [e]) extendRoute(toWorld(ev));
   });
-  const endDraw = e => { if (S.drawing && S.drawing.pointerId === e.pointerId) S.drawing = null; };
+  const endDraw = e => {
+    const d = S.drawing;
+    if (!d || d.pointerId !== e.pointerId) return;
+    if (!d.done && d.plane.path.length > 4) say('say_turn', d.plane, { chance: 0.3 });
+    S.drawing = null;
+  };
   canvas.addEventListener('pointerup', endDraw);
   canvas.addEventListener('pointercancel', endDraw);
 
@@ -1022,6 +1220,7 @@
     setupHud(S.level);
     audio();  // unlock audio on this user gesture
     sfx.start();
+    say('tower_start', null, { priority: true, delay: 1.4 });
   }
 
   function restart() {
@@ -1126,6 +1325,6 @@
   });
 
   // Exposed for automated tests only.
-  window.__finalApproach = { S, LEVELS, runwayEnd, update, queueArrival, clearOfStorms, stormAt,
+  window.__finalApproach = { S, LEVELS, runwayEnd, update, queueArrival, clearOfStorms, stormAt, clearOfTraffic, track,
     sound: { audio, load, buffers, scape, bus: () => bus } };
 })();

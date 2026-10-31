@@ -1303,6 +1303,20 @@ it current when you do (its "Current state" and roadmap especially).
   second and tries again; crowded is an acceptable fallback, into a storm
   never is. It used to accept any entry on its last attempt, and an arrival
   could appear inside a storm and divert at once.
+- **The same promise for traffic** (v1.21.1). An arrival used to be checked
+  only for other aircraft near its entry point, with a crowded entry
+  accepted as a last resort, so one could appear and fly straight into an
+  aircraft already on screen. Now `track(p, secs)` predicts each aircraft
+  (along its route, then straight on, turning back at the edges; dropping
+  out once it's on the ground), and `clearOfTraffic` only accepts an entry
+  whose first `SAFE_FLIGHT` seconds stay outside *warning* distance (2.6×
+  the combined radii) of everyone, arrivals still waiting at the edges
+  included. Routes change after an entry is chosen, so `admit()` checks
+  again at the moment of arrival: in if clear, else swung up to ±0.75 rad
+  onto a clear heading, else held at the edge (band full) and retried every
+  0.3s. A ten-minute no-input stress test of Night Shift and Endless went
+  from 9 collisions within 5s of arriving (and ~280 frames of brand-new
+  arrivals in conflict) to none, with about the same number of arrivals.
 - **Arrival markers and route handles are sized in screen pixels**, not
   world units (`Math.max(16, 16 / view.scale)` and `11 / view.scale`), so
   they stay finger-sized on a phone. Markers never sit under the HUD's
@@ -1311,8 +1325,8 @@ it current when you do (its "Current state" and roadmap especially).
   nearest aircraft or unfinished route end, a near-tie going to the aircraft;
   grabbing an end continues the route instead of clearing it. Locked routes
   have no handle.
-- **Recorded sound and music** (v1.20.0): 26 MP3s in
-  `static/final-approach/audio/` (about 4 MB), made once with ElevenLabs by
+- **Recorded sound and music** (v1.20.0; dialogue v1.21.0): 114 MP3s in
+  `static/final-approach/audio/` (about 5.3 MB), made once with ElevenLabs by
   `tools/final_approach_sounds.py`, which holds every sound's prompt. To
   change a sound, change its prompt and run the script with its name. The
   key lives in `~/.config/elevenlabs/env` on the dev VM, never in the repo,
@@ -1330,13 +1344,32 @@ it current when you do (its "Current state" and roadmap especially).
     buffer: MP3 pads both ends with silence, which would click.
   - The conflict alert stays synthesised (a two-tone), as it repeats and
     needs no recording.
+  - **Variants are dealt, not picked** (`deal(prefix)`, v1.21.0): every file
+    named `prefix` or `prefix_*` is a variant, shuffled like a deck, all
+    played before any repeats and never the same one twice running. Every
+    one-shot fades in, and out over its tail (`fadeOut`); a touchdown within
+    2s of another plays quieter.
+  - **Radio dialogue** (v1.21.0): 85 spoken lines (`say_*`, `tower_*`) made
+    with ElevenLabs text-to-speech in eleven voices (British, Australian,
+    Irish, American; the tower is one voice), recorded clean. The game adds
+    the radio live: `bus.radio` is a band-pass (380 Hz–3 kHz) and a soft
+    clipper, and `say()` puts a squelch either side. One call at a time,
+    3.5s quiet after; `priority` calls (fuel, maydays, diverts, the tower)
+    queue (at most two) instead of being dropped; bed and music duck under
+    speech. Readbacks name the runway end actually in use
+    (`say_land_<designator>`), so `runway_numbers()` in the generator reads
+    levels.js and a test checks every painted number has lines: **a new
+    runway angle means running the generator.** The key needs the Text to
+    Speech permission; listing voices isn't needed (voice IDs are in the
+    script).
   - The sound function is `playSound`, not `play`: `play()` starts a shift,
     and a function named the same in the same scope replaced it once (every
     effect started a new shift until the stack overflowed).
 - **`window.__finalApproach`** exposes the state for Playwright checks,
   plus `update` (step the simulation, e.g. ten minutes in a loop),
-  `queueArrival`, `clearOfStorms`, `stormAt` and `sound` (load, buffers,
-  the soundscape's state).
+  `queueArrival`, `clearOfStorms`, `stormAt`, `clearOfTraffic`, `track`
+  and `sound` (load, buffers, the soundscape's state). `S.crashes` records
+  each collision's two ages, for checks.
   There's no JS test runner; `tests/test_final_approach.py` pins the page,
   its files and the level data's shape, and visual changes are checked by
   driving the page in a headless browser at desktop and phone-landscape
@@ -1345,7 +1378,7 @@ it current when you do (its "Current state" and roadmap especially).
   in is a tile opening `/final-approach/` in the Safari sheet, like Keep
   score (playbook roadmap).
 
-## Picnic Raid (added v1.21.0)
+## Picnic Raid (added v1.22.0)
 
 Our own game, made for the family the way Wildwood was: fill a picnic
 basket, pack it up to bank the points, and hide traps (Ants, Wasp, Seagull,
