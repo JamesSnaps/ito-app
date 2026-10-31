@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{# Final Approach: a solo air-traffic game. The page is the whole game — a
+   canvas plus overlays — and brings its own look, so it swaps the shell's
+   stylesheet for its own (see base.html). Everything it loads is ours:
+   scripts, Oswald and Barlow under static/final-approach/. Its playbook is
+   docs/final-approach/PLAYBOOK.md. #}
+{% block title %}Final Approach · {{ app_name }}{% endblock %}
+{% block theme_color %}#0d0f10{% endblock %}
+{% block shell_css %}<link rel="stylesheet" href="{{ asset('final-approach/style.css') }}">{% endblock %}
+{% block body %}
+  <canvas id="game"></canvas>
+
+  <div id="hud" class="hidden">
+    <div class="hud-left">
+      <div class="plate">
+        <div class="plate-label">Airport</div>
+        <div id="hud-code"></div>
+        <div class="plate-sub" id="hud-name"></div>
+      </div>
+      <div class="plate" id="hud-wind">
+        <div class="plate-label">Wind shift</div>
+        <div id="hud-wind-flaps"></div>
+      </div>
+    </div>
+    <div class="plate hud-center">
+      <div class="plate-label" id="hud-landed-label">Landed</div>
+      <div id="hud-landed"></div>
+    </div>
+    <div class="hud-right">
+      <div class="plate">
+        <div class="plate-label">Strikes</div>
+        <div class="lamps" id="hud-lamps"><i></i><i></i><i></i></div>
+      </div>
+      <button class="plate pause-btn" id="btn-pause" aria-label="Pause"><span></span><span></span></button>
+    </div>
+  </div>
+  <div id="toast" class="hidden"><div id="toast-flaps"></div></div>
+
+  <div id="menu" class="overlay">
+    <div class="housing">
+      <div class="board">
+        <div class="board-head">
+          <div id="title-flaps"></div>
+          <div class="clock"><div class="plate-label">Local time</div><div id="clock-flaps"></div></div>
+        </div>
+        <div class="board-sub">
+          <span class="arrivals"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 19h19v2h-19zM19.3 13.4L4.6 9.5 3 4.1l1.9.5 1.5 3.3 5 1.3L9.2 2l2.4.6 4.9 7.7 4.5 1.2c.8.2 1.3 1 1.1 1.8-.3.8-1.1 1.2-1.8 1z"/></svg>Arrivals</span>
+          <span class="tagline">Draw their routes · Bring them home · Keep them apart</span>
+        </div>
+        <div class="cols"><span class="c-flt">Flt</span><span class="c-name">Airport</span><span class="c-status">Status</span><span class="c-rating">Rating</span><span class="lamp-col"></span></div>
+        <div id="level-rows"></div>
+        <div class="board-foot">
+          <span id="star-total"></span>
+          <span class="foot-actions">
+            <a class="btn ghost small" href="{{ url_for('hub') }}">← Game Night</a>
+            <button id="btn-mute" class="btn ghost small"></button>
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="brief" class="overlay hidden">
+    <div class="pass">
+      <div class="pass-main">
+        <div class="pass-band"><span>Final Approach · Boarding pass</span><span id="pass-flight"></span></div>
+        <div class="pass-body">
+          <div class="pass-route">
+            <div>
+              <div class="pass-label">Airport</div>
+              <div class="pass-code" id="pass-code"></div>
+              <div class="pass-name" id="pass-name"></div>
+            </div>
+            <div class="pass-plane"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z"/></svg></div>
+            <div>
+              <div class="pass-label">Arrivals</div>
+              <div class="pass-code" id="pass-target"></div>
+              <div class="pass-name">to land</div>
+            </div>
+          </div>
+          <p class="pass-hint" id="pass-hint"></p>
+          <div class="pass-legend" id="pass-legend"></div>
+        </div>
+      </div>
+      <div class="pass-stub">
+        <div class="pass-label">Flight</div>
+        <div class="stub-flt" id="stub-flt"></div>
+        <div class="pass-label">Conditions</div>
+        <div class="stub-wx" id="stub-wx"></div>
+        <div class="barcode" id="barcode"></div>
+        <div class="stub-buttons">
+          <button class="btn primary" id="btn-start">Board</button>
+          <button class="btn ink" id="btn-brief-back">Back</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="pause" class="overlay hidden">
+    <div class="housing compact">
+      <div class="board">
+        <div id="pause-flaps" class="big"></div>
+        <div class="buttons">
+          <button id="btn-pause-menu" class="btn ghost">Levels</button>
+          <button id="btn-restart" class="btn ghost">Restart</button>
+          <button id="btn-resume" class="btn primary">Resume</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="result" class="overlay hidden">
+    <div class="housing compact">
+      <div class="board">
+        <div id="result-flaps" class="big"></div>
+        <div id="result-stars"></div>
+        <p id="result-text"></p>
+        <div class="buttons">
+          <button id="btn-result-menu" class="btn ghost">Levels</button>
+          <button id="btn-retry" class="btn primary">Try again</button>
+          <button id="btn-next" class="btn primary">Next</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="rotate" class="overlay">
+    <div class="housing compact">
+      <div class="board">
+        <div class="rotate-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm0 3v14h10V5z"/></svg></div>
+        <p>Turn your phone sideways for a bigger sky.</p>
+      </div>
+    </div>
+  </div>
+
+  <script src="{{ asset('final-approach/levels.js') }}"></script>
+  <script src="{{ asset('final-approach/art.js') }}"></script>
+  <script src="{{ asset('final-approach/flap.js') }}"></script>
+  <script src="{{ asset('final-approach/game.js') }}"></script>
+{% endblock %}

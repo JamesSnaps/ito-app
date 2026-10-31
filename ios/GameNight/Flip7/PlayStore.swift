@@ -27,6 +27,8 @@ final class PlayStore {
     private(set) var gone = false
     /// A short message to show and clear: a refused move, a lost seat.
     var notice: String?
+    /// Whether the polls are getting through, for "Reconnecting…".
+    let connection = PollHealth()
     /// The name to put on the Flip 7 flash, cleared by the view.
     var flip7Flash: String?
     /// Seats that just busted, for a shake.
@@ -190,7 +192,7 @@ final class PlayStore {
         guard !busy, !gone else { return }
         do {
             let asked = seat?.token ?? hostToken
-            let fresh = try await client.state(code: code, token: asked)
+            let fresh = try await connection.track { try await client.state(code: code, token: asked) }
             if !busy { take(fresh, askedAs: asked) }
         } catch let failure as GameNightClient.Failure where failure.status == 404 {
             gone = true

@@ -1,0 +1,20 @@
+{# A runway seen from above, its approach chevrons lit in the game's colour,
+   and a jet on the dotted route the player drew to bring it in — the whole
+   game in one move. #}
+<svg class="game-art" viewBox="0 0 240 140" aria-hidden="true">
+  <g transform="rotate(-10 160 100)">
+    <rect class="art-plate" x="104" y="86" width="126" height="28" rx="4"/>
+    <path class="art-stroke" d="M140 100h12M162 100h12M184 100h12" style="stroke: var(--muted-2); stroke-width: 3"/>
+    <path class="art-stroke" d="M110 92v16M115 92v16M220 92v16M225 92v16" style="stroke: var(--muted-2); stroke-width: 2.5"/>
+    <path class="art-stroke" d="M58 91l8 9-8 9M74 91l8 9-8 9M90 91l8 9-8 9"
+          style="stroke: var(--game-accent, var(--accent)); stroke-width: 4.5"/>
+  </g>
+  <path class="art-stroke" d="M18 18C40 40 30 72 52 88s38 16 48 14"
+        style="stroke: #f6f2e8; stroke-width: 4; stroke-dasharray: 0 9; opacity: 0.85"/>
+  <g transform="translate(34 52) rotate(62) scale(1.55)">
+    <path class="art-plate art-plate-hero" style="stroke-width: 1.4"
+          d="M6-3L-5-19h-5l-2 16zM6 3L-5 19h-5l-2-16zM-13-2l-5-8h-3l1 8zM-13 2l-5 8h-3l1-8z"/>
+    <path class="art-plate art-plate-hero" style="stroke-width: 1.4"
+          d="M20 0c0-2.4-3-3.4-7-3.4h-27l-5 2.2v2.4l5 2.2h27c4 0 7-1 7-3.4z"/>
+  </g>
+</svg>

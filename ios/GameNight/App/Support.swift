@@ -28,8 +28,31 @@ extension View {
     /// Tables and topic displays sit on the table for an hour at a time;
     /// the screen locking mid-round is the thing that would break them.
     func keepsScreenAwake() -> some View {
-        onAppear { UIApplication.shared.isIdleTimerDisabled = true }
-            .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
+        modifier(KeepsScreenAwake())
+    }
+}
+
+/// Counted, not a plain switch: screens that want the screen awake can
+/// overlap (a web sheet over a table, one table replacing another), and
+/// the first to go used to let the phone lock under the one still showing.
+private struct KeepsScreenAwake: ViewModifier {
+    private static var holders = 0 {
+        didSet { UIApplication.shared.isIdleTimerDisabled = holders > 0 }
+    }
+    @State private var holding = false
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear {
+                guard !holding else { return }
+                holding = true
+                Self.holders += 1
+            }
+            .onDisappear {
+                guard holding else { return }
+                holding = false
+                Self.holders -= 1
+            }
     }
 }
 
@@ -59,5 +82,28 @@ enum QRCode {
         guard let output = filter.outputImage?.transformed(by: CGAffineTransform(scaleX: 10, y: 10)),
               let cg = CIContext().createCGImage(output, from: output.extent) else { return nil }
         return UIImage(cgImage: cg)
+    }
+}
+
+extension View {
+    /// "Reconnecting…" at the top of a table while its polls aren't getting
+    /// through, so a poor signal doesn't pass for a game that's stuck.
+    func reconnecting(_ connection: PollHealth) -> some View {
+        overlay(alignment: .top) {
+            if connection.struggling {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small).tint(.white)
+                    Text("Reconnecting…").font(.subheadline.weight(.semibold))
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 14).padding(.vertical, 8)
+                .background(.black.opacity(0.78), in: Capsule())
+                .padding(.top, 8)
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .accessibilityElement(children: .combine)
+                .allowsHitTesting(false)
+            }
+        }
+        .animation(.easeInOut(duration: 0.25), value: connection.struggling)
     }
 }

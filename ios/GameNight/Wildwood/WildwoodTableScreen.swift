@@ -63,6 +63,7 @@ struct WildwoodTableScreen: View {
             Button("OK", role: .cancel) {}
         } message: { Text(store.notice ?? "") }
         .keepsScreenAwake()
+        .reconnecting(store.connection)
         .onAppear { store.start() }
         .onDisappear { store.stop() }
         .animation(.easeInOut(duration: 0.2), value: store.curtainFor)

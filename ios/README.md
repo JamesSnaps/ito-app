@@ -1,7 +1,8 @@
 # Game Night for iOS
 
 A SwiftUI front end to the Game Night server: Flip 7 played on the app's
-deck (as the dealer or from your own seat), Fugitive (dealt here, played on
+deck (as the dealer or from your own seat) or kept score of with the real
+cards (the web scorekeeper, in an in-app Safari sheet), Fugitive (dealt here, played on
 two phones or passed across one), both games' records, ito (host a room or
 watch its topic), and "You" — a profile name and selfie shared with the web. Room QR codes can
 be scanned inside the app. The rules and the game state live on the server;

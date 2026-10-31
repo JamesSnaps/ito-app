@@ -15,7 +15,9 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="{{ app_name }}">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
-<link rel="stylesheet" href="{{ asset('style.css') }}">
+{# A game with a look of its own (Final Approach) replaces the shell's
+   stylesheet rather than fighting it: both define .btn, .row and button. #}
+{% block shell_css %}<link rel="stylesheet" href="{{ asset('style.css') }}">{% endblock %}
 {% block head %}{% endblock %}
 </head>
 <body class="{% block body_class %}{% endblock %}">

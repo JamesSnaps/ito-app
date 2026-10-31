@@ -7,3 +7,5 @@ ios/
 data/
 # Claude Code config and skills (pxl is 11 MB): tooling, not the app.
 .claude/
+# Playbooks and their screenshots are for people, not the server.
+docs/

@@ -2,15 +2,29 @@
 
 ## What this is
 
-**Game Night** — a hub for companion web apps to physical board games.
-It holds five: *ito* (cooperative, secret-number ordering game),
+**Game Night** — the family's games, on a phone. It began as companion
+apps for the board games on the shelf and is deliberately more than that
+now (v1.18.0). Three kinds of game live here, and a new one should be
+clear which it is:
+
+- **Help for a box on the shelf** — the physical game stays on the table
+  and the app replaces one part of it, narrowly (ito's topics, Flip 7's
+  scorekeeper). Scope stays tight: see ito's "Scope" below.
+- **A board game played on the app** — the whole game, server-side rules,
+  for nights without the box (Flip 7's Play mode, Fugitive).
+- **Games of our own** — designed here, not copies of published games:
+  their own names, rules and art (*Wildwood*, *Final Approach*,
+  *Picnic Raid*).
+
+It holds six: *ito* (cooperative, secret-number ordering game),
 *Flip 7* (push-your-luck card game), *Fugitive* (two-player
 hidden-movement card game, played entirely on the app, against a person or
 the computer — see its section), *Wildwood* (our own Crazy Eights-style
-card game for the family, two to four, also played entirely on the app) and
-*Picnic Raid* (our own set-a-trap card game, two to four, web only so far).
-`/` is the menu — it used to redirect straight to ito when ito was the
-only game.
+card game for the family, two to four, also played entirely on the app),
+*Final Approach* (our own solo air-traffic game, all client-side; its
+playbook is `docs/final-approach/PLAYBOOK.md`) and *Picnic Raid* (our own
+set-a-trap card game, two to four, web only so far). `/` is the menu — it
+used to redirect straight to ito when ito was the only game.
 
 The ito app itself: The owner has the German edition, whose
 topic prompts come as a printed booklet rather than cards, which isn't
@@ -54,7 +68,9 @@ problem.
   read-only spectator view opened from inside the scorekeeper.
 - Frontend is plain HTML/CSS/JS (Jinja templates extending
   `templates/base.html`, shared `static/style.css`, fetch polling), no
-  build step, no framework. Player page polls
+  build step, no framework. A game with a look wholly its own may swap the
+  shared stylesheet out through base.html's `shell_css` block (Final
+  Approach does; the others layer over it). Player page polls
   `/ito/api/<code>/state` every 2s.
 - Single container via `Dockerfile` + `docker-compose.yml`.
 - Smoke tests in `tests/test_smoke.py` (`pytest tests -q`). CI runs the whole
@@ -501,8 +517,15 @@ seat), Fugitive (since app 1.2.0; against the computer, online or off,
 since 1.5.0), Wildwood (since 1.11.0: online, offline and nearby), the
 games' records, ito hosting (since app 1.4.0) and its
 topic display, and player profiles. Rules pages, ito's
-stats and a scorekeeper's spectator board open the server's own pages in an
-in-app Safari sheet rather than being rebuilt.
+stats, the Flip 7 scorekeeper and a scorekeeper's spectator board open the
+server's own pages in an in-app Safari sheet rather than being rebuilt.
+
+- **Keep score is the web scorekeeper** (app 1.12.0): the Flip 7 tile's
+  second button opens `/flip7/` in the Safari sheet, for nights with the real
+  cards. Its game is in that sheet's localStorage, which is the app's own —
+  not Safari's, not the home-screen web app's — and survives the sheet
+  closing or a swipe down, so opening it again carries on. Every web sheet
+  keeps the screen awake, as the tables do.
 
 - **The server is still the game.** The app holds no rules: it shows the
   table from `/flip7/api/play/<code>` and sends moves, exactly like
@@ -562,7 +585,9 @@ in-app Safari sheet rather than being rebuilt.
 - **`/flip7/api/stats` carries `leaderboard`** in the records page's order,
   so the app doesn't re-implement the ranking.
 - **Tables and the topic display keep the screen awake**
-  (`.keepsScreenAwake()`): they sit on the table for an hour.
+  (`.keepsScreenAwake()`): they sit on the table for an hour. It's counted
+  (app 1.12.0), not a switch: a web sheet closing over a table used to turn
+  it off under the table still showing.
 - **ito's card is drawn natively** from the same geometry as
   `ito/_card.html` — the scale line and the back's swirl are the SVG paths,
   ported point for point, and the deal is the same edge-on swap.
@@ -685,8 +710,17 @@ in-app Safari sheet rather than being rebuilt.
   at a time — a drawn card is held out of the hand until it lands
   (`incomingCards` / `incomingBacks`), a new hideout slides onto the trail
   (`landing`), a find stamps FOUND, a miss stamps and shakes the trail, a
-  Manhunt washes the screen red and blue, an escape flies a plane off. Only a
-  fresh deal is dealt out.
+  Manhunt washes the screen red and blue. Only a fresh deal is dealt out.
+- **The endings** (app 1.13.0): a catch drops cell bars over the desk
+  (`CellBars`, `lockingUp`), the door slams as they land, and CAUGHT is
+  stamped over them; an escape flies a big plane slowly up across the
+  screen on a curve, with a contrail and a sunrise glow (`PlaneAway`, a
+  `Canvas` in a `TimelineView`, 2.8s; the `escape` sound is as long), and
+  ESCAPED lands while it's still climbing. The last stamp is bigger
+  (`Stamp.ending`) and knocks out a ring of ink, and on a device that holds
+  one seat it says "You win" / "You lose" (none on a table or a device passed
+  between both), with a success or error buzz to match. Reduce Motion fades
+  instead.
 - **The art is the web's, not a copy of it.** Card faces are PNGs rendered
   from `fugitive.js` by `ios/scripts/render_fugitive_cards.js` (into
   `Assets.xcassets/Fugitive`); mugshots and the city map are `Canvas` ports
@@ -757,6 +791,30 @@ phones side by side.
   (`_gn-fugitive._tcp/_udp`) are in `project.yml` and the committed
   `Info.plist`; iOS asks before the first nearby game.
 
+### Poor signal (app 1.13.0)
+
+- **Offline is chosen by asking the server, not the phone.**
+  `Connectivity.online()` checks the phone has a network (NWPathMonitor)
+  *and* that `/healthz` answers within 2.5s (`GameNightClient.reachable`, a
+  hard limit: `timeoutInterval` only counts the gaps, so a trickle outlasts
+  it). The network alone said yes to one bar, a hotel's sign-in page and
+  Wi-Fi with its broadband down. Fugitive's and Wildwood's setup run it
+  when they open, after anything that needs no signal and before anything
+  that does, and only ever turn Offline *on*.
+- **A deal that can't reach the server turns Offline on** and says so;
+  dealing again plays without it. It doesn't deal offline by itself: with
+  "own phones" that's a nearby game, which the other phone has to join.
+- **Tables say "Reconnecting…"** (`PollHealth`, `.reconnecting(_:)` in
+  Support.swift) after two failed polls in a row, or a poll that's taken
+  more than 4s — on one bar a request hangs for its whole timeout before
+  failing. Any answer from the server, a refusal included, clears it, and a
+  poll cancelled by leaving the table doesn't count. Flip 7, Fugitive and
+  Wildwood all use it; an offline table never fails, and a dropped nearby
+  link shows it too.
+- **No global "offline mode" switch, deliberately.** Only Fugitive and
+  Wildwood can play offline and each has its own switch; everything else
+  needs the server, so a global switch would mostly turn things off.
+
 ### The table as a real deck (iOS)
 
 - **The deck is the hit control.** A stack of card backs (`DeckView`) you
@@ -785,7 +843,8 @@ phones side by side.
   1280pt wide, three across from 1100pt and two-and-one below that, in a
   `Grid` so a row's tiles end level (app 1.8.2: capped at 1000 with three
   across, a tile's two half-width buttons were too narrow and "Records"
-  broke over two lines). Every tile is one button across, then Records and
+  broke over two lines). Every tile is one row of buttons across (Flip 7's
+  Start a game and Keep score, ito's Back to / New room), then Records and
   Rules — ito's Records is the server's stats page — and the buttons are
   one line each. New game
   and Join: a centred column. Records: two columns. Table: mats capped at
@@ -1092,7 +1151,8 @@ the computer", takes your name, a seat (Swap roles) and Easy or Hard.
 - **Setup (iOS) is three plain choices**: Against (a friend / the computer),
   On (own phones / one device) or Plays (Easy / Hard), and Offline and
   Hints switches; `mode` is worked out from them. Offline turns itself on
-  when `Connectivity.online()` (NWPathMonitor) says there's no network. Two
+  when `Connectivity.online()` says the server is out of reach (see "Poor
+  signal"). Two
   columns on an iPad. The paper form uses light controls — dark segmented
   pickers washed out on it. Simulator taps on a SwiftUI Toggle need a
   slightly longer press (`duration: 0.2`) to register.
@@ -1191,7 +1251,60 @@ Built exactly the way Fugitive is — read that section first.
   app 1.11.0 was on TestFlight (claiming a path sends it to every installed
   version of the app).
 
-## Picnic Raid (added v1.18.0)
+## Final Approach (added v1.18.0)
+
+A solo air-traffic game: aircraft arrive at the edges, you drag from one to
+draw its route, and it lands if the route ends lined up with the approach
+lights of a runway in its colour. Two touching is a collision (shift over);
+three diversions (out of fuel, flown into a storm) is the same. **The full
+picture — what it is, how it's built, where it's going — is the playbook,
+`docs/final-approach/PLAYBOOK.md`.** Read it before changing the game; keep
+it current when you do (its "Current state" and roadmap especially).
+
+- **Our own game in a genre, not a remake.** Path-drawing landing games are
+  a genre (the early iPhone hits among them); this one has its own name,
+  mechanics (colour-coded runway kinds, the lined-up approach rule, fuel,
+  drifting storm cells, wind shifts that reverse the runways), airports and
+  art. Don't borrow another game's names, levels or look.
+- **All client-side, one route.** `games/final_approach/game.py` serves
+  `/final-approach/`; everything else is `static/final-approach/`:
+  `levels.js` (airports, palettes, traffic), `art.js` (terrain painter,
+  sprites, live layers), `flap.js` (the split-flap component), `game.js`
+  (simulation, input, UI, save). Loaded in that order as plain scripts —
+  they share globals (`THEMES`, `LEVELS`, `Art`, `Flap`). No rooms, tokens
+  or records yet; records against profiles are the next step (playbook).
+- **Its own stylesheet, not the shell's.** The page overrides `shell_css`:
+  the shared `.btn`, `.row` and `button` rules leaked into the board. It
+  still extends base.html for the manifest and icons.
+- **Progress is per browser** (`final-approach:save` in localStorage:
+  stars per airport, the Endless best, mute). The home-screen app and Safari
+  keep separate storage on iOS, as for Flip 7's scorekeeper.
+- **The game id has a hyphen** (`final-approach`, so the URL reads well);
+  the package is `final_approach`. The blueprint, the art file and the
+  static folder use the id.
+- **Oswald and Barlow, bundled** (`static/final-approach/fonts/`, OFL, with
+  licences). Oswald is the split-flap face — chosen over Antonio, Barlow
+  Condensed and B612 Mono for looking most like a Solari board at phone
+  size. Same no-CDN rule as everywhere; a test checks the page, scripts and
+  CSS carry no absolute URLs.
+- **Runway numbers are painted into the terrain, so the game waits for the
+  fonts** (`document.fonts.load`, 2.5s cap) before painting the first
+  airport.
+- **A fixed 960×600 world, letterboxed.** Phones held upright get a "turn
+  sideways" overlay, and the game pauses behind it.
+- **The terrain is painted once per airport (and per resize) into an
+  offscreen canvas** at the screen's resolution, seeded by the level id so
+  an airport always looks the same; per frame only the live layers draw.
+- **`window.__finalApproach`** exposes the state for Playwright checks.
+  There's no JS test runner; `tests/test_final_approach.py` pins the page,
+  its files and the level data's shape, and visual changes are checked by
+  driving the page in a headless browser at desktop and phone-landscape
+  sizes (the playbook has the routine).
+- **Not in the iOS app.** The native hub's tiles are its own; the cheap way
+  in is a tile opening `/final-approach/` in the Safari sheet, like Keep
+  score (playbook roadmap).
+
+## Picnic Raid (added v1.19.0)
 
 Our own game, made for the family the way Wildwood was: fill a picnic
 basket, pack it up to bank the points, and hide traps (Ants, Wasp, Seagull,
@@ -1311,7 +1424,9 @@ one thing besides the games that `app.py` registers), `templates/me.html`
   `.art-stroke`) so a third game inherits the same card stock instead of
   inventing its own. ito's tile is the card's scale line; Flip 7's is a
   three-card fan with the 7 face up; Fugitive's is the trail — two
-  face-down hideouts, footprints, and 42 turned up.
+  face-down hideouts, footprints, and 42 turned up; Final Approach's is a
+  runway with its approach chevrons lit and a jet coming in on a dotted
+  route.
 
 ## Pixel art (the pxl skill)
 

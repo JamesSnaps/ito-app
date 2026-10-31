@@ -149,9 +149,10 @@ private enum Synth {
                     at: Int(Double(i) * 0.42 * rate))
             }
         case .escape:
-            out = noiseBurst(duration: 1.1, decay: 0.45, highpass: 0, lowpass: 0.08, gain: 0.3)
-            mix(&out, sweep(from: 220, to: 880, duration: 1.1, gain: 0.12), at: 0)
-            mix(&out, chime(freq: 1318.5, duration: 0.6, gain: 0.16), at: Int(0.95 * rate))
+            // As long as the plane takes to climb across the screen.
+            out = noiseBurst(duration: 2.0, decay: 0.8, highpass: 0, lowpass: 0.08, gain: 0.3)
+            mix(&out, sweep(from: 180, to: 880, duration: 2.0, gain: 0.12), at: 0)
+            mix(&out, chime(freq: 1318.5, duration: 0.6, gain: 0.16), at: Int(1.75 * rate))
         case .caught:
             // A barred door slammed, its ring, then three falling low notes:
             // dun, dun, DUN.

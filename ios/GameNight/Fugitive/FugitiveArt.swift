@@ -358,26 +358,49 @@ struct CityMap: View {
 struct InkStamp: View {
     let stamp: FugitiveStore.Stamp
     @State private var landed = false
+    @State private var splash = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         // The verdicts — Found, Caught, Escaped, Manhunt — big enough to read
-        // across the table; a miss with its numbers a size down to fit.
-        Text(stamp.text.uppercased())
-            .font(Noir.type(stamp.text.count > 14 ? 40 : 60))
-            .minimumScaleFactor(0.5)
-            .lineLimit(1)
-            .kerning(2)
-            .foregroundStyle(colour)
-            .padding(.horizontal, 26).padding(.vertical, 12)
-            .background(Noir.card.opacity(0.9), in: RoundedRectangle(cornerRadius: 10))
-            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(colour, lineWidth: 6))
-            .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(colour.opacity(0.6), lineWidth: 1.5).padding(6))
-            .rotationEffect(.degrees(-12))
-            .scaleEffect(landed ? 1 : 2.4)
-            .opacity(landed ? 1 : 0)
-            .shadow(color: .black.opacity(0.4), radius: 10, y: 4)
-            .onAppear { withAnimation(.spring(response: 0.28, dampingFraction: 0.55)) { landed = true } }
-            .allowsHitTesting(false)
+        // across the table; a miss with its numbers a size down to fit. The
+        // last stamp of a game is bigger again, and says who won.
+        VStack(spacing: 2) {
+            Text(stamp.text.uppercased())
+                .font(Noir.type(stamp.ending ? 76 : stamp.text.count > 14 ? 40 : 60))
+                .minimumScaleFactor(0.5)
+                .lineLimit(1)
+                .kerning(2)
+            if let line = stamp.line {
+                Text(line.uppercased())
+                    .font(Noir.type(26)).kerning(3)
+                    .opacity(0.85)
+            }
+        }
+        .foregroundStyle(colour)
+        .padding(.horizontal, 26).padding(.vertical, 12)
+        .background(Noir.card.opacity(0.9), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(colour, lineWidth: stamp.ending ? 8 : 6))
+        .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(colour.opacity(0.6), lineWidth: 1.5).padding(6))
+        // The ending's thump: a ring of ink knocked out from under it.
+        .background {
+            if stamp.ending {
+                RoundedRectangle(cornerRadius: 16)
+                    .strokeBorder(colour, lineWidth: 10)
+                    .scaleEffect(splash ? 1.7 : 1)
+                    .opacity(splash ? 0 : 0.55)
+            }
+        }
+        .rotationEffect(.degrees(-12))
+        .scaleEffect(landed ? 1 : reduceMotion ? 1 : stamp.ending ? 3.2 : 2.4)
+        .opacity(landed ? 1 : 0)
+        .shadow(color: .black.opacity(0.4), radius: 10, y: 4)
+        .onAppear {
+            withAnimation(.spring(response: stamp.ending ? 0.34 : 0.28, dampingFraction: 0.55)) { landed = true }
+            guard stamp.ending, !reduceMotion else { return }
+            withAnimation(.easeOut(duration: 0.7).delay(0.12)) { splash = true }
+        }
+        .allowsHitTesting(false)
     }
 
     private var colour: Color {
