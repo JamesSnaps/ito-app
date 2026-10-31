@@ -39,6 +39,9 @@ def audio_names():
 
 
 RECENT_SHIFTS = 12
+# Endless is ranked per emergencies setting, so each board is like-for-like.
+# Runs from before emergencies existed (v1.23.0) count as "off".
+SETTINGS = ("some", "lots", "off")
 SEEN_IDS = 400
 MAX_LIVES = 3
 
@@ -94,11 +97,18 @@ def parse_shift(body):
     assisted = body.get("assisted", False)
     if not isinstance(assisted, bool):
         raise ValueError("Assisted is yes or no.")
+    medals = body.get("medals", 0)
+    if not _whole(medals, 0, 999) or medals > landed:
+        raise ValueError("Medals are for emergencies landed.")
+    setting = body.get("emergencies")
     if outcome == "strikes" and strikes != MAX_LIVES:
         raise ValueError("A shift ended by strikes has all three.")
     if airport["endless"]:
         if outcome == "win":
             raise ValueError("Endless doesn't end in a win.")
+        setting = "off" if setting is None else setting
+        if setting not in SETTINGS:
+            raise ValueError("Emergencies are off, some or lots.")
         stars = 0
     else:
         if landed > airport["target"]:
@@ -106,14 +116,31 @@ def parse_shift(body):
         if outcome == "win" and (landed != airport["target"] or strikes >= MAX_LIVES):
             raise ValueError("A cleared shift lands the whole target.")
         stars = MAX_LIVES - strikes if outcome == "win" else 0
+        setting = None
     return {"id": shift_id, "level": level, "outcome": outcome, "landed": landed, "strikes": strikes,
             "stars": stars, "duration": round(float(duration), 1), "assisted": assisted,
-            "endless": airport["endless"]}
+            "endless": airport["endless"], "medals": medals, "emergencies": setting}
 
 
 def _blank_player(name):
-    return {"name": name, "stars": {}, "best": {}, "shifts": 0, "landed": 0,
-            "endless_best": 0, "endless_best_at": None, "endless_best_calm": 0}
+    return {"name": name, "stars": {}, "best": {}, "shifts": 0, "landed": 0, "medals": 0,
+            "endless": {}, "endless_at": {}, "endless_best_calm": 0}
+
+
+def _endless(player):
+    """Best Endless run per emergencies setting. Before v1.23.0 there was one
+    best, `endless_best`, from runs without emergencies: that's "off"."""
+    bests = dict(player.get("endless") or {})
+    if player.get("endless_best") and "off" not in bests:
+        bests["off"] = player["endless_best"]
+    return bests
+
+
+def _endless_at(player):
+    when = dict(player.get("endless_at") or {})
+    if player.get("endless_best_at") and "off" not in when:
+        when["off"] = player["endless_best_at"]
+    return when
 
 
 def record_shift(record, name, shift, at):
@@ -129,18 +156,25 @@ def record_shift(record, name, shift, at):
     player["name"] = name
     player["shifts"] += 1
     player["landed"] += shift["landed"]
+    player["medals"] = player.get("medals", 0) + shift["medals"]
     level = str(shift["level"])
     if shift["endless"]:
-        field = "endless_best_calm" if shift["assisted"] else "endless_best"
-        if shift["landed"] > player[field]:
-            player[field] = shift["landed"]
-            if not shift["assisted"]:
-                player["endless_best_at"] = at
+        if shift["assisted"]:
+            player["endless_best_calm"] = max(player.get("endless_best_calm", 0), shift["landed"])
+        else:
+            bests, when = _endless(player), _endless_at(player)
+            setting = shift["emergencies"]
+            if shift["landed"] > bests.get(setting, 0):
+                bests[setting] = shift["landed"]
+                when[setting] = at
+            player["endless"], player["endless_at"] = bests, when
+            player.pop("endless_best", None)
+            player.pop("endless_best_at", None)
     else:
         player["stars"][level] = max(player["stars"].get(level, 0), shift["stars"])
         player["best"][level] = max(player["best"].get(level, 0), shift["landed"])
     record["recent"] = ([{"name": name, "at": at, **{k: shift[k] for k in
-                          ("level", "outcome", "landed", "stars", "assisted", "endless")}}]
+                          ("level", "outcome", "landed", "stars", "assisted", "endless", "medals", "emergencies")}}]
                         + record["recent"])[:RECENT_SHIFTS]
     record["ids"] = (record["ids"] + [shift["id"]])[-SEEN_IDS:]
     return record, True
@@ -153,7 +187,8 @@ def public_player(player):
         "total_stars": sum(player.get("stars", {}).values()),
         "shifts": player.get("shifts", 0),
         "landed": player.get("landed", 0),
-        "endless_best": player.get("endless_best", 0),
+        "medals": player.get("medals", 0),
+        "endless": _endless(player),
         "endless_best_calm": player.get("endless_best_calm", 0),
     }
 
@@ -162,11 +197,17 @@ def stats_payload():
     record = stats.read(GAME_ID, default={}) or {}
     players = [public_player(p) for p in record.get("players", {}).values()]
     players.sort(key=lambda p: (-p["total_stars"], p["name"].casefold()))
-    ranked = [p for p in record.get("players", {}).values() if p.get("endless_best", 0) > 0]
-    ranked.sort(key=lambda p: (-p["endless_best"], p.get("endless_best_at") or ""))
-    leaderboard = [{"name": p["name"], "best": p["endless_best"], "at": p.get("endless_best_at")} for p in ranked]
+    leaderboards = {}
+    for setting in SETTINGS:
+        rows = []
+        for p in record.get("players", {}).values():
+            best = _endless(p).get(setting, 0)
+            if best > 0:
+                rows.append({"name": p["name"], "best": best, "at": _endless_at(p).get(setting)})
+        rows.sort(key=lambda row: (-row["best"], row["at"] or ""))
+        leaderboards[setting] = rows
     return {"airports": list(airports().values()), "players": players,
-            "leaderboard": leaderboard, "recent": record.get("recent", [])}
+            "leaderboards": leaderboards, "recent": record.get("recent", [])}
 
 
 @bp.route("/api/shifts", methods=["POST"])

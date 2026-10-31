@@ -48,6 +48,9 @@ SOUNDS = {
     "wind_shift": ("sfx", 2.0, "A strong gust of wind whooshing past outdoors, then settling"),
     "flap_1": ("sfx", 0.6, "Single mechanical split-flap departure board flap clack, close, dry"),
     "flap_2": ("sfx", 0.6, "One plastic flap of a split-flap display snapping over, short crisp click"),
+    "emg_alert": ("sfx", 1.5, "Urgent airport alert tone: three quick high warning beeps, clean and clear, not harsh"),
+    "siren": ("sfx", 4.0, "A fire engine siren wailing briefly in the distance, then fading away"),
+    "medal": ("sfx", 2.0, "A short triumphant brass fanfare sting, two bright rising notes, cheerful"),
     "flap_rattle": ("sfx", 2.5, "Split-flap departure board updating: rapid mechanical clattering of many flaps turning over, then settling"),
     # loops: one bed per landscape, one engine per aircraft family
     "bed_meadow": ("loop", 20, "Peaceful countryside ambience: soft breeze over fields, skylarks and distant birdsong, calm, continuous"),
@@ -147,7 +150,35 @@ def speech_lines():
     add("say_thanks", ["Thanks, tower. Lovely evening for it.", "On the ground. Thanks very much.",
                        "Smooth landing. Cheers, tower.", "Thank you, tower. See you next time.",
                        "Down safe, thanks!"])
+    # Emergencies (v1.23.0): the arrival's call, its thanks, and what goes wrong.
+    add("emg_fuel", ["Mayday, mayday, mayday. We're very low on fuel and need to land straight away.",
+                     "Mayday, mayday, mayday. Fuel emergency, request priority landing.",
+                     "Mayday, mayday. Minimum fuel. Please bring us straight in."], urgent=True)
+    add("emg_medical", ["Pan-pan, pan-pan, pan-pan. Medical emergency on board, request priority landing.",
+                        "Pan-pan, pan-pan. We have a sick passenger and need to land quickly.",
+                        "Pan-pan, pan-pan, pan-pan. The doctor on board says we need to land as soon as possible."], urgent=True)
+    add("emg_ambulance", ["Pan-pan, pan-pan. Air ambulance inbound with a patient, request the helipad.",
+                          "Air ambulance, pan-pan, pan-pan. Patient on board, we need the pad please."], urgent=True)
+    add("emg_damaged", ["Mayday, mayday, mayday. We've lost an engine and can't turn sharply. Request the long runway.",
+                        "Mayday, mayday, mayday. Damaged aircraft, we need a long straight approach.",
+                        "Mayday, mayday. One engine out. Long runway please, and fire crews standing by."], urgent=True)
+    add("emg_state", ["Tower, State One inbound. Please keep the airspace clear around us.",
+                      "State One on approach. We'll need the long runway and plenty of room."])
+    add("emg_thanks", ["We're down safely. Thank you, tower, you're a star.",
+                       "Wheels on the ground. Thank you so much, tower.",
+                       "Landed safe and sound. Brilliant work, tower.",
+                       "We made it. Thanks for getting us in, tower."])
+    add("emg_timeout", ["We can't wait any longer, tower. Diverting to the hospital.",
+                        "Out of time. We're diverting to get help."], urgent=True)
     tower = ["daniel"]
+    add("tower_state", ["All aircraft, State One is inbound. Keep well clear.",
+                        "Attention all traffic, State One approaching. Give them plenty of room."], tower)
+    add("tower_breach", ["Traffic, you are too close to State One. Turn away immediately!",
+                         "Security alert. Leave State One's airspace at once."], tower)
+    add("tower_closed", ["All aircraft, runway closed for emergency vehicles.",
+                         "Runway closed. Fire crews on the runway."], tower)
+    add("tower_open", ["Runway open again. Thanks for waiting.",
+                       "Emergency vehicles clear. The runway is open."], tower)
     add("tower_windwarn", ["All aircraft, wind change in five seconds. Runways will reverse.",
                            "All stations, stand by. The wind is shifting."], tower)
     add("tower_windflip", ["All aircraft, runways reversed. Check your approach.",
