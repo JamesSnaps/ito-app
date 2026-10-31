@@ -793,6 +793,7 @@ play:
 | No sounds from other games (e.g. `Citedy/game-sounds`) | They're copyrighted clips whatever the repo's code licence says, and the game is our own. |
 | Generated audio (ElevenLabs, Suno) only ever as bundled files, never runtime API calls | Keeps API keys out of browsers and third parties out of play; works on the LAN with no internet. |
 | Sound and music made with ElevenLabs (sound effects and music), bundled; the alert and fallbacks synthesised | One service and one restricted key for everything; recordings sound far better than the synth for set pieces; nothing runs at play time. |
+| The v1.20.0 sounds were made on ElevenLabs' Starter plan (October 2026) | A paid plan carries a commercial licence, so no attribution is needed even in a public repo. Remake sounds on a paid plan too: anything made on the free plan would need a credit on the board and couldn't be used commercially. |
 | Departures are the next big mechanic | The shared runway is the heart of real ATC, and it reuses the terminals, taxiways and wind rules already built. |
 | Departures take two taps (release, then clear for takeoff) | Keeps the game readable at a glance; routing departures to exit gates comes later. |
 | Advanced features are toggles in free play, never in the career | Career airports teach one idea at a time, so their rules are part of the design; free play is where you mix your own. |
@@ -806,10 +807,6 @@ play:
 
 ## 9. Open questions
 
-- **The ElevenLabs plan the sounds were made on.** Record it here: the
-  free plan's terms don't allow commercial use and ask for attribution, and
-  the repo is public. On a paid plan nothing more is needed. On the free
-  plan, add "Sounds made with ElevenLabs" to the board's footer.
 
 - **Accent colour.** Vermilion (`#e8553f`) is close-ish to Wildwood's
   orange on the hub. Is amber (the board's colour) better?
