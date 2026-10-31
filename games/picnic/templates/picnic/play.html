@@ -429,7 +429,13 @@
     async function freeSeat(seat){
       if (!confirm(`Free ${nameOf(seat)}’s seat? Whoever’s in it goes back to watching.`)) return;
       const res = await post(`${API(CODE)}/seats/${seat}/release`, {}, device.host);
-      if (!res.ok) showToast(res.data.error || 'Couldn’t free the seat.');
+      // Only forget this device's token once the seat really is free: after a
+      // failed release the server still has it taken, and the token is the
+      // only way back into it.
+      if (!res.ok) {
+        showToast(res.data.error || 'Couldn’t free the seat.');
+        return poll();
+      }
       if (device.seats[seat]) { delete device.seats[seat]; save(); }
       poll();
     }
