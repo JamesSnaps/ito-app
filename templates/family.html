@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{# Which profiles are children's. Behind the server's sign-in (see
+   core/profiles.py, "the Family page"): a child can't open it. #}
+{% block title %}Family — {{ app_name }}{% endblock %}
+{% block head %}<script src="{{ asset('profiles.js') }}"></script>{% endblock %}
+{% block body %}
+<div class="wrap me family">
+  <div class="me-bar">
+    <a class="btn btn-quiet me-back" href="/" aria-label="Back">←</a>
+    <div class="eyebrow">{{ app_name }}</div>
+  </div>
+  <h1>Family</h1>
+  {% if not signed_in %}
+  <p class="sub">Only a grown-up signed in to the Game Night server can change who's a child.
+    Sign in, then open this page again.</p>
+  {% else %}
+  <p class="sub">Mark the children's profiles. A child's profile, and anyone playing without a
+    profile, only gets the emergencies for everyone in Final Approach; the grown-up ones are
+    kept for grown-ups' profiles.</p>
+  <p class="hint">Signed in as {{ who }}. Children can't open this page.</p>
+  {% if profiles %}
+  <ul class="family-list">
+    {% for p in profiles %}
+    <li class="family-row" data-id="{{ p.id }}" data-name="{{ p.name }}">
+      <span class="family-face"></span>
+      <span class="family-name">{{ p.name }}</span>
+      <span class="family-choice" role="group" aria-label="{{ p.name }}">
+        <button type="button" data-kid="false" class="{{ 'on' if not p.kid }}">Grown-up</button>
+        <button type="button" data-kid="true" class="{{ 'on' if p.kid }}">Child</button>
+      </span>
+    </li>
+    {% endfor %}
+  </ul>
+  <p class="hint" id="family-status" role="status"></p>
+  {% else %}
+  <p class="hint">Nobody has a profile yet. Each person adds themselves from the hub's "Add yourself".</p>
+  {% endif %}
+  {% endif %}
+</div>
+<script>
+  (async () => {
+    await GN.profiles.load();
+    for (const row of document.querySelectorAll('.family-row')) {
+      row.querySelector('.family-face').appendChild(GN.avatar(row.dataset.name, 36));
+      for (const button of row.querySelectorAll('button')) {
+        button.addEventListener('click', async () => {
+          const kid = button.dataset.kid === 'true';
+          const status = document.getElementById('family-status');
+          const res = await fetch(`/api/family/${encodeURIComponent(row.dataset.id)}`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kid }),
+          }).catch(() => null);
+          const body = res ? await res.json().catch(() => ({})) : {};
+          if (res && res.ok) {
+            for (const b of row.querySelectorAll('button')) b.classList.toggle('on', (b.dataset.kid === 'true') === kid);
+            status.textContent = `${row.dataset.name} is now ${kid ? 'a child' : 'a grown-up'}.`;
+          } else {
+            status.textContent = body.error || "Couldn't save that. Try again.";
+          }
+        });
+      }
+    }
+  })();
+</script>
+{% endblock %}

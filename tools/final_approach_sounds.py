@@ -50,6 +50,8 @@ SOUNDS = {
     "flap_2": ("sfx", 0.6, "One plastic flap of a split-flap display snapping over, short crisp click"),
     "emg_alert": ("sfx", 1.5, "Urgent airport alert tone: three quick high warning beeps, clean and clear, not harsh"),
     "siren": ("sfx", 4.0, "A fire engine siren wailing briefly in the distance, then fading away"),
+    "birdstrike": ("sfx", 2.5, "A loud thud of a bird hitting a jet engine, then the engine sputtering and spooling down"),
+    "scrape": ("sfx", 3.0, "Metal aircraft belly scraping along a runway, grinding and sparking, then sliding to a stop"),
     "medal": ("sfx", 2.0, "A short triumphant brass fanfare sting, two bright rising notes, cheerful"),
     "flap_rattle": ("sfx", 2.5, "Split-flap departure board updating: rapid mechanical clattering of many flaps turning over, then settling"),
     # loops: one bed per landscape, one engine per aircraft family
@@ -170,7 +172,24 @@ def speech_lines():
                        "We made it. Thanks for getting us in, tower."])
     add("emg_timeout", ["We can't wait any longer, tower. Diverting to the hospital.",
                         "Out of time. We're diverting to get help."], urgent=True)
+    # Grown-up emergencies (v1.24.0): only for grown-ups' profiles.
+    add("emg_birdstrike", ["Mayday, mayday, mayday! Bird strike, we've lost an engine!",
+                           "Mayday, mayday! We've hit a flock of birds. One engine down, request immediate landing."], urgent=True)
+    add("emg_fire", ["Mayday, mayday, mayday! Engine fire! We need to land right now!",
+                     "Mayday, mayday. Fire warning on the left engine. Request emergency landing, fire crews please."], urgent=True)
+    add("emg_depress", ["Mayday, mayday! We've lost cabin pressure. Oxygen masks are down, descending now.",
+                        "Mayday, mayday. Rapid decompression, emergency descent. We need the nearest runway."], urgent=True)
+    add("emg_gear", ["Mayday, mayday, mayday. Our landing gear won't come down. We'll have to land on our belly.",
+                     "Mayday, mayday. Gear failure. Request foam on the runway and fire crews standing by."], urgent=True)
+    add("emg_hydraulic", ["Mayday, mayday. Hydraulic failure, we can barely steer. We need a long straight approach.",
+                          "Mayday, mayday. We've lost hydraulics. Very limited control, give us plenty of room."], urgent=True)
+    add("emg_unruly", ["Pan-pan, pan-pan. We have a disruptive passenger on board. Request priority landing and police.",
+                       "Pan-pan, pan-pan. Unruly passenger, the crew need help. Please have the police meet us."], urgent=True)
     tower = ["daniel"]
+    add("tower_foam", ["Foam going down on the runway. It's reserved for the emergency.",
+                       "All aircraft, that runway is closed for a foam landing. Use another."], tower)
+    add("tower_police", ["Police are on their way to meet the aircraft.",
+                         "Police vehicles to the stand. Thank you, crew."], tower)
     add("tower_state", ["All aircraft, State One is inbound. Keep well clear.",
                         "Attention all traffic, State One approaching. Give them plenty of room."], tower)
     add("tower_breach", ["Traffic, you are too close to State One. Turn away immediately!",

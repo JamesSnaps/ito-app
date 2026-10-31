@@ -295,7 +295,7 @@ Game Night.
 
 ---
 
-## 5. Current state (v1.23.0)
+## 5. Current state (v1.24.0)
 
 **Done:**
 
@@ -308,6 +308,10 @@ Game Night.
 - [x] Carry on a route from its end; bigger arrival markers with a countdown,
   never under the HUD; three seconds' warning early on; storm-safe arrivals
   (v1.19.0)
+- [x] Emergencies, the grown-up set and kids' profiles: bird strike, engine
+  fire, decompression, gear failure, hydraulic failure, unruly passenger,
+  for grown-ups' profiles only; the Family page behind the Authelia login
+  marks children's profiles (v1.24.0)
 - [x] Emergencies, the everyone set: fuel, medical, air ambulance, damaged,
   State One; the Lifeline airport; Endless with Off / Some / Lots and a
   board for each; medals (v1.23.0)
@@ -542,7 +546,16 @@ first.
   seconds; arrivals are kept clear of State One's bubble as they're of
   other traffic.
 
-**Next (step 2): kids' profiles and the grown-up set.**
+**Step 2 (built in v1.24.0): kids' profiles and the grown-up set.** As
+designed below, with these details: bird strike happens only to an aircraft
+well clear of everyone (the surprise is the emergency, not a collision);
+fire 35s and a 14s closure; decompression 30s, 130% speed, flying low; gear
+failure's route reserves the runway with foam as soon as it locks on, and
+anyone else on approach goes around; hydraulic failure turns at 0.45 rad/s;
+unruly passenger 40s, police meet it. Grown-ups can switch the set off in
+Settings ("Grown-up emergencies"). Endless runs with them rank on their own
+boards. The Family page needs the docker repo's rules live (Traefik and
+Authelia); until then it refuses, never opens.
 
 - **A kid's profile, safe enough for a family.** A **Family** page behind
   the Authelia sign-in (so only a signed-in grown-up can use it) marks a
@@ -864,8 +877,8 @@ The weather is decoration plus storms today. Make it a system:
 - ✅ **Emergencies, the everyone set** (section 6; v1.23.0, brought
   forward): fuel, medical, air ambulance, damaged and State One; Lifeline;
   Endless's Off / Some / Lots.
-- **Emergencies, part 2:** kids' profiles (the Family page behind
-  Authelia) and the grown-up set (section 6).
+- ✅ **Emergencies, part 2** (v1.24.0): kids' profiles (the Family page
+  behind Authelia) and the grown-up set (section 6).
 - **Done when:** at least four new aircraft are in the career, each with a
   rule you can feel, not just a new look; and an emergency changes how you
   plan the sky.

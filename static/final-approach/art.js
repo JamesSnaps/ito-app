@@ -1040,6 +1040,21 @@ const Art = (() => {
       ctx.globalAlpha = 1 - k;
       ctx.strokeStyle = e.color; ctx.lineWidth = 2.5;
       ctx.beginPath(); ctx.arc(e.x, e.y, 8 + k * 26, 0, TAU); ctx.stroke();
+    } else if (e.kind === 'feather') {
+      ctx.globalAlpha = 0.9 * (1 - k);
+      ctx.translate(e.x + Math.cos(e.a) * k * 26, e.y + Math.sin(e.a) * k * 26 + k * 8);
+      ctx.rotate(e.a + k * 6);
+      ctx.fillStyle = k < 0.5 ? '#f4efe4' : '#8a7660';
+      ctx.beginPath(); ctx.ellipse(0, 0, 2.6, 0.9, 0, 0, TAU); ctx.fill();
+    } else if (e.kind === 'flame') {
+      ctx.globalCompositeOperation = 'lighter';
+      const g = ctx.createRadialGradient(e.x, e.y, 0, e.x, e.y, 6 + k * 4);
+      g.addColorStop(0, `rgba(255,230,140,${0.9 * (1 - k)})`); g.addColorStop(0.5, `rgba(255,120,40,${0.6 * (1 - k)})`); g.addColorStop(1, 'rgba(255,60,20,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(e.x, e.y, 6 + k * 4, 0, TAU); ctx.fill();
+    } else if (e.kind === 'spark') {
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = `rgba(255,${180 + Math.floor(60 * (1 - k))},90,${1 - k})`;
+      ctx.beginPath(); ctx.arc(e.x + Math.cos(e.a) * e.v * k, e.y + Math.sin(e.a) * e.v * k, 1.2, 0, TAU); ctx.fill();
     } else if (e.kind === 'puff') {
       // A damaged aircraft's smoke: dark and spreading as it drifts behind.
       ctx.globalAlpha = 0.45 * (1 - k);

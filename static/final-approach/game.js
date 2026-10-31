@@ -40,7 +40,7 @@
       stars: {}, best: 0, bestCalm: 0, muted: false,
       vol: { sfx: 0.8, voice: 0.9, music: 0.8 },
       large: false, haptics: true, calm: false, taught: false, outbox: [],
-      emergencies: 'some', bestBy: {},
+      emergencies: 'some', bestBy: {}, grownUp: true,
     };
     let saved = {};
     try { saved = JSON.parse(localStorage.getItem(SAVE_KEY)) || {}; } catch { /* fresh start */ }
@@ -609,7 +609,29 @@
     ambulance: { label: 'Air ambulance', call: 'emg_ambulance', time: 38 },
     damaged:   { label: 'Mayday · damaged', call: 'emg_damaged' },
     state:     { label: 'State One', call: 'emg_state' },
+    // Grown-up only (grownUpOK): never for a child's profile or a guest.
+    birdstrike: { label: 'Mayday · birds', call: 'emg_birdstrike', grown: true },
+    fire:      { label: 'Mayday · fire', call: 'emg_fire', time: 35, grown: true },
+    depress:   { label: 'Mayday · pressure', call: 'emg_depress', time: 30, grown: true },
+    gear:      { label: 'Mayday · gear', call: 'emg_gear', grown: true },
+    hydraulic: { label: 'Mayday · hydraulics', call: 'emg_hydraulic', grown: true },
+    unruly:    { label: 'Pan-pan · passenger', call: 'emg_unruly', time: 40, grown: true },
   };
+  // Grown-up emergencies need a signed-in profile that the Family page hasn't
+  // marked as a child's, and the player not to have switched them off. A
+  // guest is treated as a child, so signing out never unlocks them.
+  function grownUpEligible() {
+    const mine = me();
+    if (!mine || typeof GN === 'undefined') return false;
+    const prof = GN.profiles.list.find(q => q.id === mine.id) || GN.profiles.byName(mine.name);
+    return !!prof && !prof.kid;
+  }
+  const grownUpOK = () => save.grownUp !== false && grownUpEligible();
+  // Endless ranks each mix of emergencies on its own board.
+  function endlessKey() {
+    const v = save.emergencies || 'some';
+    return v === 'off' ? 'off' : v + (grownUpOK() ? '-grownup' : '');
+  }
   const BUBBLE = 70;
   function emergencyPlan(L) {
     if (L.emergencies === 'choice') {
@@ -632,22 +654,54 @@
     if (has('pad')) out.push(['ambulance', 'heli']);
     if (has('long')) out.push(['damaged', types.includes('heavy') && Math.random() < 0.4 ? 'heavy' : 'jet']);
     if (has('long')) out.push(['state', 'heavy']);
+    if (grownUpOK()) {
+      const any = list => list[Math.floor(Math.random() * list.length)];
+      if (has('long')) {
+        out.push(['fire', types.includes('heavy') && Math.random() < 0.4 ? 'heavy' : 'jet']);
+        out.push(['gear', 'jet']);
+        out.push(['hydraulic', 'jet']);
+      }
+      if (fixedWing.length) {
+        out.push(['depress', any(fixedWing)]);
+        out.push(['unruly', any(fixedWing)]);
+      }
+    }
     return out.filter(([kind]) => kind !== S.emgLast || out.length === 1);
   }
   function emergencyTick(dt) {
     if (S.emgTimer === Infinity || S.time < 8) return;
     if (!S.emgPending) S.emgTimer -= dt;
     if (S.emgTimer > 0 || S.emgPending || emergencyActive()) return;
+    if (grownUpOK() && S.emgLast !== 'birdstrike' && Math.random() < 0.2 && birdStrike()) return;
     const choices = emergencyChoices();
     S.emgPending = choices[Math.floor(Math.random() * choices.length)];
     S.spawnTimer = Math.min(S.spawnTimer, 0.3);
+  }
+  // An aircraft already in the air loses an engine. Only one that's well
+  // clear of everyone, so the surprise is the emergency, not a collision.
+  function birdStrike(force) {
+    const q = S.planes.find(p => p.state === 'fly' && !p.emg && p.entered && p.type !== 'heli' && (force || p.age > 6) &&
+      S.planes.every(o => o === p || o.state !== 'fly' || dist(o.x, o.y, p.x, p.y) > 130));
+    if (!q) return false;
+    q.emg = 'birdstrike';
+    q.speedK = 0.65;
+    q.turnRate = 1.1;
+    q.smokeT = 0;
+    for (let i = 0; i < 10; i++) {
+      S.effects.push({ kind: 'feather', x: q.x + (Math.random() - 0.5) * 16, y: q.y + (Math.random() - 0.5) * 16,
+        a: Math.random() * TAU, t: 0, life: 1.4 + Math.random() * 0.6 });
+    }
+    playSound('birdstrike', { vol: 0.8, pan: panOf(q.x) });
+    announce({ emg: 'birdstrike' });
+    say(EMG.birdstrike.call, q, { priority: true });
+    return true;
   }
 
   function queueArrival() {
     const pending = S.emgPending;
     const emg = pending ? pending[0] : null;
     const type = (pending && pending[1]) || pickType();
-    const speedK = emg === 'damaged' ? 0.7 : 1;
+    const speedK = { damaged: 0.7, depress: 1.3, hydraulic: 0.85 }[emg] || 1;
     const lead = emg ? 3.5 : (S.level.traffic.warning || 2);
     let fallback = null;
     for (let attempt = 0; attempt < 24; attempt++) {
@@ -698,6 +752,9 @@
     if (EMG[p.emg] && EMG[p.emg].time) p.emgLeft = p.emgMax = EMG[p.emg].time;
     if (p.emg === 'damaged') { p.turnRate = 0.9; p.smokeT = 0; }
     if (p.emg === 'state') p.bubble = BUBBLE;
+    if (p.emg === 'fire') p.smokeT = 0;
+    if (p.emg === 'depress') { p.speedK = 1.3; p.alt = 0.5; }
+    if (p.emg === 'hydraulic') { p.turnRate = 0.45; p.speedK = 0.85; }
     S.planes.push(p);
     if (p.emg) {
       say(EMG[p.emg].call, p, { priority: true });
@@ -758,7 +815,15 @@
     }
 
     emergencyTick(dt);
-    for (const c of S.closures.slice()) if (S.time >= c.until) reopenRunway(c);
+    for (const c of S.closures.slice()) {
+      if (c.reservedFor) {
+        const q = c.reservedFor;
+        if (q.state === 'land' || (q.state === 'fly' && q.landing && q.landing.runway === c.runway)) continue;
+        S.closures = S.closures.filter(x => x !== c);       // route dropped: foam no longer needed
+        continue;
+      }
+      if (S.time >= c.until) reopenRunway(c);
+    }
     for (const st of S.storms) updateStorm(st, dt);
     for (const p of S.planes) {
       if (p.state === 'fly') updateFlight(p, dt);
@@ -853,11 +918,13 @@
       }
     }
 
-    if (p.emg === 'damaged') {
+    if (p.emg === 'damaged' || p.emg === 'fire' || p.emg === 'birdstrike') {
       p.smokeT -= dt;
       if (p.smokeT <= 0) {
-        p.smokeT = 0.12;
-        S.effects.push({ kind: 'puff', x: p.x - Math.cos(p.heading) * 10, y: p.y - Math.sin(p.heading) * 10, t: 0, life: 1.8 });
+        p.smokeT = p.emg === 'fire' ? 0.08 : 0.12;
+        const bx = p.x - Math.cos(p.heading) * 10, by = p.y - Math.sin(p.heading) * 10;
+        S.effects.push({ kind: 'puff', x: bx, y: by, t: 0, life: 1.8 });
+        if (p.emg === 'fire') S.effects.push({ kind: 'flame', x: bx, y: by, t: 0, life: 0.5 });
       }
     }
     if (p.emgLeft != null) {
@@ -889,7 +956,15 @@
       playSound('medal', { vol: 0.7 });
       buzz([20, 40, 60]);
       say('emg_thanks', p, { priority: true });
-      if (p.emg === 'damaged' && end.kind !== 'pad') closeRunway(end, p);
+      if ((p.emg === 'damaged' || p.emg === 'fire' || p.emg === 'gear') && end.kind !== 'pad') {
+        S.closures = S.closures.filter(c => c.reservedFor !== p);
+        if (p.emg === 'gear') {
+          playSound('scrape', { vol: 0.8, pan: panOf(end.x) });
+          for (let i = 0; i < 14; i++) S.effects.push({ kind: 'spark', x: end.x, y: end.y, a: end.angle + Math.PI + (Math.random() - 0.5) * 1.2, v: 30 + Math.random() * 60, t: 0, life: 0.6 + Math.random() * 0.5 });
+        }
+        closeRunway(end, p, p.emg === 'damaged' ? 8 : 14);
+      }
+      if (p.emg === 'unruly') sendPolice(end, p);
     } else say('say_thanks', p, { chance: 0.3 });
     if (end.kind === 'pad') sfx.touchdown(p);
     addText(end.x, end.y - 24, '+1', '#fff6dc', 16);
@@ -1014,7 +1089,7 @@
         S.newBest = S.landed > (save.bestCalm || 0);
         if (S.newBest) save.bestCalm = S.landed;
       } else {
-        const v = save.emergencies || 'some';
+        const v = S.endlessKey || endlessKey();
         S.newBest = S.landed > (save.bestBy[v] || 0);
         if (S.newBest) save.bestBy[v] = S.landed;
       }
@@ -1030,7 +1105,7 @@
       duration: Math.max(1, Math.round(S.time * 10) / 10),
       assisted: !!S.assisted,
       medals: S.medals,
-      emergencies: L.emergencies === 'choice' ? (save.emergencies || 'some') : undefined,
+      emergencies: L.emergencies === 'choice' ? (S.endlessKey || endlessKey()) : undefined,
     });
   }
 
@@ -1115,7 +1190,7 @@
       data = await res.json();
     } catch { return; }
     familyBoards = data.leaderboards || {};
-    familyBest = (familyBoards[save.emergencies || 'some'] || [])[0] || null;
+    familyBest = (familyBoards[endlessKey()] || [])[0] || null;
     const mine = me();
     let changed = false;
     const player = mine && (data.players || []).find(pl => GN.fold(pl.name) === GN.fold(mine.name));
@@ -1147,13 +1222,27 @@
   // After a damaged aircraft lands, fire engines close its runway for a few
   // seconds. Anyone on approach to it goes around.
   const CLOSED_FOR = 8;
-  const isClosed = r => S.closures.some(c => c.runway === r);
-  function closeRunway(end, p) {
+  const isClosed = (r, p) => S.closures.some(c => c.runway === r && c.reservedFor !== p);
+  // A belly landing: once its route locks on, foam goes down and the runway
+  // is kept for it alone; anyone else on approach goes around.
+  function reserveForGear(p) {
+    const r = p.landing.runway;
+    if (S.closures.some(c => c.runway === r)) return;
+    S.closures.push({ runway: r, reservedFor: p, until: Infinity, since: S.time, foam: true, from: [] });
+    for (const q of S.planes) {
+      if (q !== p && q.state === 'fly' && q.landing && q.landing.runway === r) {
+        q.landing = null; q.path = [];
+        addText(q.x, q.y - 22, 'Go around', '#ffffff', 13);
+      }
+    }
+    say('tower_foam', null, { priority: true });
+  }
+  function closeRunway(end, p, secs = CLOSED_FOR) {
     const roll = end.length * 0.8;
     const stop = { x: end.x + Math.cos(end.angle) * roll, y: end.y + Math.sin(end.angle) * roll };
     const nx = -Math.sin(end.angle), ny = Math.cos(end.angle);
     S.closures.push({
-      runway: end.runway, until: S.time + CLOSED_FOR, since: S.time, stop, angle: end.angle,
+      runway: end.runway, until: S.time + secs, since: S.time, stop, angle: end.angle,
       from: [{ x: stop.x + nx * 70, y: stop.y + ny * 70 }, { x: stop.x - nx * 70 - Math.cos(end.angle) * 30, y: stop.y - ny * 70 - Math.sin(end.angle) * 30 }],
     });
     for (const q of S.planes) {
@@ -1165,6 +1254,13 @@
     toast('Runway closed');
     playSound('siren', { vol: 0.5, fadeOut: 1.2 });
     say('tower_closed', null, { priority: true });
+  }
+  // An unruly passenger: police drive out to meet the aircraft.
+  function sendPolice(end, p) {
+    const roll = end.kind === 'pad' ? 0 : end.length * 0.8;
+    const stop = { x: end.x + Math.cos(end.angle || 0) * roll, y: end.y + Math.sin(end.angle || 0) * roll };
+    S.police = { stop, from: { x: stop.x, y: stop.y > H / 2 ? H + 20 : -20 }, since: S.time, until: S.time + 7 };
+    say('tower_police', null, { priority: true });
   }
   function reopenRunway(c) {
     S.closures = S.closures.filter(x => x !== c);
@@ -1286,6 +1382,7 @@
         p.path.push({ x: end.x, y: end.y });
         p.landing = end;
         d.done = true;
+        if (p.emg === 'gear' && end.kind !== 'pad') reserveForGear(p);
         S.effects.push({ kind: 'ring', x: end.x, y: end.y, color: KINDS[end.kind].color, t: 0, life: 0.6 });
         sfx.lock(p);
         return;
@@ -1296,7 +1393,7 @@
   // Does this route point complete a valid approach for plane p?
   function landingFor(p, pt) {
     for (const r of S.level.runways) {
-      if (r.kind !== p.T.kind || isClosed(r)) continue;
+      if (r.kind !== p.T.kind || isClosed(r, p)) continue;
       const end = runwayEnd(r);
       if (r.kind === 'pad') {
         if (dist(pt.x, pt.y, end.x, end.y) < 24) return end;
@@ -1334,6 +1431,7 @@
       Art.approach(ctx, runwayEnd(r), KINDS[r.kind].color, t, r.kind === drawingKind, th.night);
     }
     for (const c of S.closures) drawClosure(c, t);
+    if (S.police) drawPolice(t);
 
     const landing = S.planes.filter(p => p.state === 'land');
     const air = S.planes.filter(p => p.state !== 'land');
@@ -1454,12 +1552,24 @@
   // A closed runway: a red cross at each end and fire engines at the aircraft.
   function drawClosure(c, t) {
     const r = c.runway, a = r.angle * Math.PI / 180;
+    if (c.foam && c.reservedFor) {
+      // Foam laid down the runway's middle, waiting for the belly landing.
+      ctx.save();
+      ctx.translate(r.x, r.y); ctx.rotate(a);
+      ctx.fillStyle = 'rgba(255,255,255,0.55)';
+      for (let i = 0; i < 14; i++) {
+        const x = 30 + (r.length - 60) * (i / 13);
+        ctx.beginPath(); ctx.ellipse(x, Math.sin(i * 2.3) * 2, 11, 5, 0, 0, TAU); ctx.fill();
+      }
+      ctx.restore();
+    }
     const ends = [{ x: r.x, y: r.y }, { x: r.x + Math.cos(a) * r.length, y: r.y + Math.sin(a) * r.length }];
     ctx.save();
     ctx.strokeStyle = '#ff3b30'; ctx.lineWidth = 3.5; ctx.lineCap = 'round';
     for (const e of ends) {
       ctx.beginPath(); ctx.moveTo(e.x - 8, e.y - 8); ctx.lineTo(e.x + 8, e.y + 8); ctx.moveTo(e.x + 8, e.y - 8); ctx.lineTo(e.x - 8, e.y + 8); ctx.stroke();
     }
+    if (!c.stop) { ctx.restore(); return; }
     const k = Math.min(1, (S.time - c.since) / 2.2), ease = k * (2 - k);
     c.from.forEach((f, i) => {
       const x = lerp(f.x, c.stop.x + (i ? -10 : 10) * Math.cos(c.angle + Math.PI / 2), ease);
@@ -1480,6 +1590,25 @@
       }
       ctx.restore();
     });
+    ctx.restore();
+  }
+
+  function drawPolice(t) {
+    const pc = S.police;
+    if (S.time > pc.until) { S.police = null; return; }
+    const k = Math.min(1, (S.time - pc.since) / 3), ease = k * (2 - k);
+    const x = lerp(pc.from.x, pc.stop.x + 14, ease), y = lerp(pc.from.y, pc.stop.y + 12, ease);
+    ctx.save();
+    ctx.translate(x, y); ctx.rotate(Math.atan2(pc.stop.y - pc.from.y, pc.stop.x - pc.from.x));
+    ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(-4, -1.5, 10, 5);
+    ctx.fillStyle = '#f3f0e8'; ctx.fillRect(-5, -2.5, 10, 5);
+    ctx.fillStyle = '#2a5bd7'; ctx.fillRect(-5, -0.6, 10, 1.2);
+    const flash = Math.sin(t * 20) > 0;
+    ctx.fillStyle = flash ? '#4aa3ff' : '#ff3b30';
+    ctx.beginPath(); ctx.arc(0, 0, 1.3, 0, TAU); ctx.fill();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = flash ? 'rgba(74,163,255,0.35)' : 'rgba(255,59,48,0.35)';
+    ctx.beginPath(); ctx.arc(0, 0, 6, 0, TAU); ctx.fill();
     ctx.restore();
   }
 
@@ -1511,7 +1640,8 @@
       ctx.strokeStyle = f < 0.3 ? '#ff3b30' : '#ffffff'; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.arc(0, 0, R + 21, -Math.PI / 2, -Math.PI / 2 + TAU * f); ctx.stroke();
     }
-    const label = p.emg === 'state' ? 'STATE ONE' : p.emgLeft != null ? `${Math.ceil(p.emgLeft)}s` : 'MAYDAY';
+    const label = p.emg === 'state' ? 'STATE ONE' : p.emgLeft != null ? `${Math.ceil(p.emgLeft)}s`
+      : p.emg === 'gear' ? 'NO GEAR' : 'MAYDAY';
     ctx.font = '600 11px Oswald, sans-serif';
     ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
     ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(18,22,26,0.8)'; ctx.lineJoin = 'round';
@@ -1642,7 +1772,7 @@
   function refreshEndlessRow() {
     const cell = document.querySelector('.row[data-endless] .best');
     if (!cell) return;
-    const v = save.emergencies || 'some';
+    const v = endlessKey();
     const mine = save.bestBy[v] || 0;
     familyBest = (familyBoards[v] || [])[0] || null;
     cell.textContent = mine ? `Best ${mine}` : '';
@@ -1726,6 +1856,7 @@
   function play() {
     S.screen = 'play';
     S.assisted = !!save.calm;
+    S.endlessKey = endlessKey();          // the board this run counts for, fixed at the start
     $('btn-pause').disabled = false;
     only(null);
     show('hud', true);
@@ -1750,7 +1881,7 @@
     $('result-stars').innerHTML = win ? stars(S.lives, 'big') : '';
     $('result-stars').classList.toggle('hidden', !win);
     let text;
-    const best = S.assisted ? save.bestCalm : save.bestBy[save.emergencies || 'some'];
+    const best = S.assisted ? save.bestCalm : save.bestBy[S.endlessKey || endlessKey()];
     if (L.endless) text = `You landed ${S.landed}. ${S.newBest ? 'A new best!' : `Your best is ${best || S.landed}.`}`;
     else if (win) text = S.lives === MAX_LIVES ? 'Every arrival down safely. A perfect shift.' : `All down, with ${MAX_LIVES - S.lives} diverted. Fewer diversions earn more stars.`;
     else if (S.outcome === 'crash') text = `Two aircraft got too close. You landed ${S.landed} of ${L.target}.`;
@@ -1788,6 +1919,8 @@
     $('set-large').checked = !!save.large;
     $('set-haptics').checked = save.haptics !== false;
     $('set-calm').checked = !!save.calm;
+    $('set-grownup').checked = save.grownUp !== false;
+    show('set-grownup-row', grownUpEligible());
     only('settings');
     new Flap.Board($('settings-flaps'), 8).set('Settings', { stagger: 30 });
   }
@@ -1803,13 +1936,14 @@
     save.large = $('set-large').checked;
     save.haptics = $('set-haptics').checked;
     save.calm = $('set-calm').checked;
+    save.grownUp = $('set-grownup').checked;
     persist();
     Art.setBoost(save.large ? 1.25 : 1);
     if (S.level) $('hud-name').textContent = S.level.name + (save.calm ? ' · calm skies' : '');
     audio(); applyVolumes();
     if (actx && musicWas !== musicOn()) { const name = scape.musicName; scape.musicName = null; setMusic(name); }
   }
-  for (const id of ['set-sound', 'set-sfx', 'set-voice', 'set-music', 'set-large', 'set-haptics', 'set-calm']) {
+  for (const id of ['set-sound', 'set-sfx', 'set-voice', 'set-music', 'set-large', 'set-haptics', 'set-calm', 'set-grownup']) {
     $(id).addEventListener('input', changeSettings);
     $(id).addEventListener('change', changeSettings);
   }
@@ -1878,6 +2012,12 @@
   // Exposed for automated tests only.
   window.__finalApproach = { S, LEVELS, runwayEnd, update, queueArrival, clearOfStorms, stormAt, clearOfTraffic, track,
     save, recordStatus, flushOutbox, syncProgress,
-    emergency: kind => { S.emgPending = emergencyChoices().find(([k]) => k === kind) || [kind, null]; S.emgTimer = 0; S.spawnTimer = 0; },
+    emergency: kind => {
+      if (kind === 'birdstrike') return birdStrike(true);
+      const types = { fire: 'jet', gear: 'jet', hydraulic: 'jet', depress: 'prop', unruly: 'prop' };
+      S.emgPending = emergencyChoices().find(([k]) => k === kind) || [kind, types[kind] || null];
+      S.emgTimer = 0; S.spawnTimer = 0;
+    },
+    grownUpOK, endlessKey,
     sound: { audio, load, buffers, scape, bus: () => bus } };
 })();
