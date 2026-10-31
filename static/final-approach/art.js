@@ -861,7 +861,7 @@ const Art = (() => {
   const MARKER_SPAN = { prop: 33, jet: 36, heavy: 48, heli: 30 };
   function incoming(ctx, s, t, color, r) {
     const x = Math.max(r + 4, Math.min(W - r - 4, s.x)), y = Math.max(r + 4, Math.min(H - r - 4, s.y));
-    const done = Math.max(0, Math.min(1, 1 - s.t / (s.lead || 2)));
+    const done = s.held ? 1 : Math.max(0, Math.min(1, 1 - s.t / (s.lead || 2)));
     ctx.save();
     ctx.translate(x, y);
     const k = (t * 1.4) % 1;

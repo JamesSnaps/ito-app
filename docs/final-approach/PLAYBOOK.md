@@ -117,6 +117,11 @@ Every feature should serve at least one of these and harm none.
   storm only catches aircraft you've had time to route.
 - **Warning:** an arrival's marker shows three seconds ahead on the first
   three airports, two after that.
+- **Arrivals never ambush:** an arrival only enters on a path that keeps
+  it out of warning distance of every other aircraft for its first five
+  seconds (routes and edge turns predicted). If the sky has changed by the
+  time it's due, it swings onto a clear heading or waits at the edge, its
+  marker full, until one opens.
 - **Wind shifts:** five seconds' warning, then every runway reverses. Any
   aircraft on approach to a runway's old end has to go around.
 - **Traffic:** the gap between arrivals eases from the airport's start
@@ -290,7 +295,7 @@ Game Night.
 
 ---
 
-## 5. Current state (v1.21.0)
+## 5. Current state (v1.21.1)
 
 **Done:**
 
@@ -303,6 +308,7 @@ Game Night.
 - [x] Carry on a route from its end; bigger arrival markers with a countdown,
   never under the HUD; three seconds' warning early on; storm-safe arrivals
   (v1.19.0)
+- [x] Arrivals can't fly into traffic in their first five seconds (v1.21.1)
 - [x] Spoken radio dialogue, and varied, fading touchdowns (v1.21.0)
 - [x] Recorded sound and music (v1.20.0): touchdowns, chimes, radio, the
   flap board, a background per landscape, engines that follow the traffic,
@@ -311,7 +317,8 @@ Game Night.
 
 **First family play** (31 October 2026): James and Louis played it and
 think it's great. Their requests are in Phase 3; the first ones shipped in
-v1.19.0. They also found that a storm could sit where an arrival came in
+v1.19.0. Later that day they found an arrival could appear and fly straight
+into an aircraft already on screen, ending the game; fixed in v1.21.1. They also found that a storm could sit where an arrival came in
 and divert it instantly, which broke the "always a warning" pillar. Fixed
 in v1.19.0.
 
@@ -874,6 +881,7 @@ play:
 | Approach must be lined up | It makes the angle of approach the skill, and the approach lights make it readable. |
 | A collision ends the shift; diversions are strikes | Collisions are the cardinal sin; fuel and weather are pressure, so they forgive twice. |
 | Arrivals announced two seconds ahead | Calm tension: you always get a warning. |
+| No arrival may come within warning distance of other traffic in its first five seconds; it waits at the edge if it must | Same promise as storms (pillar 2): a crash should always follow a warning you had time to act on. Holding an arrival costs a moment; an ambush costs the game. |
 | No arrival may meet a storm in its first five seconds | Storm movement is predictable, so the game can promise it; failure should always follow a warning (pillar 2). |
 | Route ends are handles: touch the end to carry on, the aircraft to start again | Fixing a route shouldn't mean redrawing it, and the gesture everyone already knows keeps its meaning. |
 | No sounds from other games (e.g. `Citedy/game-sounds`) | They're copyrighted clips whatever the repo's code licence says, and the game is our own. |

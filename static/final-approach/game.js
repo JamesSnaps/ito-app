@@ -475,6 +475,79 @@
     return true;
   }
 
+  // Where every aircraft will be over the next few seconds if nobody touches
+  // it: along its route, then straight on, turning back at the edges as it
+  // would. Samples every TRACK_STEP seconds. Aircraft on the ground, or that
+  // will be by then, drop out (null); so do diverting ones, which can't collide.
+  const TRACK_STEP = 0.2;
+  function track(p, secs) {
+    const out = [];
+    let x = p.x, y = p.y, h = p.heading, i = 0, entered = p.entered;
+    const step = p.T.speed * TRACK_STEP;
+    for (let t = 0; t <= secs + 1e-6; t += TRACK_STEP) {
+      out.push({ x, y });
+      let left = step;
+      while (left > 0 && i < p.path.length) {
+        const q = p.path[i], d = dist(x, y, q.x, q.y);
+        if (d > 0.001) h = Math.atan2(q.y - y, q.x - x);
+        if (d <= left) { x = q.x; y = q.y; i++; left -= d; } else { x += Math.cos(h) * left; y += Math.sin(h) * left; left = 0; }
+      }
+      if (i >= p.path.length && p.landing) { while (out.length <= secs / TRACK_STEP + 1) out.push(null); break; }
+      x += Math.cos(h) * left; y += Math.sin(h) * left;
+      if (!entered && x > EDGE && x < W - EDGE && y > EDGE && y < H - EDGE) entered = true;
+      if (entered) {
+        if ((x < EDGE && Math.cos(h) < 0) || (x > W - EDGE && Math.cos(h) > 0)) h = Math.PI - h;
+        if ((y < EDGE && Math.sin(h) < 0) || (y > H - EDGE && Math.sin(h) > 0)) h = -h;
+      }
+    }
+    return out;
+  }
+
+  // An arrival must not come within warning distance of anyone in its first
+  // SAFE_FLIGHT seconds: not those already flying (wherever their routes take
+  // them), nor arrivals still waiting at the edges. `wait` is how long until
+  // it appears. Same promise as the storms: nothing ends your shift before
+  // you've had a chance to act.
+  function clearOfTraffic(type, x, y, heading, wait, self) {
+    const r = TYPES[type].radius, v = TYPES[type].speed, span = wait + SAFE_FLIGHT;
+    const others = [];
+    for (const p of S.planes) if (p.state === 'fly') others.push({ r: p.T.radius, at: track(p, span) });
+    for (const o of S.incoming) {
+      if (o === self) continue;
+      const ov = TYPES[o.type].speed, at = [];
+      for (let t = 0; t <= span + 1e-6; t += TRACK_STEP) {
+        const flown = t - o.t;
+        at.push(flown < 0 ? null : { x: o.x + Math.cos(o.heading) * ov * flown, y: o.y + Math.sin(o.heading) * ov * flown });
+      }
+      others.push({ r: TYPES[o.type].radius, at });
+    }
+    for (let t = 0; t <= SAFE_FLIGHT + 1e-6; t += TRACK_STEP) {
+      const px = x + Math.cos(heading) * v * t, py = y + Math.sin(heading) * v * t;
+      const k = Math.round((wait + t) / TRACK_STEP);
+      for (const o of others) {
+        const q = o.at[Math.min(k, o.at.length - 1)];
+        if (q && dist(px, py, q.x, q.y) < (r + o.r) * 2.6) return false;
+      }
+    }
+    return true;
+  }
+
+  // At the moment an arrival is due: in if its way is clear, otherwise swung
+  // onto a clear heading, otherwise held at the edge for another moment.
+  function admit(s) {
+    const turns = [0, 0.25, -0.25, 0.5, -0.5, 0.75, -0.75];
+    for (const turn of turns) {
+      const heading = s.heading + turn;
+      const inward = Math.cos(heading) * (W / 2 - s.x) + Math.sin(heading) * (H / 2 - s.y) > 0;
+      if (!inward) continue;
+      if (clearOfTraffic(s.type, s.x, s.y, heading, 0, s) && clearOfStorms(s.x, s.y, heading, TYPES[s.type].speed, 0)) {
+        s.heading = heading;
+        return true;
+      }
+    }
+    return false;
+  }
+
   // The HUD's plates sit over the top of the map. An arrival's marker must
   // never hide under one, so those stretches of the top edge are off limits.
   function underHud(x, y) {
@@ -505,13 +578,15 @@
       const heading = Math.atan2(ty - y, tx - x);
       if (underHud(x, y)) continue;
       if (!clearOfStorms(x, y, heading, TYPES[type].speed, lead)) continue;
+      if (!clearOfTraffic(type, x, y, heading, lead, null)) continue;
       const arrival = { type, x, y, heading, t: lead, lead };
       const crowded = S.planes.some(p => dist(p.x, p.y, x, y) < 150) ||
                       S.incoming.some(s => dist(s.x, s.y, x, y) < 150);
       if (!crowded) { S.incoming.push(arrival); return true; }
       fallback = fallback || arrival;
     }
-    // Crowded is acceptable when nothing better turned up; into a storm never is.
+    // Crowded is acceptable when nothing better turned up; into a storm or
+    // someone's path never is.
     if (fallback) { S.incoming.push(fallback); return true; }
     return false;
   }
@@ -560,8 +635,12 @@
       }
     }
     for (const s of S.incoming) s.t -= dt;
-    for (const s of S.incoming) if (s.t <= 0) spawnPlane(s);
-    S.incoming = S.incoming.filter(s => s.t > 0);
+    for (const s of S.incoming) {
+      if (s.t > 0) continue;
+      if (admit(s)) { spawnPlane(s); s.done = true; }
+      else { s.t = 0.3; s.held = true; }   // held at the edge: try again shortly
+    }
+    S.incoming = S.incoming.filter(s => !s.done);
 
     // wind
     if (L.windShift) {
@@ -720,6 +799,7 @@
   }
 
   function crash(a, b) {
+    S.crashes = (S.crashes || []).concat([[a.age, b.age]]);  // for checks
     a.crashed = b.crashed = true;
     a.state = b.state = 'gone';
     S.planes = S.planes.filter(p => p.state !== 'gone');
@@ -1245,6 +1325,6 @@
   });
 
   // Exposed for automated tests only.
-  window.__finalApproach = { S, LEVELS, runwayEnd, update, queueArrival, clearOfStorms, stormAt,
+  window.__finalApproach = { S, LEVELS, runwayEnd, update, queueArrival, clearOfStorms, stormAt, clearOfTraffic, track,
     sound: { audio, load, buffers, scape, bus: () => bus } };
 })();
