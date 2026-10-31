@@ -295,7 +295,11 @@ def test_the_log_hides_draws_and_traps_from_everyone_else():
     go(state, 0, "lay", cards=["s1"])
     mine = [e for e in engine.view(state, 0)["log"] if e["kind"] == "hide"][-1]
     theirs = [e for e in engine.view(state, 1)["log"] if e["kind"] == "hide"][-1]
-    assert mine["card"] == "ants" and theirs["card"] is None and theirs["target"] == 1
+    assert mine["card"] == "ants" and mine["seat"] == 0
+    # Nor who hid it: the hider stays a secret until the trap springs.
+    assert theirs["card"] is None and theirs["seat"] is None and theirs["target"] == 1
+    table_hide = [e for e in engine.view(state, "table")["log"] if e["kind"] == "hide"][-1]
+    assert table_hide["seat"] is None and table_hide["card"] is None
     draw = [e for e in engine.view(state, 0)["log"] if e["kind"] == "draw"][-1]
     assert draw["seat"] == 1 and draw["cards"] is None
     assert [e for e in engine.view(state, 1)["log"] if e["kind"] == "draw"][-1]["cards"]

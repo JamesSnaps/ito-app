@@ -19,7 +19,8 @@ The rules as played here, including the choices the family table made:
 - Deal five each. On your turn draw two, then:
   - **Hide a trap** if you like: one trap face down under someone else's
     blanket. Everyone sees a mystery card appear; nobody but you knows what
-    it is, or that it was you. It costs you nothing — this is the game.
+    it is, and the table never says it was you — though sharp eyes may
+    remember whose turn it was. It costs you nothing — this is the game.
     Not in the first round (everyone gets to lay a picnic first), never a
     second one of yours under the same blanket, and a blanket only has room
     for two.
@@ -312,8 +313,8 @@ def view(state, viewer):
 
     Your own hand, and your own traps under other blankets; for everyone
     else's, only that a mystery card is there. Baskets and scores are on the
-    table for all. A draw, a discard or a hidden trap in the log says what
-    only to whoever it belongs to. Once the game is over everything is shown.
+    table for all. A draw or a discard in the log says what only to whoever
+    it belongs to; a hidden trap says what, and who hid it, only to the hider. Once the game is over everything is shown.
     """
     if viewer != "table" and not (_is_int(viewer) and 0 <= viewer < state["players"]):
         raise ValueError(viewer)
@@ -326,7 +327,9 @@ def view(state, viewer):
         if entry["kind"] in ("draw", "discard") and not (over or entry["seat"] == seat):
             entry["cards"] = None
         if entry["kind"] == "hide" and not (over or entry["seat"] == seat):
+            # Who hid it is as secret as what it is, until it springs.
             entry["card"] = None
+            entry["seat"] = None
         log.append(entry)
 
     acting = turn(state)

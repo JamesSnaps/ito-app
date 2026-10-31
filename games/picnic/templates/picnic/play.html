@@ -688,8 +688,9 @@
     function logLine(e){
       switch (e.kind) {
         case 'deal': return `Dealt — ${who(e.first)} first`;
+        // Only the hider is told who hid it (and what): everyone else just sees a card appear.
         case 'hide': return e.card ? `${who(e.seat)} hid ${PR.NAMES[e.card]} under ${whose(e.target)} blanket`
-                                   : `${who(e.seat)} hid a mystery card under ${whose(e.target)} blanket`;
+                                   : `A mystery card appeared under ${whose(e.target)} blanket`;
         case 'lay': return `${who(e.seat)} laid ${e.cards.map(PR.label).join(', ')}`;
         case 'pass': return `${who(e.seat)} passed`;
         case 'pack': return `${who(e.seat)} packed up ${e.points}${e.traps ? ` over ${e.traps} mystery card${e.traps === 1 ? '' : 's'}` : ''}`;
