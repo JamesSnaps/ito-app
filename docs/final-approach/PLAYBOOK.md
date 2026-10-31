@@ -417,6 +417,31 @@ recorded with its settings and shown separately, the way Fugitive marks
   follows you to any device. Without a profile it's kept on the device, as
   today.
 
+### Assists and tools
+
+Two different things that sit side by side (decided 31 October 2026):
+
+| | **Assists** (calm skies, and any future ones) | **Tools** (the career's "skills") |
+|---|---|---|
+| What it is | Changes the *conditions* to make the game kinder | Something you *do* in the moment |
+| How you get it | There from the start, in Settings | Earned through career promotions |
+| How it works | Applies to the whole shift; nothing to press | Two chosen per shift, a few charges each |
+| Who it's for | A player who's overwhelmed | A player getting good, wanting more ways to solve the sky |
+| On the records | Marked; earns your stars; never ranked | Part of the career game; career shifts count normally |
+
+- **They stack:** calm skies with your tools is fine.
+- **One rule for both:** anything that changes the challenge is marked, and
+  only like-for-like runs are ranked against each other. Ranked Endless and
+  the daily run use no tools (or one fixed loadout for everyone), and
+  assisted runs are kept off the ranked boards.
+- **Future assists join calm skies under "Assists" in Settings**, not the
+  tools: longer arrival warnings, a lower traffic cap and the like, all
+  marked and never ranked.
+- **For younger players, the first tool comes early.** Calm skies gives
+  time; tools like Hold and Slow down give *a move to make* when it gets
+  busy, which is what helps with panic. So the career hands out Hold in its
+  first chapter, not after several promotions.
+
 ### New mechanics
 
 Each one arrives with an airport that teaches it, and then joins free play
@@ -770,7 +795,8 @@ The first big new mechanic (section 6).
   checkride.
 - The controller's licence card, using your profile's name and photo, and
   ranks from Trainee to Chief.
-- Experience, cosmetic unlocks, and the tools and two-tool loadout.
+- Experience, cosmetic unlocks, and the tools and two-tool loadout, with
+  Hold handed out in the first chapter (see "Assists and tools").
 - Progress kept against the profile (from Phase 2).
 - **Done when:** a new player can go from Trainee to Tower through the
   first chapters, with at least two tools and three cosmetics to earn.
@@ -893,6 +919,8 @@ play:
 | Approach must be lined up | It makes the angle of approach the skill, and the approach lights make it readable. |
 | A collision ends the shift; diversions are strikes | Collisions are the cardinal sin; fuel and weather are pressure, so they forgive twice. |
 | Arrivals announced two seconds ahead | Calm tension: you always get a warning. |
+| Assists and tools stay separate: assists change conditions, tools are moves you make; anything that changes the challenge is marked, only like-for-like runs rank | Assists help the overwhelmed, tools reward the skilled; one rule keeps every leaderboard fair. |
+| The first tool (Hold) comes in the career's first chapter | It gives a young player a move to make when the sky gets busy, which helps with panic more than slowing down alone. |
 | Calm skies is an assist, not an easy mode: slower, honestly labelled, earns your stars, never ranks | Helps a young player who panics without hiding the difficulty curve, and keeps the leaderboard fair (pillar 6). |
 | A shift is recorded under the profile that posts it, never a name in the request | The token says who; no posting as someone else. |
 | No arrival may come within warning distance of other traffic in its first five seconds; it waits at the edge if it must | Same promise as storms (pillar 2): a crash should always follow a warning you had time to act on. Holding an arrival costs a moment; an ambush costs the game. |
@@ -925,6 +953,10 @@ play:
   everyone?
 - **Career without a profile.** Allow it on the device only (my
   recommendation), or require a profile?
+- **Records controls.** A "share my shifts" switch (on by default), and an
+  Authelia-protected "clear Final Approach's records" button? Neither exists
+  yet; removing someone from the records today means editing stats.json on
+  vm-core.
 - **Endless unlock.** After airport 5, or after the first checkride once the
   career exists?
 - **The repo's name.** `ito-app` no longer describes it; `game-night` would
