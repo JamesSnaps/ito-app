@@ -36,9 +36,23 @@
   // ---------- save data ----------
   const SAVE_KEY = 'final-approach:save';
   const save = (() => {
-    const blank = { stars: {}, best: 0, muted: false, music: true };
-    try { return Object.assign(blank, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); }
-    catch { return blank; }
+    const blank = {
+      stars: {}, best: 0, bestCalm: 0, muted: false,
+      vol: { sfx: 0.8, voice: 0.9, music: 0.8 },
+      large: false, haptics: true, calm: false, taught: false, outbox: [],
+      emergencies: 'some', bestBy: {},
+    };
+    let saved = {};
+    try { saved = JSON.parse(localStorage.getItem(SAVE_KEY)) || {}; } catch { /* fresh start */ }
+    const merged = Object.assign(blank, saved);
+    merged.vol = Object.assign({ sfx: 0.8, voice: 0.9, music: 0.8 }, saved.vol || {});
+    // Before v1.22.0 music was an on/off switch.
+    if (saved.music === false && !saved.vol) merged.vol.music = 0;
+    delete merged.music;
+    // Before v1.23.0 Endless had no emergencies: that best is the "off" one.
+    merged.bestBy = Object.assign({}, saved.bestBy || {});
+    if (saved.best && !saved.bestBy) merged.bestBy.off = saved.best;
+    return merged;
   })();
   function persist() {
     try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch { /* private mode */ }
@@ -80,7 +94,18 @@
   }
   function applyVolumes() {
     if (!bus) return;
-    bus.master.gain.setTargetAtTime(save.muted ? 0 : 1, actx.currentTime, 0.05);
+    const now = actx.currentTime;
+    bus.master.gain.setTargetAtTime(save.muted ? 0 : 1, now, 0.05);
+    bus.sfx.gain.setTargetAtTime(0.9 * save.vol.sfx, now, 0.05);
+    bus.engine.gain.setTargetAtTime(0.3 * save.vol.sfx, now, 0.05);
+    if (bus.radio) bus.radio.gain.setTargetAtTime(1.1 * save.vol.voice, now, 0.05);
+  }
+  const musicOn = () => !save.muted && save.vol.music > 0;
+
+  // Vibration, where the phone allows it (Android does; iPhones don't).
+  function buzz(pattern) {
+    if (save.haptics === false || !navigator.vibrate) return;
+    try { navigator.vibrate(pattern); } catch { /* not allowed here */ }
   }
 
   const buffers = {}, loading = {};
@@ -271,6 +296,7 @@
     // A readback with the real runway number ("cleared to land, runway two seven").
     lock:      p => {
       tone(1180, 0.05, { type: 'triangle', vol: 0.05 });
+      buzz(12);
       const end = p.landing;
       say(end.kind === 'pad' ? 'say_pad' : 'say_land_' + Art.designator(end.angle * 180 / Math.PI), p);
     },
@@ -304,7 +330,7 @@
     if (scape.musicName === name) return;
     if (scape.music) scape.music.stop(4);
     scape.musicName = name;
-    scape.music = name && save.music !== false ? startLoop(name, bus.music, 3) : null;
+    scape.music = name && musicOn() ? startLoop(name, bus.music, 3) : null;
   }
   function soundscape(clock) {
     if (!actx || !S.level) return;
@@ -318,7 +344,7 @@
       scape.bed = startLoop(bedName, bus.bed, 2);
     }
     const duck = now < (scape.duckUntil || 0) ? 0.5 : 1;
-    bus.bed.gain.setTargetAtTime((playing ? 0.32 : 0.12) * duck, now, 0.25);
+    bus.bed.gain.setTargetAtTime((playing ? 0.32 : 0.12) * duck * save.vol.sfx, now, 0.25);
 
     const counts = { jet: [], prop: [], heli: [] };
     if (playing) for (const p of S.planes) if (p.state === 'fly' || p.state === 'divert') counts[FAMILY[p.type]].push(p.x);
@@ -339,13 +365,14 @@
     let track = 'music_board';
     if (playing) {
       const airborne = counts.jet.length + counts.prop.length + counts.heli.length;
-      const busy = S.conflicts.length > 0 || airborne >= Math.max(3, S.level.traffic.maxPlanes * 0.7);
+      // Calm skies keeps the music calm too.
+      const busy = !save.calm && (S.conflicts.length > 0 || airborne >= Math.max(3, S.level.traffic.maxPlanes * 0.7));
       if (busy) scape.busySince = clock; else scape.calmSince = clock;
       const wasBusy = scape.musicName === 'music_busy';
       track = busy || (wasBusy && clock - scape.busySince < 10) ? 'music_busy' : 'music_calm';
     }
     setMusic(track);
-    bus.music.gain.setTargetAtTime(save.music === false ? 0 : (S.screen === 'pause' ? 0.12 : 0.3) * duck, now, 0.3);
+    bus.music.gain.setTargetAtTime(musicOn() ? (S.screen === 'pause' || S.screen === 'settings' ? 0.12 : 0.3) * duck * save.vol.music : 0, now, 0.3);
   }
 
   // ---------- canvas / view ----------
@@ -392,10 +419,13 @@
       level, planes: [], storms: [], effects: [], incoming: [], conflicts: [],
       landed: 0, lives: MAX_LIVES, time: 0, spawnTimer: 1,
       flipped: false, windTimer: level.windShift || 0, windWarned: false,
-      drawing: null, overTimer: 0, outcome: null, warnCooldown: 0,
+      drawing: null, overTimer: 0, outcome: null, warnCooldown: 0, shiftId: null, assisted: false,
+      medals: 0, emgPending: null, emgLast: null, closures: [],
       sky: Art.sky(th, level.id * 31), snow: th.snowfall ? Art.snowfall(140) : [],
     });
     paintTerrain();
+    const plan = emergencyPlan(level);
+    S.emgTimer = plan ? plan.first + Math.random() * 6 : Infinity;
     const rng = Art.mulberry32(level.id * 977);
     for (let i = 0; i < (level.storms || 0); i++) S.storms.push(makeStorm(level, rng));
   }
@@ -483,7 +513,7 @@
   function track(p, secs) {
     const out = [];
     let x = p.x, y = p.y, h = p.heading, i = 0, entered = p.entered;
-    const step = p.T.speed * TRACK_STEP;
+    const step = p.T.speed * (p.speedK || 1) * TRACK_STEP;
     for (let t = 0; t <= secs + 1e-6; t += TRACK_STEP) {
       out.push({ x, y });
       let left = step;
@@ -508,25 +538,29 @@
   // them), nor arrivals still waiting at the edges. `wait` is how long until
   // it appears. Same promise as the storms: nothing ends your shift before
   // you've had a chance to act.
-  function clearOfTraffic(type, x, y, heading, wait, self) {
-    const r = TYPES[type].radius, v = TYPES[type].speed, span = wait + SAFE_FLIGHT;
+  function clearOfTraffic(type, x, y, heading, wait, self, speedK = 1, isState = false) {
+    const r = TYPES[type].radius, v = TYPES[type].speed * speedK, span = wait + SAFE_FLIGHT;
     const others = [];
-    for (const p of S.planes) if (p.state === 'fly') others.push({ r: p.T.radius, at: track(p, span) });
+    for (const p of S.planes) if (p.state === 'fly') others.push({ r: p.T.radius, bubble: p.bubble, at: track(p, span) });
     for (const o of S.incoming) {
       if (o === self) continue;
-      const ov = TYPES[o.type].speed, at = [];
+      const ov = TYPES[o.type].speed * (o.speedK || 1), at = [];
       for (let t = 0; t <= span + 1e-6; t += TRACK_STEP) {
         const flown = t - o.t;
         at.push(flown < 0 ? null : { x: o.x + Math.cos(o.heading) * ov * flown, y: o.y + Math.sin(o.heading) * ov * flown });
       }
-      others.push({ r: TYPES[o.type].radius, at });
+      others.push({ r: TYPES[o.type].radius, bubble: o.emg === 'state' ? BUBBLE : 0, at });
     }
     for (let t = 0; t <= SAFE_FLIGHT + 1e-6; t += TRACK_STEP) {
       const px = x + Math.cos(heading) * v * t, py = y + Math.sin(heading) * v * t;
       const k = Math.round((wait + t) / TRACK_STEP);
       for (const o of others) {
         const q = o.at[Math.min(k, o.at.length - 1)];
-        if (q && dist(px, py, q.x, q.y) < (r + o.r) * 2.6) return false;
+        // Warning distance, or State One's bubble (either way round) and a margin.
+        let lim = (r + o.r) * 2.6;
+        if (o.bubble) lim = Math.max(lim, o.bubble + r + 25);
+        if (isState) lim = Math.max(lim, BUBBLE + o.r + 25);
+        if (q && dist(px, py, q.x, q.y) < lim) return false;
       }
     }
     return true;
@@ -540,7 +574,8 @@
       const heading = s.heading + turn;
       const inward = Math.cos(heading) * (W / 2 - s.x) + Math.sin(heading) * (H / 2 - s.y) > 0;
       if (!inward) continue;
-      if (clearOfTraffic(s.type, s.x, s.y, heading, 0, s) && clearOfStorms(s.x, s.y, heading, TYPES[s.type].speed, 0)) {
+      if (clearOfTraffic(s.type, s.x, s.y, heading, 0, s, s.speedK || 1, s.emg === 'state') &&
+          clearOfStorms(s.x, s.y, heading, TYPES[s.type].speed * (s.speedK || 1), 0)) {
         s.heading = heading;
         return true;
       }
@@ -562,9 +597,58 @@
     return false;
   }
 
+  // ---------- emergencies ----------
+  // Now and then an arrival comes in with an emergency and has to come first.
+  // It's announced like any arrival (longer, with an alert), flashes, and
+  // behaves after its kind; land it for a medal, lose it and it costs two
+  // strikes. Never two at once, never at the very start of a shift.
+  const EMG_RATE = { some: [70, 110], lots: [35, 60] };
+  const EMG = {
+    fuel:      { label: 'Mayday · fuel', call: 'emg_fuel' },
+    medical:   { label: 'Pan-pan · medical', call: 'emg_medical', time: 45 },
+    ambulance: { label: 'Air ambulance', call: 'emg_ambulance', time: 38 },
+    damaged:   { label: 'Mayday · damaged', call: 'emg_damaged' },
+    state:     { label: 'State One', call: 'emg_state' },
+  };
+  const BUBBLE = 70;
+  function emergencyPlan(L) {
+    if (L.emergencies === 'choice') {
+      const v = save.emergencies || 'some';
+      return v === 'off' ? null : { every: EMG_RATE[v], first: 25 };
+    }
+    return L.emergencies || null;
+  }
+  function emergencyActive() {
+    return S.planes.some(p => p.emg && p.state === 'fly') || S.incoming.some(s => s.emg);
+  }
+  // Which kinds this airport can host, and the aircraft each would be.
+  function emergencyChoices() {
+    const L = S.level, types = Object.keys(L.traffic.types);
+    const has = kind => L.runways.some(r => r.kind === kind);
+    const out = [];
+    out.push(['fuel', null]);
+    const fixedWing = types.filter(t => t !== 'heli');
+    if (fixedWing.length) out.push(['medical', fixedWing[Math.floor(Math.random() * fixedWing.length)]]);
+    if (has('pad')) out.push(['ambulance', 'heli']);
+    if (has('long')) out.push(['damaged', types.includes('heavy') && Math.random() < 0.4 ? 'heavy' : 'jet']);
+    if (has('long')) out.push(['state', 'heavy']);
+    return out.filter(([kind]) => kind !== S.emgLast || out.length === 1);
+  }
+  function emergencyTick(dt) {
+    if (S.emgTimer === Infinity || S.time < 8) return;
+    if (!S.emgPending) S.emgTimer -= dt;
+    if (S.emgTimer > 0 || S.emgPending || emergencyActive()) return;
+    const choices = emergencyChoices();
+    S.emgPending = choices[Math.floor(Math.random() * choices.length)];
+    S.spawnTimer = Math.min(S.spawnTimer, 0.3);
+  }
+
   function queueArrival() {
-    const type = pickType();
-    const lead = S.level.traffic.warning || 2;
+    const pending = S.emgPending;
+    const emg = pending ? pending[0] : null;
+    const type = (pending && pending[1]) || pickType();
+    const speedK = emg === 'damaged' ? 0.7 : 1;
+    const lead = emg ? 3.5 : (S.level.traffic.warning || 2);
     let fallback = null;
     for (let attempt = 0; attempt < 24; attempt++) {
       const side = Math.floor(Math.random() * 4);
@@ -577,29 +661,48 @@
       const tx = lerp(W * 0.3, W * 0.7, Math.random()), ty = lerp(H * 0.3, H * 0.7, Math.random());
       const heading = Math.atan2(ty - y, tx - x);
       if (underHud(x, y)) continue;
-      if (!clearOfStorms(x, y, heading, TYPES[type].speed, lead)) continue;
-      if (!clearOfTraffic(type, x, y, heading, lead, null)) continue;
-      const arrival = { type, x, y, heading, t: lead, lead };
+      if (!clearOfStorms(x, y, heading, TYPES[type].speed * speedK, lead)) continue;
+      if (!clearOfTraffic(type, x, y, heading, lead, null, speedK, emg === 'state')) continue;
+      const arrival = { type, x, y, heading, t: lead, lead, emg, speedK };
       const crowded = S.planes.some(p => dist(p.x, p.y, x, y) < 150) ||
                       S.incoming.some(s => dist(s.x, s.y, x, y) < 150);
-      if (!crowded) { S.incoming.push(arrival); return true; }
+      if (!crowded) { S.incoming.push(arrival); announce(arrival); return true; }
       fallback = fallback || arrival;
     }
     // Crowded is acceptable when nothing better turned up; into a storm or
     // someone's path never is.
-    if (fallback) { S.incoming.push(fallback); return true; }
+    if (fallback) { S.incoming.push(fallback); announce(fallback); return true; }
     return false;
+  }
+  // An emergency is announced the moment its marker appears.
+  function announce(s) {
+    if (!s.emg) return;
+    S.emgLast = s.emg;
+    S.emgPending = null;
+    const plan = emergencyPlan(S.level);
+    S.emgTimer = plan ? lerp(plan.every[0], plan.every[1], Math.random()) : Infinity;
+    toast(EMG[s.emg].label);
+    playSound('emg_alert', { vol: 0.7 }) || sfx.warn();
+    buzz([40, 60, 40, 60, 40]);
   }
   function spawnPlane(s) {
     const T = TYPES[s.type];
     const fuel = S.level.traffic.fuel * (0.9 + Math.random() * 0.25);
-    S.planes.push({
+    const p = {
       id: S.nextId++, type: s.type, T, x: s.x, y: s.y, heading: s.heading, rot: s.heading,
       path: [], landing: null, state: 'fly', fuel, maxFuel: fuel, odo: 0,
       entered: false, warn: false, t: Math.random() * 10, age: 0, landT: 0, alt: 1, scale: 1, alpha: 1,
-      trail: [], trailT: 0,
-    });
-    sfx.spawn();
+      trail: [], trailT: 0, speedK: s.speedK || 1, emg: s.emg || null,
+    };
+    if (p.emg === 'fuel') { p.fuel = p.maxFuel * 0.3; p.saidLow = p.saidMayday = true; }
+    if (EMG[p.emg] && EMG[p.emg].time) p.emgLeft = p.emgMax = EMG[p.emg].time;
+    if (p.emg === 'damaged') { p.turnRate = 0.9; p.smokeT = 0; }
+    if (p.emg === 'state') p.bubble = BUBBLE;
+    S.planes.push(p);
+    if (p.emg) {
+      say(EMG[p.emg].call, p, { priority: true });
+      if (p.emg === 'state') say('tower_state', null, { priority: true });
+    } else sfx.spawn();
   }
 
   // ---------- simulation ----------
@@ -654,6 +757,8 @@
       if (S.windTimer <= 0) flipWind();
     }
 
+    emergencyTick(dt);
+    for (const c of S.closures.slice()) if (S.time >= c.until) reopenRunway(c);
     for (const st of S.storms) updateStorm(st, dt);
     for (const p of S.planes) {
       if (p.state === 'fly') updateFlight(p, dt);
@@ -680,15 +785,55 @@
     p.t += dt;
     p.age += dt;
     p.fuel -= dt;
-    let step = p.T.speed * dt;
-    while (step > 0 && p.path.length) {
-      const q = p.path[0];
-      const d = dist(p.x, p.y, q.x, q.y);
-      if (d > 0.001) p.heading = Math.atan2(q.y - p.y, q.x - p.x);
-      if (d <= step) { p.x = q.x; p.y = q.y; p.odo += d; p.path.shift(); step -= d; }
-      else { move(p, step); step = 0; }
+    let step = p.T.speed * (p.speedK || 1) * dt;
+    if (p.turnRate) {
+      // A damaged aircraft can't turn sharply: it steers toward the route at
+      // a limited rate and lets go of points it can no longer make. Missing
+      // the runway that way means going around: it needs a long, straight
+      // final, which is the point of it.
+      while (p.path.length) {
+        const q = p.path[0], d = dist(p.x, p.y, q.x, q.y);
+        const off = Math.abs(angDiff(p.heading, Math.atan2(q.y - p.y, q.x - p.x)));
+        if (d < 9 && p.path.length === 1 && p.landing) break;
+        if (d < 9 || (off > 1.6 && d < 70)) {
+          if (p.path.length === 1 && p.landing) {
+            p.path = []; p.landing = null;
+            addText(p.x, p.y - 22, 'Too tight: go around', '#ffffff', 13);
+            say('say_goaround', p, { priority: true });
+            break;
+          }
+          p.path.shift();
+          continue;
+        }
+        break;
+      }
+      if (p.path.length) {
+        const q = p.path[0];
+        if (p.path.length === 1 && p.landing && dist(p.x, p.y, q.x, q.y) < 9) {
+          // It has to arrive lined up, too: a damaged aircraft can't swing
+          // onto the runway at the last moment.
+          if (p.landing.angle == null || Math.abs(angDiff(p.heading, p.landing.angle)) < 0.6) { p.path = []; return beginLanding(p); }
+          p.path = []; p.landing = null;
+          addText(p.x, p.y - 22, 'Not lined up: go around', '#ffffff', 13);
+          say('say_goaround', p, { priority: true });
+        }
+        if (p.path.length) {
+          const want = Math.atan2(q.y - p.y, q.x - p.x);
+          p.heading += clamp(angDiff(p.heading, want), -p.turnRate * dt, p.turnRate * dt);
+        }
+      }
+      move(p, step);
+      step = 0;
+    } else {
+      while (step > 0 && p.path.length) {
+        const q = p.path[0];
+        const d = dist(p.x, p.y, q.x, q.y);
+        if (d > 0.001) p.heading = Math.atan2(q.y - p.y, q.x - p.x);
+        if (d <= step) { p.x = q.x; p.y = q.y; p.odo += d; p.path.shift(); step -= d; }
+        else { move(p, step); step = 0; }
+      }
+      if (!p.path.length && p.landing) return beginLanding(p);
     }
-    if (!p.path.length && p.landing) return beginLanding(p);
     if (step > 0) move(p, step);
 
     if (!p.entered && p.x > EDGE && p.x < W - EDGE && p.y > EDGE && p.y < H - EDGE) p.entered = true;
@@ -708,6 +853,17 @@
       }
     }
 
+    if (p.emg === 'damaged') {
+      p.smokeT -= dt;
+      if (p.smokeT <= 0) {
+        p.smokeT = 0.12;
+        S.effects.push({ kind: 'puff', x: p.x - Math.cos(p.heading) * 10, y: p.y - Math.sin(p.heading) * 10, t: 0, life: 1.8 });
+      }
+    }
+    if (p.emgLeft != null) {
+      p.emgLeft -= dt;
+      if (p.emgLeft <= 0) { say('emg_timeout', p, { priority: true }); return divert(p, 'Out of time'); }
+    }
     const tank = p.fuel / p.maxFuel;
     if (tank < 0.4 && !p.saidLow) { p.saidLow = true; say('say_lowfuel', p, { priority: true }); }
     if (tank < 0.15 && !p.saidMayday) { p.saidMayday = true; say('say_mayday', p, { priority: true }); }
@@ -726,7 +882,15 @@
     if (S.drawing && S.drawing.plane === p) S.drawing = null;
     S.landed++;
     sfx.land();
-    say('say_thanks', p, { chance: 0.3 });
+    if (S.level.id === 1 && !save.taught) { save.taught = true; persist(); }
+    if (p.emg) {
+      S.medals++;
+      addText(end.x, end.y - 44, 'Medal!', '#f2b33d', 18);
+      playSound('medal', { vol: 0.7 });
+      buzz([20, 40, 60]);
+      say('emg_thanks', p, { priority: true });
+      if (p.emg === 'damaged' && end.kind !== 'pad') closeRunway(end, p);
+    } else say('say_thanks', p, { chance: 0.3 });
     if (end.kind === 'pad') sfx.touchdown(p);
     addText(end.x, end.y - 24, '+1', '#fff6dc', 16);
   }
@@ -764,14 +928,16 @@
     p.state = 'divert';
     p.path = [];
     p.landing = null;
-    S.lives--;
+    S.lives -= p.emg ? 2 : 1;
     if (S.drawing && S.drawing.plane === p) S.drawing = null;
+    if (p.emg) addText(p.x, p.y - 36, 'Emergency lost: two strikes', '#ff8a7a', 13);
     // head for the nearest edge
     const exits = [[-1, 0, p.x], [1, 0, W - p.x], [0, -1, p.y], [0, 1, H - p.y]].sort((a, b) => a[2] - b[2]);
     p.heading = Math.atan2(exits[0][1], exits[0][0]);
     addText(p.x, p.y - 20, `${why}: diverted`, '#ffcabf', 13);
     S.effects.push({ kind: 'ring', x: p.x, y: p.y, color: '#ff5a4a', t: 0, life: 0.9 });
     sfx.divert(p);
+    buzz(70);
   }
 
   function updateDivert(p, dt) {
@@ -794,8 +960,24 @@
         if (d < r * 2.6) { a.warn = b.warn = true; S.conflicts.push([a, b]); }
       }
     }
+    // State One: nobody into its bubble. Close is a warning; inside, the
+    // intruder is turned away by security and it costs a strike.
+    S.bubbleWarn = [];
+    for (const st of fly) {
+      if (!st.bubble) continue;
+      for (const o of fly) {
+        if (o === st || o.state !== 'fly') continue;
+        const d = dist(st.x, st.y, o.x, o.y);
+        if (d < st.bubble + o.T.radius) {
+          say('tower_breach', null, { priority: true });
+          divert(o, 'Security');
+        } else if (d < st.bubble + o.T.radius + 35) { S.bubbleWarn.push([st, o]); o.warn = true; }
+      }
+    }
     S.warnCooldown -= dt;
-    if (S.conflicts.length && S.warnCooldown <= 0) { sfx.warn(); S.warnCooldown = 0.45; }
+    if ((S.conflicts.length || S.bubbleWarn.length) && S.warnCooldown <= 0) { sfx.warn(); S.warnCooldown = 0.45; }
+    S.buzzCooldown = (S.buzzCooldown || 0) - dt;
+    if (S.conflicts.length && S.buzzCooldown <= 0) { buzz([30, 50, 30]); S.buzzCooldown = 1.5; }
   }
 
   function crash(a, b) {
@@ -812,11 +994,12 @@
     });
     S.effects.push({ kind: 'boom', x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, parts, t: 0, life: 2 });
     sfx.crash();
+    buzz([160, 60, 260]);
     finish('crash', 1.9);
   }
 
   function endLevel(outcome) {
-    if (outcome === 'win') { sfx.win(); say('tower_clear', null, { priority: true, delay: 1.2 }); } else sfx.lose();
+    if (outcome === 'win') { sfx.win(); buzz([20, 40, 20, 40, 80]); say('tower_clear', null, { priority: true, delay: 1.2 }); } else sfx.lose();
     finish(outcome, outcome === 'win' ? 1 : 1.2);
   }
 
@@ -827,13 +1010,166 @@
     $('btn-pause').disabled = true;
     const L = S.level;
     if (L.endless) {
-      S.newBest = S.landed > save.best;
-      if (S.newBest) save.best = S.landed;
+      if (S.assisted) {
+        S.newBest = S.landed > (save.bestCalm || 0);
+        if (S.newBest) save.bestCalm = S.landed;
+      } else {
+        const v = save.emergencies || 'some';
+        S.newBest = S.landed > (save.bestBy[v] || 0);
+        if (S.newBest) save.bestBy[v] = S.landed;
+      }
     } else if (outcome === 'win') {
       save.stars[L.id] = Math.max(save.stars[L.id] || 0, S.lives);
     }
     persist();
     updateHud();
+    S.shiftId = recordShift({
+      level: L.id, outcome,
+      landed: L.endless ? S.landed : Math.min(S.landed, L.target),
+      strikes: MAX_LIVES - Math.max(0, S.lives),
+      duration: Math.max(1, Math.round(S.time * 10) / 10),
+      assisted: !!S.assisted,
+      medals: S.medals,
+      emergencies: L.emergencies === 'choice' ? (save.emergencies || 'some') : undefined,
+    });
+  }
+
+  // ---------- family records ----------
+  // A finished shift goes to the server under this device's Game Night
+  // profile. Unsent shifts wait in the save (the outbox) and go when they
+  // can; the server ignores a shift id it already has, so retrying is safe.
+  // profiles.js declares GN with const, so it's a global name but not a
+  // property of window: test for it by name.
+  const me = () => (typeof GN !== 'undefined' && GN.me.get()) || null;
+  const recordStatus = {};
+  let familyBest = null, familyBoards = {};
+  function newId() {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
+  }
+  function recordShift(shift) {
+    shift.id = newId();
+    if (!me()) { recordStatus[shift.id] = { state: 'guest' }; return shift.id; }
+    save.outbox = (save.outbox || []).concat([shift]).slice(-20);
+    persist();
+    recordStatus[shift.id] = { state: 'sending' };
+    flushOutbox();
+    return shift.id;
+  }
+  let flushing = false;
+  async function flushOutbox() {
+    if (flushing || !me() || !(save.outbox || []).length) return;
+    flushing = true;
+    try {
+      while ((save.outbox || []).length) {
+        const shift = save.outbox[0];
+        let res;
+        try {
+          res = await fetch('/final-approach/api/shifts', {
+            method: 'POST',
+            headers: Object.assign({ 'Content-Type': 'application/json' }, GN.me.headers()),
+            body: JSON.stringify(shift),
+          });
+        } catch {
+          recordStatus[shift.id] = { state: 'kept' };
+          break;                                   // offline: try again later
+        }
+        const body = await res.json().catch(() => ({}));
+        if (res.ok) recordStatus[shift.id] = { state: 'ok', name: me() && me().name };
+        else if (res.status >= 500) { recordStatus[shift.id] = { state: 'kept' }; break; }
+        else recordStatus[shift.id] = { state: 'refused', error: body.error || 'the server said no' };
+        save.outbox.shift();
+        persist();
+      }
+    } finally {
+      flushing = false;
+      showRecordLine();
+      syncProgress();
+    }
+  }
+  function showRecordLine() {
+    const el = $('result-record');
+    const st = S.shiftId && recordStatus[S.shiftId];
+    el.textContent = '';
+    if (!st) return;
+    if (st.state === 'guest') {
+      const a = document.createElement('a');
+      a.href = '/me'; a.textContent = 'Add yourself';
+      el.append(a, ' on the Game Night hub to keep family records.');
+    } else {
+      el.textContent = {
+        sending: 'Sending to the family records…',
+        ok: `On the family records for ${st.name || 'you'}.`,
+        kept: "Kept on this device. It'll go to the family records when you're back online.",
+        refused: `Not recorded: ${st.error}`,
+      }[st.state];
+    }
+  }
+  // Your stars and bests follow your profile: whatever the records hold for
+  // you is merged into this device's save (the better of each).
+  async function syncProgress() {
+    let data;
+    try {
+      const res = await fetch('/final-approach/api/stats');
+      if (!res.ok) return;
+      data = await res.json();
+    } catch { return; }
+    familyBoards = data.leaderboards || {};
+    familyBest = (familyBoards[save.emergencies || 'some'] || [])[0] || null;
+    const mine = me();
+    let changed = false;
+    const player = mine && (data.players || []).find(pl => GN.fold(pl.name) === GN.fold(mine.name));
+    if (player) {
+      for (const [id, n] of Object.entries(player.stars || {})) {
+        if (n > (save.stars[id] || 0)) { save.stars[id] = n; changed = true; }
+      }
+      for (const [v, n] of Object.entries(player.endless || {})) {
+        if (n > (save.bestBy[v] || 0)) { save.bestBy[v] = n; changed = true; }
+      }
+      if (player.endless_best_calm > (save.bestCalm || 0)) { save.bestCalm = player.endless_best_calm; changed = true; }
+      if (changed) persist();
+    }
+    if (S.screen === 'menu') {
+      if (changed) openMenu(); else refreshEndlessRow();
+    }
+  }
+  function updateController() {
+    const chip = $('controller');
+    const mine = me();
+    chip.textContent = '';
+    if (!mine) { chip.textContent = 'Add yourself'; return; }
+    chip.appendChild(GN.avatar(mine.name, 24));
+    const label = document.createElement('span');
+    label.append(mine.name);
+    chip.appendChild(label);
+  }
+
+  // After a damaged aircraft lands, fire engines close its runway for a few
+  // seconds. Anyone on approach to it goes around.
+  const CLOSED_FOR = 8;
+  const isClosed = r => S.closures.some(c => c.runway === r);
+  function closeRunway(end, p) {
+    const roll = end.length * 0.8;
+    const stop = { x: end.x + Math.cos(end.angle) * roll, y: end.y + Math.sin(end.angle) * roll };
+    const nx = -Math.sin(end.angle), ny = Math.cos(end.angle);
+    S.closures.push({
+      runway: end.runway, until: S.time + CLOSED_FOR, since: S.time, stop, angle: end.angle,
+      from: [{ x: stop.x + nx * 70, y: stop.y + ny * 70 }, { x: stop.x - nx * 70 - Math.cos(end.angle) * 30, y: stop.y - ny * 70 - Math.sin(end.angle) * 30 }],
+    });
+    for (const q of S.planes) {
+      if (q.state === 'fly' && q.landing && q.landing.runway === end.runway) {
+        q.landing = null; q.path = [];
+        addText(q.x, q.y - 22, 'Go around', '#ffffff', 13);
+      }
+    }
+    toast('Runway closed');
+    playSound('siren', { vol: 0.5, fadeOut: 1.2 });
+    say('tower_closed', null, { priority: true });
+  }
+  function reopenRunway(c) {
+    S.closures = S.closures.filter(x => x !== c);
+    toast('Runway open');
+    say('tower_open', null, { priority: true });
   }
 
   function flipWind() {
@@ -960,7 +1296,7 @@
   // Does this route point complete a valid approach for plane p?
   function landingFor(p, pt) {
     for (const r of S.level.runways) {
-      if (r.kind !== p.T.kind) continue;
+      if (r.kind !== p.T.kind || isClosed(r)) continue;
       const end = runwayEnd(r);
       if (r.kind === 'pad') {
         if (dist(pt.x, pt.y, end.x, end.y) < 24) return end;
@@ -993,7 +1329,11 @@
     Art.cloudLayer(ctx, S.sky, true);
 
     const drawingKind = S.drawing && !S.drawing.done ? S.drawing.plane.T.kind : null;
-    for (const r of S.level.runways) Art.approach(ctx, runwayEnd(r), KINDS[r.kind].color, t, r.kind === drawingKind, th.night);
+    for (const r of S.level.runways) {
+      if (isClosed(r)) continue;
+      Art.approach(ctx, runwayEnd(r), KINDS[r.kind].color, t, r.kind === drawingKind, th.night);
+    }
+    for (const c of S.closures) drawClosure(c, t);
 
     const landing = S.planes.filter(p => p.state === 'land');
     const air = S.planes.filter(p => p.state !== 'land');
@@ -1009,15 +1349,68 @@
       if (p.state === 'fly') drawStatus(p, t, 'under');
       Art.aircraft(ctx, p, p.t, th.night);
       if (p.state === 'fly') drawStatus(p, t, 'over');
+      if (p.state === 'fly' && p.emg) drawEmergency(p, t);
     }
     drawConflicts(t);
     // At least 30 CSS pixels across on any screen, so a phone shows it.
     const markerR = Math.max(16, 16 / view.scale);
-    for (const s of S.incoming) Art.incoming(ctx, s, t, TYPES[s.type].color, markerR);
+    for (const s of S.incoming) {
+      Art.incoming(ctx, s, t, TYPES[s.type].color, markerR, TYPES[s.type].kind);
+      if (s.emg) {
+        const x = clamp(s.x, markerR + 4, W - markerR - 4), y = clamp(s.y, markerR + 4, H - markerR - 4);
+        ctx.save();
+        ctx.lineWidth = 3.5; ctx.setLineDash([6, 5]); ctx.lineDashOffset = t * 30;
+        ctx.strokeStyle = Math.sin(t * 9) > 0 ? '#ff3b30' : '#ffffff';
+        ctx.beginPath(); ctx.arc(x, y, markerR + 6, 0, TAU); ctx.stroke();
+        ctx.restore();
+      }
+    }
+    drawGhost(t);
     Art.cloudLayer(ctx, S.sky, false);
     if (S.snow.length) Art.drawSnow(ctx, S.snow);
     for (const e of S.effects) Art.effect(ctx, e);
     Art.vignette(ctx, !!th.night);
+    ctx.restore();
+  }
+
+  // The first airport teaches without words: until the first landing, a
+  // ghost finger drags from the arriving plane along the approach lights.
+  function drawGhost(t) {
+    if (S.level.id !== 1 || save.taught || S.screen !== 'play' || S.drawing) return;
+    if (S.planes.some(q => q.landing)) return;
+    const p = S.planes.find(q => q.state === 'fly' && q.entered);
+    if (!p) return;
+    const r = S.level.runways.find(rw => rw.kind === p.T.kind);
+    if (!r) return;
+    const end = runwayEnd(r);
+    const a = { x: end.x - Math.cos(end.angle) * 90, y: end.y - Math.sin(end.angle) * 90 };
+    const pts = [{ x: p.x, y: p.y }, a, { x: end.x, y: end.y }];
+    const seg = [dist(pts[0].x, pts[0].y, a.x, a.y), dist(a.x, a.y, end.x, end.y)];
+    const k = (t % 2.8) / 2.8;
+    const along = k < 0.15 ? 0 : k > 0.85 ? 1 : (k - 0.15) / 0.7;
+    let d = (seg[0] + seg[1]) * (along < 1 ? along * (2 - along) : 1);
+    let fx, fy;
+    if (d <= seg[0]) { fx = lerp(pts[0].x, a.x, d / seg[0]); fy = lerp(pts[0].y, a.y, d / seg[0]); }
+    else { d -= seg[0]; fx = lerp(a.x, end.x, d / seg[1]); fy = lerp(a.y, end.y, d / seg[1]); }
+    ctx.save();
+    ctx.globalAlpha = k > 0.9 ? (1 - k) / 0.1 : Math.min(1, k / 0.06);
+    ctx.lineCap = 'round';
+    ctx.setLineDash([0.01, 9]);
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y); ctx.lineTo(a.x, a.y); ctx.lineTo(end.x, end.y); ctx.stroke();
+    ctx.setLineDash([]);
+    if (k < 0.18) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(fx, fy, 10 + (k / 0.18) * 14, 0, TAU); ctx.stroke();
+    }
+    ctx.shadowColor = 'rgba(0,0,0,0.4)'; ctx.shadowBlur = 8 * view.dpr;
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.beginPath(); ctx.arc(fx, fy, 9, 0, TAU); ctx.fill();
+    ctx.shadowColor = 'transparent';
+    ctx.fillStyle = 'rgba(255,255,255,0.95)';
+    ctx.font = '600 13px Oswald, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('DRAG', pts[0].x, pts[0].y + 30);
     ctx.restore();
   }
 
@@ -1058,7 +1451,85 @@
     ctx.restore();
   }
 
+  // A closed runway: a red cross at each end and fire engines at the aircraft.
+  function drawClosure(c, t) {
+    const r = c.runway, a = r.angle * Math.PI / 180;
+    const ends = [{ x: r.x, y: r.y }, { x: r.x + Math.cos(a) * r.length, y: r.y + Math.sin(a) * r.length }];
+    ctx.save();
+    ctx.strokeStyle = '#ff3b30'; ctx.lineWidth = 3.5; ctx.lineCap = 'round';
+    for (const e of ends) {
+      ctx.beginPath(); ctx.moveTo(e.x - 8, e.y - 8); ctx.lineTo(e.x + 8, e.y + 8); ctx.moveTo(e.x + 8, e.y - 8); ctx.lineTo(e.x - 8, e.y + 8); ctx.stroke();
+    }
+    const k = Math.min(1, (S.time - c.since) / 2.2), ease = k * (2 - k);
+    c.from.forEach((f, i) => {
+      const x = lerp(f.x, c.stop.x + (i ? -10 : 10) * Math.cos(c.angle + Math.PI / 2), ease);
+      const y = lerp(f.y, c.stop.y + (i ? -10 : 10) * Math.sin(c.angle + Math.PI / 2), ease);
+      const h = Math.atan2(c.stop.y - f.y, c.stop.x - f.x);
+      ctx.save();
+      ctx.translate(x, y); ctx.rotate(h);
+      ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(-5, -2, 12, 6);
+      ctx.fillStyle = '#d7322a'; ctx.fillRect(-6, -3, 12, 6);
+      ctx.fillStyle = '#f3f0e8'; ctx.fillRect(-2, -2, 5, 4);
+      const flash = Math.sin(t * 18 + i) > 0;
+      ctx.fillStyle = flash ? '#4aa3ff' : '#ffffff';
+      ctx.beginPath(); ctx.arc(-4, 0, 1.4, 0, TAU); ctx.fill();
+      if (flash) {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.fillStyle = 'rgba(74,163,255,0.35)';
+        ctx.beginPath(); ctx.arc(-4, 0, 6, 0, TAU); ctx.fill();
+      }
+      ctx.restore();
+    });
+    ctx.restore();
+  }
+
+  // Emergencies are hard to miss: red-and-white strobes, a countdown for a
+  // medical one, State One's bubble.
+  function drawEmergency(p, t) {
+    const R = p.T.radius * (save.large ? 1.25 : 1);
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    if (p.bubble) {
+      ctx.strokeStyle = 'rgba(242,179,61,0.85)'; ctx.lineWidth = 2;
+      ctx.setLineDash([8, 6]); ctx.lineDashOffset = -t * 10;
+      ctx.beginPath(); ctx.arc(0, 0, p.bubble, 0, TAU); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(242,179,61,0.07)';
+      ctx.beginPath(); ctx.arc(0, 0, p.bubble, 0, TAU); ctx.fill();
+    }
+    ctx.lineWidth = 3;
+    ctx.setLineDash([5, 5]);
+    ctx.lineDashOffset = t * 30;
+    ctx.strokeStyle = Math.sin(t * 9) > 0 ? '#ff3b30' : '#ffffff';
+    ctx.beginPath(); ctx.arc(0, 0, R + 14, 0, TAU); ctx.stroke();
+    ctx.setLineDash([]);
+    if (p.emgLeft != null) {
+      const f = Math.max(0, p.emgLeft / p.emgMax);
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = 'rgba(20,24,28,0.6)'; ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.arc(0, 0, R + 21, 0, TAU); ctx.stroke();
+      ctx.strokeStyle = f < 0.3 ? '#ff3b30' : '#ffffff'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(0, 0, R + 21, -Math.PI / 2, -Math.PI / 2 + TAU * f); ctx.stroke();
+    }
+    const label = p.emg === 'state' ? 'STATE ONE' : p.emgLeft != null ? `${Math.ceil(p.emgLeft)}s` : 'MAYDAY';
+    ctx.font = '600 11px Oswald, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+    ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(18,22,26,0.8)'; ctx.lineJoin = 'round';
+    ctx.strokeText(label, 0, -R - 24);
+    ctx.fillStyle = p.emg === 'state' ? '#f2b33d' : '#ffd0c9';
+    ctx.fillText(label, 0, -R - 24);
+    ctx.restore();
+  }
+
   function drawConflicts(t) {
+    if (S.bubbleWarn && S.bubbleWarn.length) {
+      ctx.save();
+      ctx.strokeStyle = '#f2b33d'; ctx.lineWidth = 1.6; ctx.setLineDash([5, 4]); ctx.lineDashOffset = -t * 20;
+      ctx.beginPath();
+      for (const [a, b] of S.bubbleWarn) { ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); }
+      ctx.stroke();
+      ctx.restore();
+    }
     if (!S.conflicts.length) return;
     ctx.save();
     ctx.strokeStyle = '#ff3b30';
@@ -1074,7 +1545,7 @@
 
   // ---------- UI ----------
   const show = (id, on) => $(id).classList.toggle('hidden', !on);
-  const overlays = ['menu', 'brief', 'pause', 'result'];
+  const overlays = ['menu', 'brief', 'pause', 'result', 'settings'];
   function only(id) { for (const o of overlays) show(o, o === id); }
 
   const boards = {
@@ -1118,7 +1589,7 @@
   function setupHud(L) {
     for (const k in hudState) delete hudState[k];
     boards.code.set(L.code, { stagger: 60 });
-    $('hud-name').textContent = L.name;
+    $('hud-name').textContent = L.name + (save.calm ? ' · calm skies' : '');
     show('hud-wind', !!L.windShift);
     $('hud-landed-label').textContent = L.endless ? 'Landed' : 'Landed / target';
     updateHud();
@@ -1148,26 +1619,62 @@
       row.className = 'row ' + tone;
       row.disabled = !unlocked;
       row.innerHTML = `<span class="c-flt"></span><span class="c-name"></span><span class="c-status"></span>` +
-        `<span class="c-rating">${L.endless ? (save.best ? `<span class="best">Best ${save.best}</span>` : '') : stars(save.stars[L.id] || 0)}</span>` +
+        `<span class="c-rating">${L.endless ? '<span class="best"></span>' : stars(save.stars[L.id] || 0)}</span>` +
         `<span class="lamp ${tone === 'amber' ? 'blink' : ''}"></span>`;
       row.addEventListener('click', () => openBrief(L));
+      if (L.endless) row.dataset.endless = '1';
       rows.appendChild(row);
       const delay = i * 70;
-      new Flap.Board(row.querySelector('.c-flt'), 2).set(L.endless ? '--' : pad2(L.id), { delay, maxSteps: 5 });
+      new Flap.Board(row.querySelector('.c-flt'), 2).set(L.endless ? '--' : pad2(i + 1), { delay, maxSteps: 5 });
       new Flap.Board(row.querySelector('.c-name'), 16).set(L.name, { delay: delay + 40, maxSteps: 6, stagger: 18 });
       new Flap.Board(row.querySelector('.c-status'), 8).set(status, { delay: delay + 120, maxSteps: 6, stagger: 18 });
     });
     const total = LEVELS.reduce((s, L) => s + (save.stars[L.id] || 0), 0);
     const max = LEVELS.filter(L => !L.endless).length * 3;
     $('star-total').innerHTML = `${STAR}<span>${total} / ${max}</span>`;
-    $('btn-mute').textContent = save.muted ? 'Sound off' : 'Sound on';
-    $('btn-music').textContent = save.music === false ? 'Music off' : 'Music on';
+    refreshEndlessRow();
+    updateController();
     only('menu');
     if (actx) sfx.rattle();
   }
 
+  // The Endless row: your best, and the family's best with their face.
+  function refreshEndlessRow() {
+    const cell = document.querySelector('.row[data-endless] .best');
+    if (!cell) return;
+    const v = save.emergencies || 'some';
+    const mine = save.bestBy[v] || 0;
+    familyBest = (familyBoards[v] || [])[0] || null;
+    cell.textContent = mine ? `Best ${mine}` : '';
+    if (familyBest && familyBest.best > mine) {
+      const fam = document.createElement('span');
+      fam.className = 'family-best';
+      fam.append(GN.avatar(familyBest.name, 18), ` ${familyBest.best}`);
+      fam.title = `Family best: ${familyBest.name}`;
+      if (mine) cell.append(' · ');
+      cell.append(fam);
+    }
+  }
+
+  function showEmergencyChoice() {
+    for (const b of document.querySelectorAll('#emg-choice button')) {
+      b.classList.toggle('on', b.dataset.v === (save.emergencies || 'some'));
+    }
+  }
+  for (const b of document.querySelectorAll('#emg-choice button')) {
+    b.addEventListener('click', () => {
+      save.emergencies = b.dataset.v;
+      persist();
+      showEmergencyChoice();
+      if (S.level) S.emgTimer = emergencyPlan(S.level) ? emergencyPlan(S.level).first : Infinity;
+      refreshEndlessRow();
+    });
+  }
+
   function weather(L) {
     const wx = [];
+    // Endless shows its emergencies choice just below, so it isn't repeated here.
+    if (L.emergencies && L.emergencies !== 'choice') wx.push('Emergencies');
     if (L.storms) wx.push('Storms');
     if (L.windShift) wx.push('Wind shifts');
     if (L.traffic.fuel < 60) wx.push('Low fuel');
@@ -1180,7 +1687,10 @@
     loadLevel(L);
     S.screen = 'brief';
     show('hud', false);
-    const flt = L.endless ? 'FA∞' : 'FA' + pad2(L.id);
+    const flt = L.endless ? 'FA∞' : 'FA' + pad2(LEVELS.indexOf(L) + 1);
+    // Endless: choose how many emergencies (each has its own leaderboard).
+    show('emg-choice', L.emergencies === 'choice');
+    showEmergencyChoice();
     $('pass-flight').textContent = flt;
     $('stub-flt').textContent = flt;
     $('pass-code').textContent = L.code;
@@ -1196,7 +1706,8 @@
       row.className = 'legend-row';
       row.appendChild(Art.icon(type, 34));
       const label = document.createElement('div');
-      label.innerHTML = `<b>${T.name}</b><span><i style="background:${T.color}"></i>${KINDS[T.kind].label}</span>`;
+      const shape = { short: '<path d="M6 1L11 10.5H1Z"/>', long: '<rect x="1.5" y="1.5" width="9" height="9"/>', pad: '<circle cx="6" cy="6" r="4.8"/>' }[T.kind];
+      label.innerHTML = `<b>${T.name}</b><span><svg class="kind-shape" viewBox="0 0 12 12" aria-hidden="true" style="fill:${T.color};stroke:#1e262c;stroke-width:1">${shape}</svg>${KINDS[T.kind].label}</span>`;
       row.appendChild(label);
       legend.appendChild(row);
     }
@@ -1214,6 +1725,7 @@
 
   function play() {
     S.screen = 'play';
+    S.assisted = !!save.calm;
     $('btn-pause').disabled = false;
     only(null);
     show('hud', true);
@@ -1238,14 +1750,17 @@
     $('result-stars').innerHTML = win ? stars(S.lives, 'big') : '';
     $('result-stars').classList.toggle('hidden', !win);
     let text;
-    if (L.endless) text = `You landed ${S.landed}. ${S.newBest ? 'A new best!' : `Your best is ${save.best}.`}`;
+    const best = S.assisted ? save.bestCalm : save.bestBy[save.emergencies || 'some'];
+    if (L.endless) text = `You landed ${S.landed}. ${S.newBest ? 'A new best!' : `Your best is ${best || S.landed}.`}`;
     else if (win) text = S.lives === MAX_LIVES ? 'Every arrival down safely. A perfect shift.' : `All down, with ${MAX_LIVES - S.lives} diverted. Fewer diversions earn more stars.`;
     else if (S.outcome === 'crash') text = `Two aircraft got too close. You landed ${S.landed} of ${L.target}.`;
     else text = `Three aircraft diverted. You landed ${S.landed} of ${L.target}.`;
+    if (S.medals) text += ` ${S.medals === 1 ? 'And a medal' : `And ${S.medals} medals`} for emergencies landed safely.`;
     $('result-text').textContent = text;
     const next = LEVELS[LEVELS.indexOf(L) + 1];
     const canNext = win && next && !next.endless && isUnlocked(next);
     show('btn-next', canNext);
+    showRecordLine();
     $('btn-retry').textContent = win ? 'Replay' : 'Try again';
     $('btn-retry').className = 'btn ' + (canNext ? 'ghost' : 'primary');
   }
@@ -1262,6 +1777,43 @@
     only(null);
   }
 
+  // ---------- settings ----------
+  function openSettings() {
+    S.settingsFrom = S.screen;
+    S.screen = 'settings';
+    $('set-sound').checked = !save.muted;
+    $('set-sfx').value = Math.round(save.vol.sfx * 100);
+    $('set-voice').value = Math.round(save.vol.voice * 100);
+    $('set-music').value = Math.round(save.vol.music * 100);
+    $('set-large').checked = !!save.large;
+    $('set-haptics').checked = save.haptics !== false;
+    $('set-calm').checked = !!save.calm;
+    only('settings');
+    new Flap.Board($('settings-flaps'), 8).set('Settings', { stagger: 30 });
+  }
+  function closeSettings() {
+    S.screen = S.settingsFrom || 'menu';
+    only(S.screen === 'pause' ? 'pause' : 'menu');
+    if (S.screen === 'menu') updateController();
+  }
+  function changeSettings() {
+    const musicWas = musicOn();
+    save.muted = !$('set-sound').checked;
+    save.vol = { sfx: $('set-sfx').value / 100, voice: $('set-voice').value / 100, music: $('set-music').value / 100 };
+    save.large = $('set-large').checked;
+    save.haptics = $('set-haptics').checked;
+    save.calm = $('set-calm').checked;
+    persist();
+    Art.setBoost(save.large ? 1.25 : 1);
+    if (S.level) $('hud-name').textContent = S.level.name + (save.calm ? ' · calm skies' : '');
+    audio(); applyVolumes();
+    if (actx && musicWas !== musicOn()) { const name = scape.musicName; scape.musicName = null; setMusic(name); }
+  }
+  for (const id of ['set-sound', 'set-sfx', 'set-voice', 'set-music', 'set-large', 'set-haptics', 'set-calm']) {
+    $(id).addEventListener('input', changeSettings);
+    $(id).addEventListener('change', changeSettings);
+  }
+
   function tickClock() {
     const d = new Date();
     boards.clock.set(`${pad2(d.getHours())}:${pad2(d.getMinutes())}`, { stagger: 40, maxSteps: 4 });
@@ -1276,18 +1828,9 @@
   $('btn-retry').addEventListener('click', restart);
   $('btn-result-menu').addEventListener('click', openMenu);
   $('btn-next').addEventListener('click', () => openBrief(LEVELS[LEVELS.indexOf(S.level) + 1]));
-  $('btn-mute').addEventListener('click', () => {
-    save.muted = !save.muted;
-    persist();
-    $('btn-mute').textContent = save.muted ? 'Sound off' : 'Sound on';
-    audio(); applyVolumes();
-  });
-  $('btn-music').addEventListener('click', () => {
-    save.music = save.music === false;
-    persist();
-    $('btn-music').textContent = save.music === false ? 'Music off' : 'Music on';
-    if (actx) { const name = scape.musicName; scape.musicName = null; setMusic(name); }
-  });
+  $('btn-settings').addEventListener('click', openSettings);
+  $('btn-pause-settings').addEventListener('click', openSettings);
+  $('btn-settings-done').addEventListener('click', closeSettings);
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) { pause(); if (actx) actx.suspend(); }
     else if (actx) actx.resume();
@@ -1296,6 +1839,7 @@
     if (e.key === 'Escape' || e.key === 'p') {
       if (S.screen === 'play') pause();
       else if (S.screen === 'pause') resume();
+      else if (S.screen === 'settings') closeSettings();
     }
   });
 
@@ -1304,7 +1848,10 @@
   function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
-    update(dt, now / 1000);
+    // Calm skies: the whole sky at three-quarter speed, and the shift marked.
+    const calm = save.calm && S.screen === 'play';
+    if (calm) S.assisted = true;
+    update(calm ? dt * 0.75 : dt, now / 1000);
     soundscape(now / 1000);
     render(now);
     requestAnimationFrame(frame);
@@ -1316,8 +1863,12 @@
     : Promise.resolve();
   Promise.race([fontsReady, new Promise(r => setTimeout(r, 2500))]).then(() => {
     resize();
+    Art.setBoost(save.large ? 1.25 : 1);
     loadLevel(LEVELS[0]);
     openMenu();
+    GN.profiles.load().then(() => { updateController(); refreshEndlessRow(); });
+    syncProgress();
+    flushOutbox();
     boards.title.set('Final Approach', { stagger: 45, maxSteps: 10, delay: 200 });
     tickClock();
     setInterval(tickClock, 10000);
@@ -1326,5 +1877,7 @@
 
   // Exposed for automated tests only.
   window.__finalApproach = { S, LEVELS, runwayEnd, update, queueArrival, clearOfStorms, stormAt, clearOfTraffic, track,
+    save, recordStatus, flushOutbox, syncProgress,
+    emergency: kind => { S.emgPending = emergencyChoices().find(([k]) => k === kind) || [kind, null]; S.emgTimer = 0; S.spawnTimer = 0; },
     sound: { audio, load, buffers, scape, bus: () => bus } };
 })();

@@ -45,7 +45,7 @@
         </div>
         <div class="board-sub">
           <span class="arrivals"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 19h19v2h-19zM19.3 13.4L4.6 9.5 3 4.1l1.9.5 1.5 3.3 5 1.3L9.2 2l2.4.6 4.9 7.7 4.5 1.2c.8.2 1.3 1 1.1 1.8-.3.8-1.1 1.2-1.8 1z"/></svg>Arrivals</span>
-          <span class="tagline">Draw their routes · Bring them home · Keep them apart</span>
+          <a class="controller" id="controller" href="{{ url_for('profiles.me_page') }}">Add yourself</a>
         </div>
         <div class="cols"><span class="c-flt">Flt</span><span class="c-name">Airport</span><span class="c-status">Status</span><span class="c-rating">Rating</span><span class="lamp-col"></span></div>
         <div id="level-rows"></div>
@@ -53,8 +53,8 @@
           <span id="star-total"></span>
           <span class="foot-actions">
             <a class="btn ghost small" href="{{ url_for('hub') }}">← Game Night</a>
-            <button id="btn-music" class="btn ghost small"></button>
-            <button id="btn-mute" class="btn ghost small"></button>
+            <a class="btn ghost small" href="{{ url_for('final-approach.stats_page') }}">Records</a>
+            <button id="btn-settings" class="btn ghost small">Settings</button>
           </span>
         </div>
       </div>
@@ -88,6 +88,10 @@
         <div class="stub-flt" id="stub-flt"></div>
         <div class="pass-label">Conditions</div>
         <div class="stub-wx" id="stub-wx"></div>
+        <div class="emg-choice hidden" id="emg-choice">
+          <div class="pass-label">Emergencies</div>
+          <div class="seg"><button data-v="off">Off</button><button data-v="some">Some</button><button data-v="lots">Lots</button></div>
+        </div>
         <div class="barcode" id="barcode"></div>
         <div class="stub-buttons">
           <button class="btn primary" id="btn-start">Board</button>
@@ -104,6 +108,7 @@
         <div class="buttons">
           <button id="btn-pause-menu" class="btn ghost">Levels</button>
           <button id="btn-restart" class="btn ghost">Restart</button>
+          <button id="btn-pause-settings" class="btn ghost">Settings</button>
           <button id="btn-resume" class="btn primary">Resume</button>
         </div>
       </div>
@@ -116,11 +121,34 @@
         <div id="result-flaps" class="big"></div>
         <div id="result-stars"></div>
         <p id="result-text"></p>
+        <p id="result-record" class="result-record"></p>
         <div class="buttons">
           <button id="btn-result-menu" class="btn ghost">Levels</button>
           <button id="btn-retry" class="btn primary">Try again</button>
           <button id="btn-next" class="btn primary">Next</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="settings" class="overlay hidden">
+    <div class="housing compact">
+      <div class="board settings">
+        <div id="settings-flaps" class="big"></div>
+        <div class="set-group set-sound">
+          <label class="set-row"><span class="set-label">Sound</span><input type="checkbox" id="set-sound" class="switch"></label>
+          <label class="set-row"><span class="set-label">Effects</span><input type="range" id="set-sfx" min="0" max="100" step="5"></label>
+          <label class="set-row"><span class="set-label">Voices</span><input type="range" id="set-voice" min="0" max="100" step="5"></label>
+          <label class="set-row"><span class="set-label">Music</span><input type="range" id="set-music" min="0" max="100" step="5"></label>
+        </div>
+        <div class="set-group set-view">
+          <label class="set-row"><span class="set-label">Large aircraft<small>Draws aircraft bigger. The game itself doesn't change.</small></span><input type="checkbox" id="set-large" class="switch"></label>
+          <label class="set-row"><span class="set-label">Vibration<small>On near misses, landings and diversions, where the phone allows it.</small></span><input type="checkbox" id="set-haptics" class="switch"></label>
+        </div>
+        <div class="set-group set-assist">
+          <label class="set-row"><span class="set-label">Calm skies<small>Everything runs at three-quarter speed and the music stays calm. Shifts still earn your stars, and show as calm on the records.</small></span><input type="checkbox" id="set-calm" class="switch"></label>
+        </div>
+        <div class="buttons"><button id="btn-settings-done" class="btn primary">Done</button></div>
       </div>
     </div>
   </div>
@@ -137,6 +165,7 @@
   {# Where each recorded sound lives, cache-busted like every other asset. #}
   {% set audio = {} %}{% for name in audio_names %}{% set _ = audio.update({name: asset('final-approach/audio/' ~ name ~ '.mp3')}) %}{% endfor %}
   <script>window.FA_AUDIO = {{ audio|tojson }};</script>
+  <script src="{{ asset('profiles.js') }}"></script>
   <script src="{{ asset('final-approach/levels.js') }}"></script>
   <script src="{{ asset('final-approach/art.js') }}"></script>
   <script src="{{ asset('final-approach/flap.js') }}"></script>

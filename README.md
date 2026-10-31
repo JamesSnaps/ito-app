@@ -87,9 +87,18 @@ bring it down on the runway that matches its colour, lined up with the
 approach lights. Keep everything apart; low fuel, storm cells and wind
 shifts make it harder airport by airport.
 
-- Nine airports, each adding one idea, plus an Endless mode. Stars for
+- Ten airports, each adding one idea, plus an Endless mode. Emergencies
+  (fuel, medical, air ambulance, damaged aircraft, State One) come first:
+  land one for a medal, lose one and it costs two strikes. Lifeline teaches
+  them; Endless has them Off, Some or Lots. Stars for
   diversions avoided; clearing an airport unlocks the next.
-- Runs entirely in the browser; progress is kept on the device.
+- Runs in the browser. Signed in to a Game Night profile, your finished
+  shifts go to the family records (`/final-approach/stats`: the Endless
+  leaderboard, everyone's stars per airport) and your progress follows you
+  to any device.
+- Settings: volumes, large aircraft, vibration, and **calm skies** (three-
+  quarter speed, for when it gets too much; calm shifts are marked and never
+  ranked).
 - The menu is a split-flap arrivals board and each briefing is a boarding
   pass. Every airport is painted in code; there are no image files.
 - Its playbook (what it is, how it's built, where it's going) is
