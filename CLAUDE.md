@@ -1293,7 +1293,25 @@ it current when you do (its "Current state" and roadmap especially).
 - **The terrain is painted once per airport (and per resize) into an
   offscreen canvas** at the screen's resolution, seeded by the level id so
   an airport always looks the same; per frame only the live layers draw.
-- **`window.__finalApproach`** exposes the state for Playwright checks.
+- **No arrival can fail you before you've had a chance** (v1.19.0). Storms
+  drift in straight lines and bounce off the edges, so `stormAt` predicts
+  them exactly, and `queueArrival` only accepts an entry whose straight-line
+  flight stays clear of every storm from the moment its marker shows until
+  it has flown for `SAFE_FLIGHT` (5s). If every way in is blocked it waits a
+  second and tries again; crowded is an acceptable fallback, into a storm
+  never is. It used to accept any entry on its last attempt, and an arrival
+  could appear inside a storm and divert at once.
+- **Arrival markers and route handles are sized in screen pixels**, not
+  world units (`Math.max(16, 16 / view.scale)` and `11 / view.scale`), so
+  they stay finger-sized on a phone. Markers never sit under the HUD's
+  plates: `underHud` rules those stretches of the top edge out.
+- **A route can be carried on from its end** (v1.19.0): `pickAt` offers the
+  nearest aircraft or unfinished route end, a near-tie going to the aircraft;
+  grabbing an end continues the route instead of clearing it. Locked routes
+  have no handle.
+- **`window.__finalApproach`** exposes the state for Playwright checks,
+  plus `update` (step the simulation, e.g. ten minutes in a loop),
+  `queueArrival`, `clearOfStorms` and `stormAt`.
   There's no JS test runner; `tests/test_final_approach.py` pins the page,
   its files and the level data's shape, and visual changes are checked by
   driving the page in a headless browser at desktop and phone-landscape
