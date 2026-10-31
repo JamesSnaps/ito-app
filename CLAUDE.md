@@ -1309,8 +1309,8 @@ it current when you do (its "Current state" and roadmap especially).
   nearest aircraft or unfinished route end, a near-tie going to the aircraft;
   grabbing an end continues the route instead of clearing it. Locked routes
   have no handle.
-- **Recorded sound and music** (v1.20.0): 26 MP3s in
-  `static/final-approach/audio/` (about 4 MB), made once with ElevenLabs by
+- **Recorded sound and music** (v1.20.0; dialogue v1.21.0): 114 MP3s in
+  `static/final-approach/audio/` (about 5.3 MB), made once with ElevenLabs by
   `tools/final_approach_sounds.py`, which holds every sound's prompt. To
   change a sound, change its prompt and run the script with its name. The
   key lives in `~/.config/elevenlabs/env` on the dev VM, never in the repo,
@@ -1328,6 +1328,24 @@ it current when you do (its "Current state" and roadmap especially).
     buffer: MP3 pads both ends with silence, which would click.
   - The conflict alert stays synthesised (a two-tone), as it repeats and
     needs no recording.
+  - **Variants are dealt, not picked** (`deal(prefix)`, v1.21.0): every file
+    named `prefix` or `prefix_*` is a variant, shuffled like a deck, all
+    played before any repeats and never the same one twice running. Every
+    one-shot fades in, and out over its tail (`fadeOut`); a touchdown within
+    2s of another plays quieter.
+  - **Radio dialogue** (v1.21.0): 85 spoken lines (`say_*`, `tower_*`) made
+    with ElevenLabs text-to-speech in eleven voices (British, Australian,
+    Irish, American; the tower is one voice), recorded clean. The game adds
+    the radio live: `bus.radio` is a band-pass (380 Hz–3 kHz) and a soft
+    clipper, and `say()` puts a squelch either side. One call at a time,
+    3.5s quiet after; `priority` calls (fuel, maydays, diverts, the tower)
+    queue (at most two) instead of being dropped; bed and music duck under
+    speech. Readbacks name the runway end actually in use
+    (`say_land_<designator>`), so `runway_numbers()` in the generator reads
+    levels.js and a test checks every painted number has lines: **a new
+    runway angle means running the generator.** The key needs the Text to
+    Speech permission; listing voices isn't needed (voice IDs are in the
+    script).
   - The sound function is `playSound`, not `play`: `play()` starts a shift,
     and a function named the same in the same scope replaced it once (every
     effect started a new shift until the stack overflowed).

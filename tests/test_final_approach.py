@@ -99,7 +99,7 @@ def sound_list():
     spec = importlib.util.spec_from_file_location("sounds", ROOT / "tools" / "final_approach_sounds.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return module.SOUNDS
+    return {**module.SOUNDS, **module.SPEECH}
 
 
 def test_every_listed_sound_has_a_file_and_every_file_is_listed():
@@ -122,3 +122,16 @@ def test_the_sounds_stay_a_small_download():
     the whole lot comfortably under 6 MB."""
     total = sum(path.stat().st_size for path in (STATIC / "audio").glob("*.mp3"))
     assert total < 6 * 1024 * 1024, total
+
+
+def test_every_runway_number_has_a_readback():
+    """A route that locks onto runway 27 is read back as "runway two seven",
+    so every number painted in the game needs its own lines."""
+    names = set(sound_list())
+    levels = (STATIC / "levels.js").read_text(encoding="utf-8")
+    import math
+    for angle in re.findall(r"kind: '(?:long|short)'[^}]*angle: (-?\d+)", levels):
+        for end in (int(angle), int(angle) + 180):
+            heading = ((end + 90) % 360 + 360) % 360
+            number = f"{(math.floor(heading / 10 + 0.5) % 36) or 36:02d}"
+            assert f"say_land_{number}_1" in names, number
