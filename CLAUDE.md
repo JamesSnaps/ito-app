@@ -1494,9 +1494,14 @@ one thing besides the games that `app.py` registers), `templates/me.html`
 - **A child's profile** (v1.24.0): `kid` on a profile, public in
   `/api/profiles` so a game can read it (Final Approach keeps grown-up
   emergencies from children and guests). Only the **Family page** sets it
-  (`/family`, `POST /api/family/<id>`), and only for a request carrying
-  `Remote-User` with `admins` in `Remote-Groups` (`family_signed_in()`); it
-  fails closed without them. That only works because of the docker repo:
+  (`/family`, `POST /api/family/<id>`), and only when the server has
+  `GAMENIGHT_FAMILY=authelia` (set by the compose file alongside the router
+  rule) **and** the request carries `Remote-User` with `admins` in
+  `Remote-Groups` (`family_signed_in()`). The setting is what makes it fail
+  closed: v1.24.0 trusted the headers alone, and on the live server a forged
+  `Remote-User` got through, because Traefik only strips client-sent headers
+  on routers that run forward-auth and /family wasn't on one yet (fixed in
+  v1.24.1, the same day). That only works because of the docker repo:
   Traefik puts both paths on the `gamenight-admin` router, and Authelia has
   rules for them **above Game Night's home-network bypass** (admins
   `one_factor`, else `deny`), so it asks for a login at home too. A child's

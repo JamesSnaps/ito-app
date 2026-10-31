@@ -26,6 +26,7 @@ and photos on it. The /me page says so before a photo is taken.
 
 import hashlib
 import io
+import os
 import re
 import secrets
 import threading
@@ -365,10 +366,25 @@ def _me_or_403():
 # a browser sends and sets the real one after a sign-in, so the app trusts
 # it there. Without it (the docker rules not in place yet, or a local run)
 # the page refuses: it fails closed.
+#
+# Fail closed means *off until the server says the rules are in place*:
+# Traefik only strips a client-sent Remote-User on routers that run
+# forward-auth, so before the docker repo routes /family through one, a
+# forged header would reach the app untouched (found on the live server the
+# day this shipped). The compose file sets GAMENIGHT_FAMILY=authelia in the
+# same change that adds the router rule; without it the page refuses
+# everything, headers or not.
 FAMILY_GROUP = "admins"
+FAMILY_ENV = "GAMENIGHT_FAMILY"
+
+
+def family_enabled():
+    return os.environ.get(FAMILY_ENV) == "authelia"
 
 
 def family_signed_in():
+    if not family_enabled():
+        return False
     user = request.headers.get("Remote-User", "").strip()
     groups = {g.strip() for g in request.headers.get("Remote-Groups", "").split(",")}
     return bool(user) and FAMILY_GROUP in groups
