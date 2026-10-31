@@ -1301,6 +1301,20 @@ it current when you do (its "Current state" and roadmap especially).
   second and tries again; crowded is an acceptable fallback, into a storm
   never is. It used to accept any entry on its last attempt, and an arrival
   could appear inside a storm and divert at once.
+- **The same promise for traffic** (v1.21.1). An arrival used to be checked
+  only for other aircraft near its entry point, with a crowded entry
+  accepted as a last resort, so one could appear and fly straight into an
+  aircraft already on screen. Now `track(p, secs)` predicts each aircraft
+  (along its route, then straight on, turning back at the edges; dropping
+  out once it's on the ground), and `clearOfTraffic` only accepts an entry
+  whose first `SAFE_FLIGHT` seconds stay outside *warning* distance (2.6×
+  the combined radii) of everyone, arrivals still waiting at the edges
+  included. Routes change after an entry is chosen, so `admit()` checks
+  again at the moment of arrival: in if clear, else swung up to ±0.75 rad
+  onto a clear heading, else held at the edge (band full) and retried every
+  0.3s. A ten-minute no-input stress test of Night Shift and Endless went
+  from 9 collisions within 5s of arriving (and ~280 frames of brand-new
+  arrivals in conflict) to none, with about the same number of arrivals.
 - **Arrival markers and route handles are sized in screen pixels**, not
   world units (`Math.max(16, 16 / view.scale)` and `11 / view.scale`), so
   they stay finger-sized on a phone. Markers never sit under the HUD's
@@ -1351,8 +1365,9 @@ it current when you do (its "Current state" and roadmap especially).
     effect started a new shift until the stack overflowed).
 - **`window.__finalApproach`** exposes the state for Playwright checks,
   plus `update` (step the simulation, e.g. ten minutes in a loop),
-  `queueArrival`, `clearOfStorms`, `stormAt` and `sound` (load, buffers,
-  the soundscape's state).
+  `queueArrival`, `clearOfStorms`, `stormAt`, `clearOfTraffic`, `track`
+  and `sound` (load, buffers, the soundscape's state). `S.crashes` records
+  each collision's two ages, for checks.
   There's no JS test runner; `tests/test_final_approach.py` pins the page,
   its files and the level data's shape, and visual changes are checked by
   driving the page in a headless browser at desktop and phone-landscape
