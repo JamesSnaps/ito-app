@@ -829,14 +829,121 @@ The first big new mechanic (section 6).
 
 ### Phase 5: free play and conditions
 
-- Free play for any cleared airport, with the toggles from section 6, each
-  appearing once its feature has been taught.
-- Endless on any airport. The ranked Endless keeps fixed settings.
-- Conditions: replay a cleared airport at dusk, night, in snow or in a
-  storm for extra stars. This reuses the existing landscapes and lighting.
-- Records carry the settings, and runs with custom toggles are shown apart.
-- **Done when:** every airport is replayable in at least three conditions,
-  and a custom run never appears on the ranked board.
+Planned 31 October 2026. Two parts, built and shipped in this order:
+free play first (it's the "try out different options" part, and it needs
+no new art), then conditions.
+
+**The split.** Conditions are *fixed* harder versions of an airport, so
+they're comparable and earn something. Free play is *your* rules, so it
+earns nothing and is never ranked: it's for trying things out.
+
+| | Conditions | Free play |
+|---|---|---|
+| What | Replay a cleared airport at dusk, at night, in snow or in a storm | Any cleared airport with your own toggles, as a shift or endless |
+| Rules | Fixed per condition | Yours |
+| Earns | A stamp per condition, 1 to 3 stars like a shift | Nothing; recorded and shown as "free play" |
+| Ranked | Shown on the records grid | Never |
+| Calm skies | Allowed, marked as now | Allowed, marked as now |
+
+#### Part A: free play (v1.25.0)
+
+**Where it lives.** A cleared airport's boarding pass gets a second button
+beside Board: **Free play**. It opens a sheet like Settings, with the
+toggles below and a Start button. The last choices are remembered per
+device. The board row for a cleared airport is unchanged; free play is
+always one tap further in, so the career path stays the obvious one.
+
+**The toggles.** Each appears only once the airport that teaches it has
+been cleared (section 6: free play never springs an unexplained rule):
+
+| Toggle | Values | Taught by | How it's built |
+|---|---|---|---|
+| Length | Shift (the airport's target) · Endless | always | Endless reuses the INF rules: no target, traffic eases over five minutes |
+| Traffic | Light · Normal · Rush | always | Light: arrival gaps ×1.35, one fewer in the air. Rush: gaps ×0.75, two more |
+| Aircraft | the airport's own mix, plus each type you've met | Twin Fields (jets), Rotor Wash (helicopters), Heavy Metal (heavies) | A type only spawns if the airport has somewhere it can land |
+| Low fuel | Off · On | Running on Fumes | Arrivals carry FUM's 45 seconds |
+| Storms | Off · 1 · 2 · 3 | Thunderheads | `makeStorm`, as now; the storm-safe arrival rules already cover any count |
+| Wind shifts | Off · On | Weathervane | Every 45 seconds |
+| Emergencies | Off · Some · Lots | Lifeline | Endless's control and rules, grown-up set included for adult profiles |
+
+Every toggle starts at the airport's own setting, so opening the sheet and
+pressing Start plays the normal airport with no stars at stake.
+
+**How it's built.** Free play doesn't add special cases to the game loop.
+`freePlayLevel(L, choices)` returns a new level object built from the
+airport and the toggles (traffic, `storms`, `windShift`, `emergencies`,
+`endless`), and `loadLevel` runs it like any other. The id stays the
+airport's id, so the painted terrain and runways are the same, and
+`S.mode = 'free'` stops `finish()` awarding stars or Endless bests.
+
+**Records.** A free-play shift is sent with `mode: "free"` and its
+settings. The server checks every setting against a fixed list, keeps the
+shift in Recent shifts with a "free play" tag and a one-line summary
+("Rush · 2 storms · endless"), and counts it towards shifts and landed, but
+never stars, Endless boards or medals.
+
+**Done when:** every cleared airport can be played your way; a toggle you
+haven't been taught never shows; a free-play run never changes stars or a
+leaderboard.
+
+#### Part B: conditions (v1.26.0)
+
+**What each condition is.** Each changes how the airport looks *and* one
+thing about how it plays, so a stamp means something:
+
+| Condition | Looks | Plays |
+|---|---|---|
+| **Dusk** | The light fades through the shift: day at the start, night by the end, runway and building lights coming on | Aircraft become lights only as it gets dark (as on Night Shift) |
+| **Night** | The airport's own landscape after dark | Lights only from the start |
+| **Snow** | The landscape under snow, snow falling | Icy runways: an approach must be lined up within 45° (70° normally), or it goes around |
+| **Storm** | A dark sky and rain | Two more storm cells than the airport has, and wind shifts if it has none |
+
+An airport offers only the conditions that differ from how it already is:
+Night Shift has no Night or Dusk; Weathervane and Heavy Metal have no Snow;
+Crossroads (desert) has no Snow. Endless and Lifeline have none.
+
+**How it's built.** The terrain is painted once per level from a theme
+palette, so conditions are palette transforms, not new art:
+- `Art.nightTheme(theme)` darkens and blue-shifts every colour in a
+  theme and sets `night: true`, so the windows, approach glow and
+  aircraft lights Night Shift already has come with it.
+- `Art.snowTheme(theme)` swaps fields, hedges and roofs for the snow
+  theme's colours, keeps the layout, freezes rivers and turns on
+  `snowfall` and `treeSnow`.
+- Dusk paints both the day and night terrain and cross-fades between them
+  as the shift goes on (two cached canvases, one `globalAlpha`: cheap).
+- Storm uses the existing storm sprites, plus a rain layer drawn like
+  `snowfall`.
+
+**Where it lives.** On a cleared airport's boarding pass, a strip of
+condition stamps under the hint: Day (the normal shift) and each condition
+available here. Tap one to choose it; the weather line on the stub and the
+pass's colours follow. A stamp you've earned shows its stars, like a
+passport stamp. The board row shows small stamps next to the airport's
+stars.
+
+**Records.** Stars by condition live beside the airport's own:
+`save.stamps[id][condition]`, and the server's `conditions` per player. A
+shift carries `condition`; the server checks it's one that airport offers.
+The records grid gets a stamp count per airport. The star total on the board
+stays the airport stars (out of 30); stamps are counted separately
+("12 stamps"), so conditions add something to collect without inflating the
+main score.
+
+**Done when:** every airport is replayable in at least two conditions
+(three where its theme allows), each condition plays differently, and
+stamps show on the pass, the board and the records.
+
+#### Checks
+
+- Tests: `parse_shift` accepts every valid free-play setting and condition
+  and rejects anything else (unknown keys, a condition an airport doesn't
+  offer, a free-play shift claiming stars); `record_shift` never moves stars
+  or boards for free play.
+- Screenshots in the headless browser: every airport in every condition
+  it offers, and the free-play sheet on a phone-sized screen, before and
+  after the airport that teaches each toggle is cleared.
+- Frame rate: dusk on Heavy Metal (the busiest terrain) holds 60fps.
 
 ### Phase 6: the career
 
