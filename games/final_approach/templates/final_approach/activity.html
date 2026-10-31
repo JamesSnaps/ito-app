@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{# The owner's view: every finished shift, guests included, from the Activity
+   log. Behind the Authelia login (the Family page's rule); refused otherwise.
+   Guests are "Guest 3F1A": a random tag per browser, never a name or address. #}
+{% block title %}Activity · Final Approach · {{ app_name }}{% endblock %}
+{% block theme_color %}#0d0f10{% endblock %}
+{% block shell_css %}<link rel="stylesheet" href="{{ asset('final-approach/style.css') }}">{% endblock %}
+{% block head %}<script src="{{ asset('profiles.js') }}"></script>{% endblock %}
+{% block body %}
+<div class="overlay records activity">
+  <div class="housing">
+    <div class="board">
+      <div class="board-head">
+        <div id="records-flaps"></div>
+        <div class="records-nav">
+          <a class="btn ghost small" href="{{ url_for('final-approach.stats_page') }}">Records</a>
+          <a class="btn ghost small" href="{{ url_for('final-approach.landing') }}">← Final Approach</a>
+        </div>
+      </div>
+
+      {% if not signed_in %}
+      <p class="rec-empty">Only a grown-up signed in to the Game Night server can see this.</p>
+      {% elif not data.totals.logged %}
+      <p class="rec-empty">Nothing yet. Every finished shift shows up here, guests' too, from now on.</p>
+      {% else %}
+      {% set t = data.totals %}
+      <div class="act-totals">
+        <div><b>{{ t.today }}</b><span>shifts today</span></div>
+        <div><b>{{ t.week }}</b><span>this week</span></div>
+        <div><b>{{ t.week_time }}</b><span>played this week</span></div>
+        <div><b>{{ t.week_people }}</b><span>family this week</span></div>
+        <div><b>{{ t.week_guests }}</b><span>guests this week</span></div>
+      </div>
+
+      <section class="rec-section">
+        <h2 class="rec-heading">The last two weeks</h2>
+        <div class="act-days">
+          {% for d in data.days %}
+          <div class="act-day" title="{{ d.day }}: {{ d.family }} family, {{ d.guests }} guest shifts">
+            <div class="act-bar">
+              <i class="guests" style="height: {{ (100 * d.guests / data.tallest) | round(1) }}%"></i>
+              <i class="family" style="height: {{ (100 * d.family / data.tallest) | round(1) }}%"></i>
+            </div>
+            <span data-day="{{ d.day }}"></span>
+          </div>
+          {% endfor %}
+        </div>
+        <p class="rec-note"><i class="act-key family"></i> family <i class="act-key guests"></i> guests</p>
+      </section>
+
+      <section class="rec-section">
+        <h2 class="rec-heading">Who's playing</h2>
+        <div class="rec-grid-wrap">
+          <table class="rec-grid act-people">
+            <thead><tr><th></th><th>Last played</th><th>This week</th><th>In all</th><th>Airports cleared</th><th>Furthest</th><th>Calm · free</th><th>From</th></tr></thead>
+            <tbody>
+              {% for p in data.people %}
+              <tr>
+                <th class="rec-who">{% if not p.guest %}<span class="face" data-name="{{ p.name }}" data-size="24"></span>{% endif %}{{ p.name }}</th>
+                <td data-at="{{ p.last_at }}"></td>
+                <td>{{ p.week_shifts }} · {{ p.week_time }}</td>
+                <td>{{ p.shifts }} · {{ p.time }}</td>
+                <td>{{ p.progress }}{% if p.stars is not none %} · {{ p.stars }}★{% endif %}</td>
+                <td>{{ p.furthest or '·' }}</td>
+                <td>{{ p.calm }} · {{ p.free }}</td>
+                <td>{{ p.where or '·' }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="rec-section">
+        <h2 class="rec-heading">Airports</h2>
+        <div class="rec-grid-wrap">
+          <table class="rec-grid act-airports">
+            <thead><tr><th></th><th>Shifts</th><th>Cleared</th><th>Collisions</th><th>Three strikes</th><th>Clear rate</th><th>Landed: average · best</th><th>Free play</th></tr></thead>
+            <tbody>
+              {% for a in data.airports %}
+              <tr>
+                <th class="rec-who">{{ a.code }} <small>{{ a.name }}</small></th>
+                <td>{{ a.shifts }}</td>
+                <td>{{ '·' if a.endless else a.wins }}</td>
+                <td>{{ a.crashes }}</td>
+                <td>{{ a.struck_out }}</td>
+                <td>{{ '·' if a.clear_rate is none else a.clear_rate ~ '%' }}</td>
+                <td>{{ a.average }} · {{ a.best }}</td>
+                <td>{{ a.free or '·' }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="rec-section">
+        <h2 class="rec-heading">Every shift, newest first</h2>
+        <ul class="rec-recent">
+          {% for s in data.recent %}
+          <li>
+            {% if not s.guest %}<span class="face" data-name="{{ s.name }}" data-size="24"></span>{% endif %}
+            <span class="rec-name">{{ s.name }}</span>
+            <span class="rec-what">
+              {{ s.airport }}:
+              {% if s.outcome == 'win' %}cleared{% if s.strikes %} with {{ s.strikes }} diverted{% endif %}
+              {% elif s.outcome == 'crash' %}collision after {{ s.landed }}
+              {% else %}three diversions after {{ s.landed }}{% endif %}
+              {% if s.endless %} · {{ s.landed }} landed{% endif %}
+              <span class="rec-free">{{ (s.duration / 60) | round(1) }} min</span>
+              {% if s.free %}<span class="rec-tag">free play</span><span class="rec-free">{{ s.free }}</span>{% endif %}
+              {% if s.assisted %}<span class="rec-tag">calm skies</span>{% endif %}
+              {% if s.medals %}<span class="rec-tag rec-medal">{{ s.medals }} medal{{ 's' if s.medals != 1 }}</span>{% endif %}
+              {% if s.where %}<span class="rec-tag">{{ s.where }}</span>{% endif %}
+            </span>
+            <span class="rec-when" data-at="{{ s.at }}" data-time="1"></span>
+          </li>
+          {% endfor %}
+        </ul>
+        <p class="rec-note">Kept: the last {{ t.logged }} shifts{% if t.since %}, since <span data-at="{{ t.since }}"></span>{% endif %}.</p>
+      </section>
+      {% endif %}
+    </div>
+  </div>
+</div>
+<script src="{{ asset('final-approach/flap.js') }}"></script>
+<script>
+  (async () => {
+    new Flap.Board(document.getElementById('records-flaps'), 8).set('Activity', { stagger: 45, delay: 150 });
+    for (const el of document.querySelectorAll('[data-at]')) {
+      const at = el.dataset.at && new Date(el.dataset.at);
+      if (!at || isNaN(at)) continue;
+      const opts = { day: 'numeric', month: 'short' };
+      if (el.dataset.time || el.tagName === 'TD') Object.assign(opts, { hour: '2-digit', minute: '2-digit' });
+      el.textContent = at.toLocaleString(undefined, opts);
+    }
+    for (const el of document.querySelectorAll('[data-day]')) {
+      const d = new Date(el.dataset.day + 'T12:00:00');
+      el.textContent = d.toLocaleDateString(undefined, { weekday: 'narrow' });
+    }
+    await GN.profiles.load();
+    for (const el of document.querySelectorAll('.face[data-name]')) {
+      el.replaceWith(GN.avatar(el.dataset.name, +el.dataset.size || 30));
+    }
+  })();
+</script>
+{% endblock %}

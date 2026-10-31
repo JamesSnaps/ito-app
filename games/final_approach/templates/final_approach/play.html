@@ -156,6 +156,21 @@
     </div>
   </div>
 
+  {# Asked once per browser when it has no Game Night profile (game.js,
+     askWhoIsPlaying). Guests can always play; only profiles keep records. #}
+  <div id="guest" class="overlay hidden">
+    <div class="housing compact">
+      <div class="board">
+        <div id="guest-flaps" class="big"></div>
+        <p class="guest-text">Add yourself to keep your stars on the family records and carry your progress to any device. Or just play: as a guest, your progress stays on this device.</p>
+        <div class="buttons">
+          <button id="btn-guest-ok" class="btn ghost">Play as a guest</button>
+          <a class="btn primary" href="{{ url_for('profiles.me_page', back=url_for('final-approach.landing')) }}">Add yourself</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
   {# Free play: a cleared airport with your own toggles. Rows for things the
      player hasn't been taught yet are hidden by game.js (freeOptions). #}
   <div id="free" class="overlay hidden">

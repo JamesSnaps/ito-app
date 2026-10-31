@@ -91,6 +91,13 @@ shifts make it harder airport by airport.
   rush traffic, which aircraft, low fuel, 0–3 storms, wind shifts and
   emergencies. A toggle only appears once the airport that teaches it is
   cleared. Free play earns no stars and never ranks; the records tag it.
+- A browser with no profile is asked once: add yourself, or play as a
+  guest. Guests' finished shifts are kept anonymously (a random tag per
+  browser, "Guest 3F1A") for the owner's **Activity page**
+  (`/final-approach/activity`, behind the Authelia login like the Family
+  page): who's playing and when, time played, how far everyone has got,
+  and where people struggle, airport by airport. The records page shows
+  time played, last played and a count of guests' shifts.
 - Settings: volumes, large aircraft, vibration, and **calm skies** (three-
   quarter speed, for when it gets too much; calm shifts are marked and never
   ranked).
@@ -106,6 +113,9 @@ a selfie. Your face then shows up in every game — the setup pickers, the
 tables and the records. Add your other devices by scanning the QR on the
 "You" page. Photos are re-drawn by the server as small square JPEGs with
 nothing else from the file kept, and are visible to anyone using the site.
+New profiles are made at home, on the family Wi-Fi (the server is told the
+home networks by `GAMENIGHT_HOME_NETWORKS`); a device away from home joins
+an existing profile with "Add another device".
 
 ## Running it
 
