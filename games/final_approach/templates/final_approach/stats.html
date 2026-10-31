@@ -62,6 +62,7 @@
                 {% for a in data.airports if not a.endless %}<th title="{{ a.name }}">{{ a.code }}</th>{% endfor %}
                 <th>★</th>
                 <th title="Emergencies landed safely">Medals</th>
+                <th title="Condition stamps: tap to see the passport">Stamps</th>
                 <th title="Time spent on shifts">Played</th>
                 <th>Last</th>
               </tr>
@@ -76,6 +77,7 @@
                 {% endfor %}
                 <td class="rec-total">{{ p.total_stars }}</td>
                 <td class="rec-total">{{ p.medals or '·' }}</td>
+                <td class="rec-total">{% if p.total_stamps %}<a class="rec-stamps" href="{{ url_for('final-approach.landing', passport=p.name) }}">{{ p.total_stamps }}</a>{% else %}·{% endif %}</td>
                 {% set mins = ((p.seconds or 0) / 60) | round | int %}
                 <td class="rec-total">{% if mins >= 60 %}{{ mins // 60 }}h {{ '%02d' % (mins % 60) }}m{% elif p.seconds %}{{ mins }}m{% else %}·{% endif %}</td>
                 <td class="rec-when" data-at="{{ p.last_at or '' }}"></td>
@@ -105,11 +107,12 @@
               {{ a.name if a else 'An airport' }}:
               {% if s.free %}{{ 'cleared' if s.outcome == 'win' else s.landed ~ ' landed' }}
               {% elif s.endless %}{{ s.landed }} landed
-              {% elif s.outcome == 'win' %}cleared {{ '★' * s.stars }}
+              {% elif s.outcome == 'win' %}cleared{% if s.condition_at %} {{ s.condition_at }}{% endif %} {{ '★' * s.stars }}
               {% elif s.outcome == 'crash' %}collision after {{ s.landed }} of {{ a.target if a else '?' }}
               {% else %}three diversions after {{ s.landed }} of {{ a.target if a else '?' }}{% endif %}
               {% if s.medals %}<span class="rec-tag rec-medal">{{ s.medals }} medal{{ 's' if s.medals != 1 }}</span>{% endif %}
               {% if s.endless and s.emergencies and s.emergencies != 'some' %}<span class="rec-tag">{{ {'off': 'no emergencies', 'lots': 'lots of emergencies', 'some-grownup': 'grown-up emergencies', 'lots-grownup': 'lots of grown-up emergencies'}[s.emergencies] }}</span>{% endif %}
+              {% if s.condition_at and s.outcome != 'win' %}<span class="rec-tag">{{ s.condition_at }}</span>{% endif %}
               {% if s.free %}<span class="rec-tag">free play</span><span class="rec-free">{{ s.free_summary }}</span>{% endif %}
               {% if s.assisted %}<span class="rec-tag">calm skies</span>{% endif %}
             </span>

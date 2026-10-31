@@ -91,6 +91,12 @@ shifts make it harder airport by airport.
   rush traffic, which aircraft, low fuel, 0–3 storms, wind shifts and
   emergencies. A toggle only appears once the airport that teaches it is
   cleared. Free play earns no stars and never ranks; the records tag it.
+- **Conditions** on any airport you've cleared: Dusk (an evening rush as
+  it gets dark), Night (arrivals seen a second later), Snow (icy runways:
+  line up within 45°), Storm (an extra storm cell) and Fog (follow the
+  approach lights all the way in). Each one cleared earns a **stamp** for
+  your **Passport**, a page per airport, synced with your profile; the
+  records page links to everyone's.
 - A browser with no profile is asked once: add yourself, or play as a
   guest. Guests' finished shifts are kept anonymously (a random tag per
   browser, "Guest 3F1A") for the owner's **Activity page**

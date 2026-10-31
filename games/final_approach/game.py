@@ -56,6 +56,10 @@ MAX_LIVES = 3
 FREE_TYPES = ("prop", "jet", "heli", "heavy")
 FREE_TRAFFIC = ("light", "normal", "rush")
 FREE_EMERGENCIES = ("off", "some", "lots")
+# Conditions: a cleared airport replayed harder, for a stamp. The same
+# offer as the game's conditionsFor(): only what differs from the airport.
+CONDITIONS = ("dusk", "night", "snow", "storm", "fog")
+CONDITION_AT = {"dusk": "at dusk", "night": "at night", "snow": "in the snow", "storm": "in a storm", "fog": "in fog"}
 
 
 @functools.lru_cache(maxsize=1)
@@ -67,14 +71,27 @@ def airports():
     for entry in levels.read_text(encoding="utf-8").split("const LEVELS")[1].split("\n  {\n")[1:]:
         number = int(re.search(r"id: (\d+)", entry).group(1))
         target = re.search(r"target: (\d+)", entry)
+        theme = re.search(r"theme: '([a-z]+)'", entry)
         found[number] = {
             "id": number,
             "code": re.search(r"code: '([A-Z]{3})'", entry).group(1),
             "name": re.search(r"name: '([^']+)'", entry).group(1),
             "target": int(target.group(1)) if target else None,
             "endless": "endless: true" in entry,
+            "theme": theme.group(1) if theme else None,
         }
     return found
+
+
+def conditions_for(airport):
+    if airport["endless"]:
+        return ()
+    offered = []
+    if airport["theme"] != "night":
+        offered += ["dusk", "night"]
+    if airport["theme"] not in ("snow", "desert"):
+        offered.append("snow")
+    return tuple(offered + ["storm", "fog"])
 
 
 def _whole(value, low, high):
@@ -152,6 +169,9 @@ def parse_shift(body):
     if outcome == "strikes" and strikes != MAX_LIVES:
         raise ValueError("A shift ended by strikes has all three.")
     free = body.get("free")
+    condition = body.get("condition")
+    if condition is not None and (free is not None or condition not in conditions_for(airport)):
+        raise ValueError("That airport doesn't have that condition.")
     if free is not None:
         if airport["endless"]:
             raise ValueError("Endless has no free play.")
@@ -180,9 +200,12 @@ def parse_shift(body):
             raise ValueError("A cleared shift lands the whole target.")
         stars = MAX_LIVES - strikes if outcome == "win" else 0
         setting = None
-    return {"id": shift_id, "level": level, "outcome": outcome, "landed": landed, "strikes": strikes,
-            "stars": stars, "duration": round(float(duration), 1), "assisted": assisted,
-            "endless": airport["endless"], "medals": medals, "emergencies": setting}
+    shift = {"id": shift_id, "level": level, "outcome": outcome, "landed": landed, "strikes": strikes,
+             "stars": stars, "duration": round(float(duration), 1), "assisted": assisted,
+             "endless": airport["endless"], "medals": medals, "emergencies": setting}
+    if condition:
+        shift["condition"] = condition
+    return shift
 
 
 def _blank_player(name):
@@ -225,6 +248,14 @@ def record_shift(record, name, shift, at):
     level = str(shift["level"])
     if shift.get("free"):
         pass                      # free play: counted, never ranked
+    elif shift.get("condition"):
+        # A condition earns its stamp (best stars, first date), apart from the
+        # airport's own stars.
+        if shift["stars"]:
+            book = player.setdefault("stamps", {}).setdefault(level, {})
+            had = book.get(shift["condition"])
+            book[shift["condition"]] = {"stars": max(shift["stars"], had["stars"] if had else 0),
+                                        "at": had["at"] if had else at}
     elif shift["endless"]:
         if shift["assisted"]:
             player["endless_best_calm"] = max(player.get("endless_best_calm", 0), shift["landed"])
@@ -244,6 +275,8 @@ def record_shift(record, name, shift, at):
              ("level", "outcome", "landed", "stars", "assisted", "endless", "medals", "emergencies")}}
     if shift.get("free"):
         entry["free"] = shift["free"]
+    if shift.get("condition"):
+        entry["condition"] = shift["condition"]
     record["recent"] = ([entry] + record["recent"])[:RECENT_SHIFTS]
     record["ids"] = (record["ids"] + [shift["id"]])[-SEEN_IDS:]
     return record, True
@@ -261,6 +294,8 @@ def public_player(player):
         "endless_best_calm": player.get("endless_best_calm", 0),
         "seconds": player.get("seconds", 0),
         "last_at": player.get("last_at"),
+        "stamps": player.get("stamps", {}),
+        "total_stamps": sum(len(book) for book in player.get("stamps", {}).values()),
     }
 
 
@@ -279,6 +314,7 @@ def stats_payload():
         leaderboards[setting] = rows
     recent = [{**s, "free_summary": free_summary(s["free"])} if s.get("free") else s
               for s in record.get("recent", [])]
+    recent = [{**s, "condition_at": CONDITION_AT[s["condition"]]} if s.get("condition") else s for s in recent]
     week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat(timespec="seconds")
     guests_week = sum(1 for e in activity() if e.get("guest") and e["at"] >= week_ago)
     return {"airports": list(airports().values()), "players": players,
@@ -302,6 +338,8 @@ def log_activity(shift, at, name, device, where):
                                                        "assisted", "medals", "endless", "emergencies")}}
     if shift.get("free"):
         entry["free"] = free_summary(shift["free"])
+    if shift.get("condition"):
+        entry["condition"] = CONDITION_AT[shift["condition"]]
     if where:
         entry["where"] = where
 

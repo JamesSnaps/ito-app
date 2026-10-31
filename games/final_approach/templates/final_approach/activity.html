@@ -108,6 +108,7 @@
               {% else %}three diversions after {{ s.landed }}{% endif %}
               {% if s.endless %} · {{ s.landed }} landed{% endif %}
               <span class="rec-free">{{ (s.duration / 60) | round(1) }} min</span>
+              {% if s.condition %}<span class="rec-tag">{{ s.condition }}</span>{% endif %}
               {% if s.free %}<span class="rec-tag">free play</span><span class="rec-free">{{ s.free }}</span>{% endif %}
               {% if s.assisted %}<span class="rec-tag">calm skies</span>{% endif %}
               {% if s.medals %}<span class="rec-tag rec-medal">{{ s.medals }} medal{{ 's' if s.medals != 1 }}</span>{% endif %}
