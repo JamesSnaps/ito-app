@@ -18,11 +18,16 @@
         </div>
       </div>
 
+      {% set titles = {'some': 'Endless · with emergencies', 'lots': 'Endless · lots of emergencies', 'off': 'Endless · no emergencies'} %}
+      {% set any_board = data.leaderboards.values() | select | list %}
+      {% for setting in ['some', 'lots', 'off'] %}
+      {% set board = data.leaderboards[setting] %}
+      {% if board or (setting == 'some' and not any_board) %}
       <section class="rec-section">
-        <h2 class="rec-heading">Endless · best run</h2>
-        {% if data.leaderboard %}
+        <h2 class="rec-heading">{{ titles[setting] }}</h2>
+        {% if board %}
         <ol class="rec-board">
-          {% for row in data.leaderboard %}
+          {% for row in board %}
           <li class="rec-row">
             <span class="rec-rank">{{ loop.index }}</span>
             <span class="face" data-name="{{ row.name }}" data-size="34"></span>
@@ -35,13 +40,15 @@
         {% else %}
         <p class="rec-empty">No Endless runs yet. Clear Running on Fumes to open Endless.</p>
         {% endif %}
-        {% set calm = data.players | selectattr('endless_best_calm') | list %}
-        {% if calm %}
-        <p class="rec-note">With calm skies:
-          {% for p in calm %}{{ p.name }} {{ p.endless_best_calm }}{% if not loop.last %} · {% endif %}{% endfor %}
-        </p>
-        {% endif %}
       </section>
+      {% endif %}
+      {% endfor %}
+      {% set calm = data.players | selectattr('endless_best_calm') | list %}
+      {% if calm %}
+      <p class="rec-note">Endless with calm skies:
+        {% for p in calm %}{{ p.name }} {{ p.endless_best_calm }}{% if not loop.last %} · {% endif %}{% endfor %}
+      </p>
+      {% endif %}
 
       <section class="rec-section">
         <h2 class="rec-heading">Stars by airport</h2>
@@ -53,6 +60,7 @@
                 <th></th>
                 {% for a in data.airports if not a.endless %}<th title="{{ a.name }}">{{ a.code }}</th>{% endfor %}
                 <th>★</th>
+                <th title="Emergencies landed safely">Medals</th>
               </tr>
             </thead>
             <tbody>
@@ -64,6 +72,7 @@
                 <td class="stars-{{ n }}">{% if n %}{{ '★' * n }}{% else %}·{% endif %}</td>
                 {% endfor %}
                 <td class="rec-total">{{ p.total_stars }}</td>
+                <td class="rec-total">{{ p.medals or '·' }}</td>
               </tr>
               {% endfor %}
             </tbody>
@@ -89,6 +98,8 @@
               {% elif s.outcome == 'win' %}cleared {{ '★' * s.stars }}
               {% elif s.outcome == 'crash' %}collision after {{ s.landed }} of {{ a.target if a else '?' }}
               {% else %}three diversions after {{ s.landed }} of {{ a.target if a else '?' }}{% endif %}
+              {% if s.medals %}<span class="rec-tag rec-medal">{{ s.medals }} medal{{ 's' if s.medals != 1 }}</span>{% endif %}
+              {% if s.endless and s.emergencies and s.emergencies != 'some' %}<span class="rec-tag">{{ 'no' if s.emergencies == 'off' else 'lots of' }} emergencies</span>{% endif %}
               {% if s.assisted %}<span class="rec-tag">calm skies</span>{% endif %}
             </span>
             <span class="rec-when" data-at="{{ s.at }}"></span>

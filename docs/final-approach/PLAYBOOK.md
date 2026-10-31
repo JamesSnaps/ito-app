@@ -295,7 +295,7 @@ Game Night.
 
 ---
 
-## 5. Current state (v1.22.0)
+## 5. Current state (v1.23.0)
 
 **Done:**
 
@@ -308,6 +308,9 @@ Game Night.
 - [x] Carry on a route from its end; bigger arrival markers with a countdown,
   never under the HUD; three seconds' warning early on; storm-safe arrivals
   (v1.19.0)
+- [x] Emergencies, the everyone set: fuel, medical, air ambulance, damaged,
+  State One; the Lifeline airport; Endless with Off / Some / Lots and a
+  board for each; medals (v1.23.0)
 - [x] Family records: shifts recorded against your Game Night profile, an
   Endless leaderboard with faces, stars per airport for everyone, progress
   that follows your profile (v1.22.0)
@@ -509,27 +512,61 @@ emergencies themselves.
 
 ### Emergencies
 
-Suggested at the first listen (31 October 2026): now and then, an aircraft
-arrives with an emergency and has to come first.
+Suggested at the first listen (31 October 2026); the everyone set built in
+v1.23.0. Now and then an aircraft arrives with an emergency and has to come
+first.
 
-- **Kinds:**
+**As built (v1.23.0), for everyone:**
 
-  | Emergency | How it plays |
+| Emergency | How it plays |
+|---|---|
+| **Fuel** (mayday) | Arrives on 30% fuel, its gauge showing from the start. |
+| **Medical** (pan-pan) | A 45-second countdown ring; land it on any of its usual runways in time, or it diverts. |
+| **Air ambulance** (pan-pan) | A helicopter with a 38-second countdown, racing for the pad. |
+| **Damaged** (mayday) | Trails smoke, flies at 70% and can't turn sharply (0.9 rad/s): tight routes overshoot, and it goes around if it misses the runway or reaches it not lined up. It needs a long, straight final. Long runway only; after it lands, fire engines close that runway for 8 seconds and anyone on approach to it goes around. |
+| **State One** (the president's plane) | A heavy with a gold no-go bubble (70 units): an aircraft flying into it is turned away by security, a strike. Long runway only. |
+
+- **How you know:** 3.5 seconds' warning with a flashing red-and-white
+  marker, an alert tone, the flap board ("MAYDAY · FUEL", "PAN-PAN ·
+  MEDICAL", "STATE ONE"), the pilot's call (and the tower's, for State One);
+  in the air, red-and-white strobes, the countdown or "MAYDAY" above it.
+- **Stakes:** landing one earns a **medal** (on the result, the records and
+  each recent shift); losing one costs **two strikes**.
+- **Where:** **Lifeline**, a teaching airport after Night Shift (long
+  runway, short strip, helipad; an emergency every 22–36 seconds), and
+  **Endless**, whose boarding pass offers emergencies **Off, Some or Lots**
+  (`save.emergencies`, Some by default). Each setting has its own Endless
+  leaderboard, so a board is always like-for-like; bests from before
+  emergencies count as Off. Free play gets the same switch when it exists.
+- **Rules:** one at a time, never two at once, never in a shift's first
+  seconds; arrivals are kept clear of State One's bubble as they're of
+  other traffic.
+
+**Next (step 2): kids' profiles and the grown-up set.**
+
+- **A kid's profile, safe enough for a family.** A **Family** page behind
+  the Authelia sign-in (so only a signed-in grown-up can use it) marks a
+  Game Night profile as a child's. The game reads the mark from the
+  profile; kids' profiles **and guests** get only the everyone set, so
+  signing out isn't a way round it. Grown-up emergencies appear only for a
+  signed-in adult profile. The gap: a child playing on a parent's
+  signed-in phone gets the parent's set, which is fine for a family. This
+  touches the hub's profiles (a `kid` flag and the protected page) and
+  needs the page's route adding to the Authelia rule in the docker repo,
+  live before the page is used.
+- **The grown-up set:**
+
+  | Emergency | How it would play |
   |---|---|
-  | **Medical** ("pan-pan") | Must land within a time limit, shown as a ring counting down around it. Any runway of its kind. |
-  | **Damaged** ("mayday") | Slower, turns wide, long runway only. Once down, fire engines close that runway for a few seconds. |
-  | **Fuel** | Arrives already low, gauge showing from the start. |
-  | **State flight** ("State One") | Carries a wide bubble that other traffic must keep out of, and lands on the long runway. |
+  | **Bird strike** | An aircraft *already flying* loses an engine: no warning, slower, mayday. The surprise is why it's grown-up. |
+  | **Engine fire** | Smoke and flames; must land within a short time; the runway closes longer while crews work. |
+  | **Cabin depressurisation** | Drops fast: an oxygen-mask call, a burst of speed, then it needs the nearest runway. |
+  | **Landing-gear failure** | A belly landing on the long runway: foam goes down first, closing it before and after. |
+  | **Hydraulic failure** | Barely steerable: very wide turns, a long straight final. |
+  | **Unruly passenger** | Must land as soon as possible; police meet it on the apron. |
 
-- **How you know:** flashing red and white strobes, its own marker before it
-  arrives, an alert on the flap board ("MAYDAY", "PAN-PAN", "STATE ONE") and
-  its radio call.
-- **Stakes:** landing it safely earns a medal on the result board; losing
-  it (divert or collision) costs two strikes, not one. Everything else can
-  wait, which is the point: it makes you re-plan the sky around it.
-- **When it happens:** a career chapter introduces them. In free play and
-  Endless it's a toggle: off, occasional or frequent. Never in the first
-  airports, and never two at once.
+- **Not included:** hijacks and bomb threats. Even for grown-ups, that's
+  not a tone that fits a family hub.
 
 ### The aircraft roster
 
@@ -819,15 +856,16 @@ The weather is decoration plus storms today. Make it a system:
 - **Done when:** two runs of the same airport feel different because of
   the weather.
 
-### Phase 8: new aircraft and emergencies
+### Phase 8: new aircraft and emergencies (emergencies, part 1 ✅ v1.23.0)
 
 - The roster in section 6, each introduced by an airport in the career.
 - Wake turbulence with the superjumbo; holding patterns (and the Hold
   tool).
-- **Emergencies** (section 6): medical, damaged, fuel and state flights,
-  with their markers, board alerts, radio calls and stakes, and the
-  free-play and Endless toggle. They only need today's aircraft, so they
-  can jump the queue if we want them sooner.
+- ✅ **Emergencies, the everyone set** (section 6; v1.23.0, brought
+  forward): fuel, medical, air ambulance, damaged and State One; Lifeline;
+  Endless's Off / Some / Lots.
+- **Emergencies, part 2:** kids' profiles (the Family page behind
+  Authelia) and the grown-up set (section 6).
 - **Done when:** at least four new aircraft are in the career, each with a
   rule you can feel, not just a new look; and an emergency changes how you
   plan the sky.
@@ -919,6 +957,10 @@ play:
 | Approach must be lined up | It makes the angle of approach the skill, and the approach lights make it readable. |
 | A collision ends the shift; diversions are strikes | Collisions are the cardinal sin; fuel and weather are pressure, so they forgive twice. |
 | Arrivals announced two seconds ahead | Calm tension: you always get a warning. |
+| Emergencies come first: a medal for landing one, two strikes for losing one; one at a time | They change how you plan the sky without ending a shift outright, which suits younger players. |
+| Emergencies live on a teaching airport (Lifeline) and in Endless with Off / Some / Lots, each with its own board | Taught before they're mixed in, and every leaderboard stays like-for-like; free play gets the same switch later. |
+| Kids' profiles are marked on a Family page behind Authelia; kids and guests get the everyone set | Children can't change the mark (no sign-in), and signing out doesn't unlock grown-up content. |
+| No hijacks or bomb threats, even in the grown-up set | Not a tone that fits a family hub. |
 | Assists and tools stay separate: assists change conditions, tools are moves you make; anything that changes the challenge is marked, only like-for-like runs rank | Assists help the overwhelmed, tools reward the skilled; one rule keeps every leaderboard fair. |
 | The first tool (Hold) comes in the career's first chapter | It gives a young player a move to make when the sky gets busy, which helps with panic more than slowing down alone. |
 | Calm skies is an assist, not an easy mode: slower, honestly labelled, earns your stars, never ranks | Helps a young player who panics without hiding the difficulty curve, and keeps the leaderboard fair (pillar 6). |

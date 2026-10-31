@@ -1040,6 +1040,11 @@ const Art = (() => {
       ctx.globalAlpha = 1 - k;
       ctx.strokeStyle = e.color; ctx.lineWidth = 2.5;
       ctx.beginPath(); ctx.arc(e.x, e.y, 8 + k * 26, 0, TAU); ctx.stroke();
+    } else if (e.kind === 'puff') {
+      // A damaged aircraft's smoke: dark and spreading as it drifts behind.
+      ctx.globalAlpha = 0.45 * (1 - k);
+      ctx.fillStyle = k < 0.15 ? '#5a4a42' : '#6b6e72';
+      ctx.beginPath(); ctx.arc(e.x + k * 6, e.y + k * 4, 3 + k * 10, 0, TAU); ctx.fill();
     } else if (e.kind === 'smoke') {
       ctx.globalAlpha = 0.55 * (1 - k);
       ctx.fillStyle = '#e9ecee';

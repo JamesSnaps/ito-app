@@ -1396,10 +1396,35 @@ it current when you do (its "Current state" and roadmap especially).
 - **The first airport teaches without words**: until the first landing on
   Meadow Strip (`save.taught`), a ghost finger drags from the arriving plane
   along the approach (`drawGhost`).
+- **Emergencies** (v1.23.0): fuel (arrives on 30%), medical (45s
+  countdown) and air ambulance (helicopter, 38s), damaged (70% speed,
+  `turnRate` 0.9 rad/s: it steers toward its route at a limited rate, lets
+  go of points it can't make, and goes around if it misses the runway or
+  reaches it not lined up; after landing, fire engines close the runway for
+  8s and anyone on approach to it goes around) and State One (a 70-unit
+  bubble; an aircraft flying into it is turned away by security, a strike).
+  Landing one earns a medal; losing one costs two strikes. One at a time,
+  never in a shift's first seconds; `emergencyTick` marks the next arrival
+  (`S.emgPending`), `queueArrival` picks its aircraft and gives it 3.5s of
+  warning, `announce` flaps the board and sounds the alert. Arrival safety
+  knows about them: `clearOfTraffic` uses the damaged speed and keeps
+  arrivals out of State One's bubble. They live on **Lifeline** (a teaching
+  airport between Night Shift and Endless, id 11 so Endless keeps id 10
+  and its records) and in **Endless**, where the boarding pass offers Off /
+  Some / Lots (`save.emergencies`). The board numbers airports by position,
+  not id.
+  - **Endless ranks per emergencies setting** (`leaderboards` in
+    `/api/stats`, one board each for some, lots and off), so a board is
+    always like-for-like. Bests from before v1.23.0 had no emergencies:
+    `_endless()` reads the old `endless_best` as "off". Medals are counted
+    per player and per shift, and can't outnumber landings.
+  - **Kid-safe by design so far**: every emergency here is for everyone.
+    The grown-up set and kids' profiles are the playbook's next step.
 - **`window.__finalApproach`** exposes the state for Playwright checks,
   plus `update` (step the simulation, e.g. ten minutes in a loop),
-  `queueArrival`, `clearOfStorms`, `stormAt`, `clearOfTraffic`, `track`
-  and `sound` (load, buffers, the soundscape's state). `S.crashes` records
+  `queueArrival`, `clearOfStorms`, `stormAt`, `clearOfTraffic`, `track`,
+  `emergency(kind)` (the next arrival is that emergency) and `sound` (load,
+  buffers, the soundscape's state). `S.crashes` records
   each collision's two ages, for checks.
   There's no JS test runner; `tests/test_final_approach.py` pins the page,
   its files and the level data's shape, and visual changes are checked by

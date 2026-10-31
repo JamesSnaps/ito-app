@@ -76,7 +76,10 @@ bring it down on the runway that matches its colour, lined up with the
 approach lights. Keep everything apart; low fuel, storm cells and wind
 shifts make it harder airport by airport.
 
-- Nine airports, each adding one idea, plus an Endless mode. Stars for
+- Ten airports, each adding one idea, plus an Endless mode. Emergencies
+  (fuel, medical, air ambulance, damaged aircraft, State One) come first:
+  land one for a medal, lose one and it costs two strikes. Lifeline teaches
+  them; Endless has them Off, Some or Lots. Stars for
   diversions avoided; clearing an airport unlocks the next.
 - Runs in the browser. Signed in to a Game Night profile, your finished
   shifts go to the family records (`/final-approach/stats`: the Endless

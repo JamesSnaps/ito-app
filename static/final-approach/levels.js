@@ -8,6 +8,13 @@
 // traffic.maxPlanes cap on aircraft in the air at once (including ones about to arrive)
 // traffic.fuel      seconds of fuel an arrival has (+/- a little)
 // traffic.warning   seconds an arrival's marker shows before it appears (default 2)
+//
+// emergencies       { every: [min, max] seconds between them, first: seconds before
+//                   the first } for an airport that has them, or 'choice' for Endless,
+//                   where the player picks Off / Some / Lots on the boarding pass.
+//
+// Airports are listed in play order; `id` is a stable key for saves and records,
+// not the board's number (the board numbers them by position).
 
 // Landscape palettes. `farm` themes get a patchwork of fields and hedgerows; `desert` gets dunes and rock.
 const THEMES = {
@@ -143,7 +150,18 @@ const LEVELS = [
     traffic: { types: { prop: 1, jet: 1, heavy: 0.6, heli: 0.8 }, interval: [5.5, 3.2], maxPlanes: 7, fuel: 80 },
   },
   {
-    id: 10, code: 'INF', name: 'Endless', theme: 'coast', endless: true, unlock: 5,
+    id: 11, code: 'LFL', name: 'Lifeline', theme: 'coast', target: 18,
+    hint: 'Emergencies come first. A flashing aircraft needs to land before anything else: land it safely for a medal, but lose one and it costs two strikes.',
+    runways: [
+      { kind: 'long', x: 220, y: 400, angle: 0, length: 340 },
+      { kind: 'short', x: 640, y: 150, angle: 90, length: 170 },
+      { kind: 'pad', x: 740, y: 450 },
+    ],
+    emergencies: { every: [22, 36], first: 10 },
+    traffic: { types: { prop: 1, jet: 1, heli: 0.8 }, interval: [6.5, 4.4], maxPlanes: 6, fuel: 85, warning: 3 },
+  },
+  {
+    id: 10, code: 'INF', name: 'Endless', theme: 'coast', endless: true, unlock: 5, emergencies: 'choice',
     hint: 'No target. Traffic keeps building. How many can you land?',
     runways: [
       { kind: 'long', x: 200, y: 400, angle: 0, length: 320 },

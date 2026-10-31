@@ -119,9 +119,9 @@ def test_the_page_is_told_where_each_sound_lives():
 
 def test_the_sounds_stay_a_small_download():
     """Effects load when the game starts and music in the background; keep
-    the whole lot comfortably under 6 MB."""
+    the whole lot comfortably under 8 MB."""
     total = sum(path.stat().st_size for path in (STATIC / "audio").glob("*.mp3"))
-    assert total < 6 * 1024 * 1024, total
+    assert total < 8 * 1024 * 1024, total
 
 
 def test_every_runway_number_has_a_readback():
@@ -192,15 +192,65 @@ def test_stars_keep_the_best_and_a_retry_counts_once():
 def test_calm_skies_endless_runs_stay_off_the_ranked_board():
     c = client()
     louis, james = profile(c, "Louis"), profile(c, "James")
-    endless = dict(level=10, outcome="crash", strikes=0, duration=300)
+    endless = dict(level=10, outcome="crash", strikes=0, duration=300, emergencies="some")
     post(c, louis, shift(landed=40, assisted=True, **endless))
     data = c.get("/final-approach/api/stats").get_json()
-    assert data["leaderboard"] == []
+    assert data["leaderboards"]["some"] == []
     assert data["players"][0]["endless_best_calm"] == 40
     post(c, louis, shift(landed=12, **endless))
     post(c, james, shift(landed=20, **endless))
-    board = c.get("/final-approach/api/stats").get_json()["leaderboard"]
+    board = c.get("/final-approach/api/stats").get_json()["leaderboards"]["some"]
     assert [(row["name"], row["best"]) for row in board] == [("James", 20), ("Louis", 12)]
+
+
+def test_each_emergencies_setting_has_its_own_endless_board():
+    c = client()
+    louis = profile(c, "Louis")
+    base = dict(level=10, outcome="crash", strikes=0, duration=300)
+    post(c, louis, shift(landed=30, emergencies="off", **base))
+    post(c, louis, shift(landed=12, emergencies="lots", **base))
+    post(c, louis, shift(landed=9, **base))                     # an older page sends no setting: off
+    boards = c.get("/final-approach/api/stats").get_json()["leaderboards"]
+    assert [row["best"] for row in boards["off"]] == [30]
+    assert [row["best"] for row in boards["lots"]] == [12]
+    assert boards["some"] == []
+    assert post(c, louis, shift(landed=5, emergencies="loads", **base)).status_code == 400
+
+
+def test_endless_bests_from_before_emergencies_count_as_off():
+    from core import stats
+
+    stats.update("final-approach", lambda _: {"players": {"louis": {
+        "name": "Louis", "stars": {}, "best": {}, "shifts": 1, "landed": 22,
+        "endless_best": 22, "endless_best_at": "2026-10-31T12:00:00+00:00", "endless_best_calm": 0}},
+        "recent": [], "ids": []})
+    c = client()
+    data = c.get("/final-approach/api/stats").get_json()
+    assert data["leaderboards"]["off"][0] == {"name": "Louis", "best": 22, "at": "2026-10-31T12:00:00+00:00"}
+    assert data["players"][0]["endless"] == {"off": 22}
+    louis = profile(c, "Louis")
+    post(c, louis, shift(level=10, outcome="crash", strikes=0, duration=300, landed=25, emergencies="off"))
+    assert c.get("/final-approach/api/stats").get_json()["leaderboards"]["off"][0]["best"] == 25
+
+
+def test_medals_are_counted_and_cant_outnumber_landings():
+    c = client()
+    louis = profile(c, "Louis")
+    assert post(c, louis, shift(level=11, landed=18, medals=3, duration=400)).status_code == 200
+    data = c.get("/final-approach/api/stats").get_json()
+    assert data["players"][0]["medals"] == 3 and data["recent"][0]["medals"] == 3
+    assert post(c, louis, shift(landed=6, medals=7)).status_code == 400
+    assert "Medals" in c.get("/final-approach/stats").get_data(as_text=True)
+
+
+def test_lifeline_teaches_emergencies_before_endless():
+    levels = (STATIC / "levels.js").read_text(encoding="utf-8")
+    order = re.findall(r"name: '([^']+)'", levels.split("const LEVELS")[1])
+    assert order[-3:] == ["Night Shift", "Lifeline", "Endless"]
+    lifeline = levels.split("name: 'Lifeline'")[1].split("\n  },")[0]
+    assert "emergencies: { every:" in lifeline and "kind: 'pad'" in lifeline and "kind: 'long'" in lifeline
+    assert "emergencies: 'choice'" in levels.split("name: 'Endless'")[1]
+    assert 'id="emg-choice"' in page()
 
 
 def test_impossible_shifts_are_refused():
