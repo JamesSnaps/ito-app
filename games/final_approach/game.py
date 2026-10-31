@@ -10,7 +10,9 @@ Records against player profiles are the next step; see the playbook
 (docs/final-approach/PLAYBOOK.md) for where the game is headed.
 """
 
-from flask import Blueprint, render_template
+from pathlib import Path
+
+from flask import Blueprint, current_app, render_template
 
 from games.registry import GameSpec
 
@@ -19,11 +21,18 @@ GAME_ID = "final-approach"
 bp = Blueprint(GAME_ID, __name__, url_prefix="/final-approach", template_folder="templates")
 
 
+def audio_names():
+    """The recorded sounds on disk (made by tools/final_approach_sounds.py).
+    The page is told which exist; anything missing falls back to the synth."""
+    folder = Path(current_app.static_folder) / "final-approach" / "audio"
+    return sorted(path.stem for path in folder.glob("*.mp3"))
+
+
 @bp.route("/")
 def landing():
     """The whole game: the arrivals board, the briefings and the airports
     are all on this one page."""
-    return render_template("final_approach/play.html")
+    return render_template("final_approach/play.html", audio_names=audio_names())
 
 
 GAME = GameSpec(

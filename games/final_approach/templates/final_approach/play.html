@@ -53,6 +53,7 @@
           <span id="star-total"></span>
           <span class="foot-actions">
             <a class="btn ghost small" href="{{ url_for('hub') }}">← Game Night</a>
+            <button id="btn-music" class="btn ghost small"></button>
             <button id="btn-mute" class="btn ghost small"></button>
           </span>
         </div>
@@ -133,6 +134,9 @@
     </div>
   </div>
 
+  {# Where each recorded sound lives, cache-busted like every other asset. #}
+  {% set audio = {} %}{% for name in audio_names %}{% set _ = audio.update({name: asset('final-approach/audio/' ~ name ~ '.mp3')}) %}{% endfor %}
+  <script>window.FA_AUDIO = {{ audio|tojson }};</script>
   <script src="{{ asset('final-approach/levels.js') }}"></script>
   <script src="{{ asset('final-approach/art.js') }}"></script>
   <script src="{{ asset('final-approach/flap.js') }}"></script>

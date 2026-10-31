@@ -36,7 +36,7 @@
   // ---------- save data ----------
   const SAVE_KEY = 'final-approach:save';
   const save = (() => {
-    const blank = { stars: {}, best: 0, muted: false };
+    const blank = { stars: {}, best: 0, muted: false, music: true };
     try { return Object.assign(blank, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); }
     catch { return blank; }
   })();
@@ -44,18 +44,101 @@
     try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch { /* private mode */ }
   }
 
-  // ---------- sound (tiny WebAudio synth, no assets) ----------
-  let actx = null;
+  // ---------- sound ----------
+  // Recorded sounds and music (static/final-approach/audio/, made once with
+  // tools/final_approach_sounds.py) play through WebAudio. Anything not loaded
+  // yet falls back to the small synth below, so the game is never silent and
+  // never waits on a download. Four buses: effects, the landscape's bed, the
+  // engines of whatever is flying, and music.
+  const AUDIO = window.FA_AUDIO || {};
+  let actx = null, bus = null;
   function audio() {
-    if (save.muted) return null;
     if (!actx) {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return null;
       actx = new AC();
+      const master = actx.createGain();
+      master.connect(actx.destination);
+      const mk = vol => { const g = actx.createGain(); g.gain.value = vol; g.connect(master); return g; };
+      bus = { master, sfx: mk(0.9), bed: mk(0), engine: mk(0.3), music: mk(0) };
+      applyVolumes();
+      // Effects are small: fetch them all now. Loops and music load when needed.
+      for (const name of Object.keys(AUDIO)) if (!/^(bed|engine|music)_/.test(name)) load(name);
     }
-    if (actx.state === 'suspended') actx.resume();
+    if (actx.state === 'suspended' && !document.hidden) actx.resume();
     return actx;
   }
+  function applyVolumes() {
+    if (!bus) return;
+    bus.master.gain.setTargetAtTime(save.muted ? 0 : 1, actx.currentTime, 0.05);
+  }
+
+  const buffers = {}, loading = {};
+  function load(name) {
+    if (!AUDIO[name] || !actx) return Promise.resolve(null);
+    if (!loading[name]) {
+      loading[name] = fetch(AUDIO[name])
+        .then(r => (r.ok ? r.arrayBuffer() : Promise.reject(r.status)))
+        .then(data => new Promise((ok, fail) => actx.decodeAudioData(data, ok, fail)))
+        .then(buf => (buffers[name] = buf))
+        .catch(() => null);
+    }
+    return loading[name];
+  }
+
+  // A one-shot from a file. False when it isn't loaded, so the caller can fall back.
+  function playSound(name, { vol = 1, rate = 1, pan = 0 } = {}) {
+    if (!actx || !buffers[name]) { if (actx) load(name); return false; }
+    const src = actx.createBufferSource(), g = actx.createGain();
+    src.buffer = buffers[name];
+    src.playbackRate.value = rate;
+    g.gain.value = vol;
+    let out = g;
+    if (pan && actx.createStereoPanner) { const p = actx.createStereoPanner(); p.pan.value = pan; g.connect(p); out = p; }
+    src.connect(g);
+    out.connect(bus.sfx);
+    src.start();
+    return true;
+  }
+  const pick = list => list[Math.floor(Math.random() * list.length)];
+
+  // A loop that never clicks: each repeat fades in over the last one's tail.
+  // (MP3 adds a sliver of silence at both ends, so buffer looping would gap.)
+  function startLoop(name, out, fade = 1) {
+    const loop = { gain: actx.createGain(), timer: 0, stopped: false, sources: new Set() };
+    loop.gain.connect(out);
+    const run = when => {
+      const buf = buffers[name];
+      if (!buf || loop.stopped) return;
+      const f = Math.min(fade, buf.duration / 3);
+      const src = actx.createBufferSource(), g = actx.createGain();
+      src.buffer = buf;
+      g.gain.setValueAtTime(0, when);
+      g.gain.linearRampToValueAtTime(1, when + f);
+      g.gain.setValueAtTime(1, when + buf.duration - f);
+      g.gain.linearRampToValueAtTime(0, when + buf.duration);
+      src.connect(g).connect(loop.gain);
+      src.start(when);
+      src.stop(when + buf.duration + 0.05);
+      loop.sources.add(src);
+      src.onended = () => loop.sources.delete(src);
+      const next = when + buf.duration - f;
+      loop.timer = setTimeout(() => run(next), Math.max(0, (next - actx.currentTime - 0.6) * 1000));
+    };
+    load(name).then(() => run(actx.currentTime + 0.05));
+    loop.stop = (secs = 1) => {
+      loop.stopped = true;
+      clearTimeout(loop.timer);
+      loop.gain.gain.setTargetAtTime(0, actx.currentTime, secs / 3);
+      setTimeout(() => {
+        for (const src of loop.sources) { try { src.stop(); } catch { /* already stopped */ } }
+        loop.gain.disconnect();
+      }, secs * 1000 + 300);
+    };
+    return loop;
+  }
+
+  // The fallback synth, from before there were recordings.
   function tone(freq, dur, { type = 'sine', vol = 0.12, slide = 0, delay = 0 } = {}) {
     const a = audio(); if (!a) return;
     const t0 = a.currentTime + delay;
@@ -66,7 +149,7 @@
     g.gain.setValueAtTime(0.0001, t0);
     g.gain.exponentialRampToValueAtTime(vol, t0 + 0.01);
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-    o.connect(g).connect(a.destination);
+    o.connect(g).connect(bus.sfx);
     o.start(t0); o.stop(t0 + dur + 0.05);
   }
   function noise(dur, vol, freq = 900, type = 'lowpass') {
@@ -76,28 +159,88 @@
     for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length) ** 3;
     const src = a.createBufferSource(), f = a.createBiquadFilter(), g = a.createGain();
     src.buffer = buf; f.type = type; f.frequency.value = freq; g.gain.value = vol;
-    src.connect(f).connect(g).connect(a.destination);
+    src.connect(f).connect(g).connect(bus.sfx);
     src.start();
   }
+
+  const FAMILY = { prop: 'prop', jet: 'jet', heavy: 'jet', heli: 'heli' };
+  const panOf = x => Math.max(-0.7, Math.min(0.7, (x / 960 - 0.5) * 1.4));
   let lastFlap = 0;
   const sfx = {
-    land:   () => { tone(660, 0.12); tone(990, 0.18, { delay: 0.1 }); },
-    lock:   () => tone(760, 0.08, { type: 'triangle', vol: 0.08 }),
-    warn:   () => tone(880, 0.08, { type: 'square', vol: 0.04 }),
-    spawn:  () => tone(520, 0.1, { type: 'triangle', vol: 0.05 }),
-    divert: () => tone(500, 0.4, { type: 'sawtooth', vol: 0.05, slide: -300 }),
-    crash:  () => { noise(1, 0.5); tone(140, 0.7, { type: 'sawtooth', vol: 0.12, slide: -90 }); },
-    win:    () => [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.22, { vol: 0.1, delay: i * 0.12 })),
-    lose:   () => [392, 330, 262].forEach((f, i) => tone(f, 0.3, { type: 'triangle', vol: 0.1, delay: i * 0.15 })),
-    wind:   () => tone(260, 0.5, { type: 'triangle', vol: 0.08, slide: 240 }),
-    flap:   () => {
-      if (!actx || save.muted || actx.currentTime - lastFlap < 0.028) return;
+    land:      () => tone(1320, 0.14, { vol: 0.05 }),
+    touchdown: p => playSound('touchdown_' + FAMILY[p.type], { vol: 0.8, pan: panOf(p.x) }) ||
+                    (tone(660, 0.12), tone(990, 0.18, { delay: 0.1 })),
+    lock:      p => playSound(pick(['radio_1', 'radio_2', 'radio_3']), { vol: 0.55, pan: panOf(p.x) }) ||
+                    tone(760, 0.08, { type: 'triangle', vol: 0.08 }),
+    // A two-tone traffic alert: high, then low.
+    warn:      () => { tone(1046, 0.09, { type: 'square', vol: 0.035 }); tone(784, 0.11, { type: 'square', vol: 0.035, delay: 0.1 }); },
+    spawn:     () => tone(520, 0.1, { type: 'triangle', vol: 0.035 }),
+    divert:    p => playSound('divert', { vol: 0.7, pan: panOf(p.x) }) || tone(500, 0.4, { type: 'sawtooth', vol: 0.05, slide: -300 }),
+    crash:     () => playSound('collision') || (noise(1, 0.5), tone(140, 0.7, { type: 'sawtooth', vol: 0.12, slide: -90 })),
+    start:     () => playSound('chime_start', { vol: 0.6 }),
+    win:       () => playSound('chime_clear', { vol: 0.7 }) || [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.22, { vol: 0.1, delay: i * 0.12 })),
+    lose:      () => playSound('chime_fail', { vol: 0.7 }) || [392, 330, 262].forEach((f, i) => tone(f, 0.3, { type: 'triangle', vol: 0.1, delay: i * 0.15 })),
+    wind:      () => playSound('wind_shift', { vol: 0.7 }) || tone(260, 0.5, { type: 'triangle', vol: 0.08, slide: 240 }),
+    rattle:    () => playSound('flap_rattle', { vol: 0.35 }),
+    flap:      () => {
+      if (!actx || actx.currentTime - lastFlap < 0.03) return;
       lastFlap = actx.currentTime;
-      noise(0.018, 0.09, 2400, 'bandpass');
+      playSound(pick(['flap_1', 'flap_2']), { vol: 0.18, rate: 0.9 + Math.random() * 0.25 }) || noise(0.018, 0.09, 2400, 'bandpass');
     },
   };
   Flap.onTick(sfx.flap);
-  document.addEventListener('pointerdown', () => audio(), { once: true });
+  document.addEventListener('pointerdown', () => audio());
+
+  // The soundscape follows the game every frame: the landscape's bed, an
+  // engine loop per aircraft family (louder with more of them, panned to
+  // where they are), and music that turns busy as the sky fills.
+  const scape = { bedName: null, bed: null, engines: {}, musicName: null, music: null, busySince: 0, calmSince: 0 };
+  function setMusic(name) {
+    if (scape.musicName === name) return;
+    if (scape.music) scape.music.stop(4);
+    scape.musicName = name;
+    scape.music = name && save.music !== false ? startLoop(name, bus.music, 3) : null;
+  }
+  function soundscape(clock) {
+    if (!actx || !S.level) return;
+    const now = actx.currentTime;
+    const playing = S.screen === 'play' || S.screen === 'ending';
+
+    const bedName = 'bed_' + S.level.theme;
+    if (scape.bedName !== bedName) {
+      if (scape.bed) scape.bed.stop(1.5);
+      scape.bedName = bedName;
+      scape.bed = startLoop(bedName, bus.bed, 2);
+    }
+    bus.bed.gain.setTargetAtTime(playing ? 0.32 : 0.12, now, 0.6);
+
+    const counts = { jet: [], prop: [], heli: [] };
+    if (playing) for (const p of S.planes) if (p.state === 'fly' || p.state === 'divert') counts[FAMILY[p.type]].push(p.x);
+    for (const fam of Object.keys(counts)) {
+      const xs = counts[fam];
+      let e = scape.engines[fam];
+      if (!e && xs.length) {
+        e = scape.engines[fam] = { loop: startLoop('engine_' + fam, bus.engine, 1), pan: actx.createStereoPanner ? actx.createStereoPanner() : null };
+        if (e.pan) { e.loop.gain.disconnect(); e.loop.gain.connect(e.pan); e.pan.connect(bus.engine); }
+      }
+      if (!e) continue;
+      e.loop.gain.gain.setTargetAtTime(xs.length ? Math.min(1, 0.35 + 0.2 * xs.length) : 0, now, 0.5);
+      if (e.pan && xs.length) e.pan.pan.setTargetAtTime(panOf(xs.reduce((a, b) => a + b, 0) / xs.length), now, 0.5);
+    }
+
+    // Busy when most of the allowed traffic is up, or two are in conflict;
+    // back to calm only after a quiet spell, so it doesn't flicker.
+    let track = 'music_board';
+    if (playing) {
+      const airborne = counts.jet.length + counts.prop.length + counts.heli.length;
+      const busy = S.conflicts.length > 0 || airborne >= Math.max(3, S.level.traffic.maxPlanes * 0.7);
+      if (busy) scape.busySince = clock; else scape.calmSince = clock;
+      const wasBusy = scape.musicName === 'music_busy';
+      track = busy || (wasBusy && clock - scape.busySince < 10) ? 'music_busy' : 'music_calm';
+    }
+    setMusic(track);
+    bus.music.gain.setTargetAtTime(save.music === false ? 0 : (S.screen === 'pause' ? 0.12 : 0.3), now, 0.8);
+  }
 
   // ---------- canvas / view ----------
   const canvas = $('game');
@@ -394,6 +537,7 @@
     if (S.drawing && S.drawing.plane === p) S.drawing = null;
     S.landed++;
     sfx.land();
+    if (end.kind === 'pad') sfx.touchdown(p);
     addText(end.x, end.y - 24, '+1', '#fff6dc', 16);
   }
 
@@ -416,7 +560,10 @@
       const wasAirborne = p.alt > 0;
       p.alt = Math.max(0, 1 - p.landT * 6);
       p.scale = 0.84 + 0.16 * p.alt;
-      if (wasAirborne && p.alt === 0) S.effects.push({ kind: 'smoke', x: p.x, y: p.y, a: end.angle, t: 0, life: 0.9 });
+      if (wasAirborne && p.alt === 0) {
+        S.effects.push({ kind: 'smoke', x: p.x, y: p.y, a: end.angle, t: 0, life: 0.9 });
+        sfx.touchdown(p);
+      }
     }
     p.alpha = p.landT > 0.72 ? Math.max(0, 1 - (p.landT - 0.72) / 0.28) : 1;
     if (p.landT >= 1) p.state = 'gone';
@@ -434,7 +581,7 @@
     p.heading = Math.atan2(exits[0][1], exits[0][0]);
     addText(p.x, p.y - 20, `${why}: diverted`, '#ffcabf', 13);
     S.effects.push({ kind: 'ring', x: p.x, y: p.y, color: '#ff5a4a', t: 0, life: 0.9 });
-    sfx.divert();
+    sfx.divert(p);
   }
 
   function updateDivert(p, dt) {
@@ -606,7 +753,7 @@
         p.landing = end;
         d.done = true;
         S.effects.push({ kind: 'ring', x: end.x, y: end.y, color: KINDS[end.kind].color, t: 0, life: 0.6 });
-        sfx.lock();
+        sfx.lock(p);
         return;
       }
     }
@@ -816,7 +963,9 @@
     const max = LEVELS.filter(L => !L.endless).length * 3;
     $('star-total').innerHTML = `${STAR}<span>${total} / ${max}</span>`;
     $('btn-mute').textContent = save.muted ? 'Sound off' : 'Sound on';
+    $('btn-music').textContent = save.music === false ? 'Music off' : 'Music on';
     only('menu');
+    if (actx) sfx.rattle();
   }
 
   function weather(L) {
@@ -872,6 +1021,7 @@
     show('hud', true);
     setupHud(S.level);
     audio();  // unlock audio on this user gesture
+    sfx.start();
   }
 
   function restart() {
@@ -931,8 +1081,18 @@
     save.muted = !save.muted;
     persist();
     $('btn-mute').textContent = save.muted ? 'Sound off' : 'Sound on';
+    audio(); applyVolumes();
   });
-  document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
+  $('btn-music').addEventListener('click', () => {
+    save.music = save.music === false;
+    persist();
+    $('btn-music').textContent = save.music === false ? 'Music off' : 'Music on';
+    if (actx) { const name = scape.musicName; scape.musicName = null; setMusic(name); }
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { pause(); if (actx) actx.suspend(); }
+    else if (actx) actx.resume();
+  });
   window.addEventListener('keydown', e => {
     if (e.key === 'Escape' || e.key === 'p') {
       if (S.screen === 'play') pause();
@@ -946,6 +1106,7 @@
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
     update(dt, now / 1000);
+    soundscape(now / 1000);
     render(now);
     requestAnimationFrame(frame);
   }
@@ -965,5 +1126,6 @@
   });
 
   // Exposed for automated tests only.
-  window.__finalApproach = { S, LEVELS, runwayEnd, update, queueArrival, clearOfStorms, stormAt };
+  window.__finalApproach = { S, LEVELS, runwayEnd, update, queueArrival, clearOfStorms, stormAt,
+    sound: { audio, load, buffers, scape, bus: () => bus } };
 })();
