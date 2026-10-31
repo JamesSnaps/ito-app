@@ -18,9 +18,10 @@
         </div>
       </div>
 
-      {% set titles = {'some': 'Endless · with emergencies', 'lots': 'Endless · lots of emergencies', 'off': 'Endless · no emergencies'} %}
+      {% set titles = {'some': 'Endless · with emergencies', 'lots': 'Endless · lots of emergencies', 'off': 'Endless · no emergencies',
+                       'some-grownup': 'Endless · with grown-up emergencies', 'lots-grownup': 'Endless · lots of grown-up emergencies'} %}
       {% set any_board = data.leaderboards.values() | select | list %}
-      {% for setting in ['some', 'lots', 'off'] %}
+      {% for setting in ['some', 'lots', 'some-grownup', 'lots-grownup', 'off'] %}
       {% set board = data.leaderboards[setting] %}
       {% if board or (setting == 'some' and not any_board) %}
       <section class="rec-section">
@@ -99,7 +100,7 @@
               {% elif s.outcome == 'crash' %}collision after {{ s.landed }} of {{ a.target if a else '?' }}
               {% else %}three diversions after {{ s.landed }} of {{ a.target if a else '?' }}{% endif %}
               {% if s.medals %}<span class="rec-tag rec-medal">{{ s.medals }} medal{{ 's' if s.medals != 1 }}</span>{% endif %}
-              {% if s.endless and s.emergencies and s.emergencies != 'some' %}<span class="rec-tag">{{ 'no' if s.emergencies == 'off' else 'lots of' }} emergencies</span>{% endif %}
+              {% if s.endless and s.emergencies and s.emergencies != 'some' %}<span class="rec-tag">{{ {'off': 'no emergencies', 'lots': 'lots of emergencies', 'some-grownup': 'grown-up emergencies', 'lots-grownup': 'lots of grown-up emergencies'}[s.emergencies] }}</span>{% endif %}
               {% if s.assisted %}<span class="rec-tag">calm skies</span>{% endif %}
             </span>
             <span class="rec-when" data-at="{{ s.at }}"></span>

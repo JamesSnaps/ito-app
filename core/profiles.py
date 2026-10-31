@@ -121,12 +121,15 @@ def clean_name(value):
 
 
 def public(profile):
-    """What anyone may see: never the token hashes."""
+    """What anyone may see: never the token hashes. `kid` is public on
+    purpose: a game reads it to keep grown-up content from a child's profile
+    (Final Approach's grown-up emergencies). Only the Family page sets it."""
     photo = profile.get("photo")
     return {
         "id": profile["id"],
         "name": profile["name"],
         "photo": url_for("profiles.photo", filename=photo) if photo else None,
+        "kid": bool(profile.get("kid")),
     }
 
 
@@ -192,6 +195,13 @@ def _change(pid, change):
         profile["updated"] = _now()
         return dict(profile)
     return _update(mutate)
+
+
+def set_kid(pid, kid):
+    """Mark a profile as a child's, or not. Only reached from the Family page."""
+    def change(data, profile):
+        profile["kid"] = bool(kid)
+    return _change(pid, change)
 
 
 def set_photo(pid, raw):
@@ -342,6 +352,55 @@ def _me_or_403():
         refused.status_code = 403
         abort(refused)
     return profile
+
+
+# --- the Family page: who's a child -----------------------------------------
+#
+# A child's profile is kept from grown-up content. Children mustn't be able
+# to change that, and there are no accounts here, so the page leans on the
+# one thing they can't get past: the server's Authelia sign-in. Traefik puts
+# /family and /api/family behind auth@file (the gamenight-admin router) and
+# Authelia asks for an admins login for them from every network, the home
+# Wi-Fi included (docker repo). Traefik's forward-auth strips a Remote-User
+# a browser sends and sets the real one after a sign-in, so the app trusts
+# it there. Without it (the docker rules not in place yet, or a local run)
+# the page refuses: it fails closed.
+FAMILY_GROUP = "admins"
+
+
+def family_signed_in():
+    user = request.headers.get("Remote-User", "").strip()
+    groups = {g.strip() for g in request.headers.get("Remote-Groups", "").split(",")}
+    return bool(user) and FAMILY_GROUP in groups
+
+
+def _family_or_403():
+    if not family_signed_in():
+        refused = jsonify({"error": "Only a grown-up signed in to the Game Night server can change this."})
+        refused.status_code = 403
+        abort(refused)
+
+
+@bp.route("/family")
+def family_page():
+    """Mark which profiles are children's."""
+    if not family_signed_in():
+        return render_template("family.html", signed_in=False, profiles=[]), 403
+    return render_template("family.html", signed_in=True, profiles=list_public(),
+                           who=request.headers.get("Remote-Name") or request.headers.get("Remote-User"))
+
+
+@bp.route("/api/family/<pid>", methods=["POST"])
+def api_family_set(pid):
+    _family_or_403()
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict) or not isinstance(body.get("kid"), bool):
+        return jsonify({"error": "kid is yes or no"}), 400
+    try:
+        profile = set_kid(pid, body["kid"])
+    except LookupError as err:
+        return jsonify({"error": str(err)}), 404
+    return jsonify({"profile": public(profile)})
 
 
 @bp.route("/me")

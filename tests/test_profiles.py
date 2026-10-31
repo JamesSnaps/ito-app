@@ -32,7 +32,7 @@ def upload(c, headers, data, content_type="image/jpeg"):
 def test_a_profile_is_a_claimed_name_and_the_list_shows_no_secrets():
     c = client()
     profile, headers = make(c, "  Ana  ")
-    assert profile == {"id": profile["id"], "name": "Ana", "photo": None}
+    assert profile == {"id": profile["id"], "name": "Ana", "photo": None, "kid": False}
     listed = c.get("/api/profiles").get_json()["profiles"]
     assert listed == [profile]
     assert "token" not in json.dumps(listed)
@@ -225,3 +225,46 @@ def test_a_wrongly_shaped_profiles_file_counts_as_damaged():
 def test_the_profile_page_renders_and_explains_photos_are_shared():
     body = client().get("/me").get_data(as_text=True)
     assert "selfie" in body.lower() and "anyone" in body.lower()
+
+
+# --- the Family page: who's a child (v1.24.0) ---------------------------------
+
+ADMIN = {"Remote-User": "james", "Remote-Groups": "admins,family"}
+
+
+def test_the_family_page_needs_an_admin_sign_in():
+    c = client()
+    page = c.get("/family")
+    assert page.status_code == 403 and "Only a grown-up signed in" in page.get_data(as_text=True)
+    profile, _ = make(c, "Louis")
+    for headers in ({}, {"Remote-User": "louis"}, {"Remote-User": "louis", "Remote-Groups": "family"},
+                    {"Remote-Groups": "admins"}):
+        assert c.post(f"/api/family/{profile['id']}", json={"kid": True}, headers=headers).status_code == 403, headers
+    assert c.get("/api/profiles").get_json()["profiles"][0]["kid"] is False
+
+
+def test_an_admin_marks_a_childs_profile_and_everyone_can_see_it():
+    c = client()
+    profile, token = make(c, "Louis")
+    body = c.get("/family", headers=ADMIN).get_data(as_text=True)
+    assert "Louis" in body and "Signed in as james" in body
+    res = c.post(f"/api/family/{profile['id']}", json={"kid": True}, headers=ADMIN)
+    assert res.status_code == 200 and res.get_json()["profile"]["kid"] is True
+    assert c.get("/api/profiles").get_json()["profiles"][0]["kid"] is True
+    assert c.get("/api/profiles/me", headers=token).get_json()["profile"]["kid"] is True
+    assert c.post(f"/api/family/{profile['id']}", json={"kid": "yes"}, headers=ADMIN).status_code == 400
+    assert c.post("/api/family/nobody", json={"kid": True}, headers=ADMIN).status_code == 404
+    c.post(f"/api/family/{profile['id']}", json={"kid": False}, headers=ADMIN)
+    assert c.get("/api/profiles").get_json()["profiles"][0]["kid"] is False
+
+
+def test_a_child_cant_mark_themself_a_grown_up_with_their_own_token():
+    c = client()
+    profile, token = make(c, "Louis")
+    c.post(f"/api/family/{profile['id']}", json={"kid": True}, headers=ADMIN)
+    assert c.post(f"/api/family/{profile['id']}", json={"kid": False}, headers=token).status_code == 403
+    assert c.get("/api/profiles").get_json()["profiles"][0]["kid"] is True
+
+
+def test_the_hub_links_to_the_family_page():
+    assert 'href="/family"' in client().get("/").get_data(as_text=True)

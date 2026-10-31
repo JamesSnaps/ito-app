@@ -79,7 +79,9 @@ shifts make it harder airport by airport.
 - Ten airports, each adding one idea, plus an Endless mode. Emergencies
   (fuel, medical, air ambulance, damaged aircraft, State One) come first:
   land one for a medal, lose one and it costs two strikes. Lifeline teaches
-  them; Endless has them Off, Some or Lots. Stars for
+  them; Endless has them Off, Some or Lots. Grown-ups' profiles also get a
+  grown-up set (engine fire, decompression, belly landings and more);
+  children's profiles, marked on the hub's Family page, and guests never do. Stars for
   diversions avoided; clearing an airport unlocks the next.
 - Runs in the browser. Signed in to a Game Night profile, your finished
   shifts go to the family records (`/final-approach/stats`: the Endless
