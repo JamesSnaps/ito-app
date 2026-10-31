@@ -36,9 +36,19 @@
   // ---------- save data ----------
   const SAVE_KEY = 'final-approach:save';
   const save = (() => {
-    const blank = { stars: {}, best: 0, muted: false, music: true };
-    try { return Object.assign(blank, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); }
-    catch { return blank; }
+    const blank = {
+      stars: {}, best: 0, bestCalm: 0, muted: false,
+      vol: { sfx: 0.8, voice: 0.9, music: 0.8 },
+      large: false, haptics: true, calm: false, taught: false, outbox: [],
+    };
+    let saved = {};
+    try { saved = JSON.parse(localStorage.getItem(SAVE_KEY)) || {}; } catch { /* fresh start */ }
+    const merged = Object.assign(blank, saved);
+    merged.vol = Object.assign({ sfx: 0.8, voice: 0.9, music: 0.8 }, saved.vol || {});
+    // Before v1.22.0 music was an on/off switch.
+    if (saved.music === false && !saved.vol) merged.vol.music = 0;
+    delete merged.music;
+    return merged;
   })();
   function persist() {
     try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch { /* private mode */ }
@@ -80,7 +90,18 @@
   }
   function applyVolumes() {
     if (!bus) return;
-    bus.master.gain.setTargetAtTime(save.muted ? 0 : 1, actx.currentTime, 0.05);
+    const now = actx.currentTime;
+    bus.master.gain.setTargetAtTime(save.muted ? 0 : 1, now, 0.05);
+    bus.sfx.gain.setTargetAtTime(0.9 * save.vol.sfx, now, 0.05);
+    bus.engine.gain.setTargetAtTime(0.3 * save.vol.sfx, now, 0.05);
+    if (bus.radio) bus.radio.gain.setTargetAtTime(1.1 * save.vol.voice, now, 0.05);
+  }
+  const musicOn = () => !save.muted && save.vol.music > 0;
+
+  // Vibration, where the phone allows it (Android does; iPhones don't).
+  function buzz(pattern) {
+    if (save.haptics === false || !navigator.vibrate) return;
+    try { navigator.vibrate(pattern); } catch { /* not allowed here */ }
   }
 
   const buffers = {}, loading = {};
@@ -271,6 +292,7 @@
     // A readback with the real runway number ("cleared to land, runway two seven").
     lock:      p => {
       tone(1180, 0.05, { type: 'triangle', vol: 0.05 });
+      buzz(12);
       const end = p.landing;
       say(end.kind === 'pad' ? 'say_pad' : 'say_land_' + Art.designator(end.angle * 180 / Math.PI), p);
     },
@@ -304,7 +326,7 @@
     if (scape.musicName === name) return;
     if (scape.music) scape.music.stop(4);
     scape.musicName = name;
-    scape.music = name && save.music !== false ? startLoop(name, bus.music, 3) : null;
+    scape.music = name && musicOn() ? startLoop(name, bus.music, 3) : null;
   }
   function soundscape(clock) {
     if (!actx || !S.level) return;
@@ -318,7 +340,7 @@
       scape.bed = startLoop(bedName, bus.bed, 2);
     }
     const duck = now < (scape.duckUntil || 0) ? 0.5 : 1;
-    bus.bed.gain.setTargetAtTime((playing ? 0.32 : 0.12) * duck, now, 0.25);
+    bus.bed.gain.setTargetAtTime((playing ? 0.32 : 0.12) * duck * save.vol.sfx, now, 0.25);
 
     const counts = { jet: [], prop: [], heli: [] };
     if (playing) for (const p of S.planes) if (p.state === 'fly' || p.state === 'divert') counts[FAMILY[p.type]].push(p.x);
@@ -339,13 +361,14 @@
     let track = 'music_board';
     if (playing) {
       const airborne = counts.jet.length + counts.prop.length + counts.heli.length;
-      const busy = S.conflicts.length > 0 || airborne >= Math.max(3, S.level.traffic.maxPlanes * 0.7);
+      // Calm skies keeps the music calm too.
+      const busy = !save.calm && (S.conflicts.length > 0 || airborne >= Math.max(3, S.level.traffic.maxPlanes * 0.7));
       if (busy) scape.busySince = clock; else scape.calmSince = clock;
       const wasBusy = scape.musicName === 'music_busy';
       track = busy || (wasBusy && clock - scape.busySince < 10) ? 'music_busy' : 'music_calm';
     }
     setMusic(track);
-    bus.music.gain.setTargetAtTime(save.music === false ? 0 : (S.screen === 'pause' ? 0.12 : 0.3) * duck, now, 0.3);
+    bus.music.gain.setTargetAtTime(musicOn() ? (S.screen === 'pause' || S.screen === 'settings' ? 0.12 : 0.3) * duck * save.vol.music : 0, now, 0.3);
   }
 
   // ---------- canvas / view ----------
@@ -392,7 +415,7 @@
       level, planes: [], storms: [], effects: [], incoming: [], conflicts: [],
       landed: 0, lives: MAX_LIVES, time: 0, spawnTimer: 1,
       flipped: false, windTimer: level.windShift || 0, windWarned: false,
-      drawing: null, overTimer: 0, outcome: null, warnCooldown: 0,
+      drawing: null, overTimer: 0, outcome: null, warnCooldown: 0, shiftId: null, assisted: false,
       sky: Art.sky(th, level.id * 31), snow: th.snowfall ? Art.snowfall(140) : [],
     });
     paintTerrain();
@@ -726,6 +749,7 @@
     if (S.drawing && S.drawing.plane === p) S.drawing = null;
     S.landed++;
     sfx.land();
+    if (S.level.id === 1 && !save.taught) { save.taught = true; persist(); }
     say('say_thanks', p, { chance: 0.3 });
     if (end.kind === 'pad') sfx.touchdown(p);
     addText(end.x, end.y - 24, '+1', '#fff6dc', 16);
@@ -772,6 +796,7 @@
     addText(p.x, p.y - 20, `${why}: diverted`, '#ffcabf', 13);
     S.effects.push({ kind: 'ring', x: p.x, y: p.y, color: '#ff5a4a', t: 0, life: 0.9 });
     sfx.divert(p);
+    buzz(70);
   }
 
   function updateDivert(p, dt) {
@@ -796,6 +821,8 @@
     }
     S.warnCooldown -= dt;
     if (S.conflicts.length && S.warnCooldown <= 0) { sfx.warn(); S.warnCooldown = 0.45; }
+    S.buzzCooldown = (S.buzzCooldown || 0) - dt;
+    if (S.conflicts.length && S.buzzCooldown <= 0) { buzz([30, 50, 30]); S.buzzCooldown = 1.5; }
   }
 
   function crash(a, b) {
@@ -812,11 +839,12 @@
     });
     S.effects.push({ kind: 'boom', x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, parts, t: 0, life: 2 });
     sfx.crash();
+    buzz([160, 60, 260]);
     finish('crash', 1.9);
   }
 
   function endLevel(outcome) {
-    if (outcome === 'win') { sfx.win(); say('tower_clear', null, { priority: true, delay: 1.2 }); } else sfx.lose();
+    if (outcome === 'win') { sfx.win(); buzz([20, 40, 20, 40, 80]); say('tower_clear', null, { priority: true, delay: 1.2 }); } else sfx.lose();
     finish(outcome, outcome === 'win' ? 1 : 1.2);
   }
 
@@ -827,13 +855,128 @@
     $('btn-pause').disabled = true;
     const L = S.level;
     if (L.endless) {
-      S.newBest = S.landed > save.best;
-      if (S.newBest) save.best = S.landed;
+      const field = S.assisted ? 'bestCalm' : 'best';
+      S.newBest = S.landed > (save[field] || 0);
+      if (S.newBest) save[field] = S.landed;
     } else if (outcome === 'win') {
       save.stars[L.id] = Math.max(save.stars[L.id] || 0, S.lives);
     }
     persist();
     updateHud();
+    S.shiftId = recordShift({
+      level: L.id, outcome,
+      landed: L.endless ? S.landed : Math.min(S.landed, L.target),
+      strikes: MAX_LIVES - Math.max(0, S.lives),
+      duration: Math.max(1, Math.round(S.time * 10) / 10),
+      assisted: !!S.assisted,
+    });
+  }
+
+  // ---------- family records ----------
+  // A finished shift goes to the server under this device's Game Night
+  // profile. Unsent shifts wait in the save (the outbox) and go when they
+  // can; the server ignores a shift id it already has, so retrying is safe.
+  // profiles.js declares GN with const, so it's a global name but not a
+  // property of window: test for it by name.
+  const me = () => (typeof GN !== 'undefined' && GN.me.get()) || null;
+  const recordStatus = {};
+  let familyBest = null;
+  function newId() {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
+  }
+  function recordShift(shift) {
+    shift.id = newId();
+    if (!me()) { recordStatus[shift.id] = { state: 'guest' }; return shift.id; }
+    save.outbox = (save.outbox || []).concat([shift]).slice(-20);
+    persist();
+    recordStatus[shift.id] = { state: 'sending' };
+    flushOutbox();
+    return shift.id;
+  }
+  let flushing = false;
+  async function flushOutbox() {
+    if (flushing || !me() || !(save.outbox || []).length) return;
+    flushing = true;
+    try {
+      while ((save.outbox || []).length) {
+        const shift = save.outbox[0];
+        let res;
+        try {
+          res = await fetch('/final-approach/api/shifts', {
+            method: 'POST',
+            headers: Object.assign({ 'Content-Type': 'application/json' }, GN.me.headers()),
+            body: JSON.stringify(shift),
+          });
+        } catch {
+          recordStatus[shift.id] = { state: 'kept' };
+          break;                                   // offline: try again later
+        }
+        const body = await res.json().catch(() => ({}));
+        if (res.ok) recordStatus[shift.id] = { state: 'ok', name: me() && me().name };
+        else if (res.status >= 500) { recordStatus[shift.id] = { state: 'kept' }; break; }
+        else recordStatus[shift.id] = { state: 'refused', error: body.error || 'the server said no' };
+        save.outbox.shift();
+        persist();
+      }
+    } finally {
+      flushing = false;
+      showRecordLine();
+      syncProgress();
+    }
+  }
+  function showRecordLine() {
+    const el = $('result-record');
+    const st = S.shiftId && recordStatus[S.shiftId];
+    el.textContent = '';
+    if (!st) return;
+    if (st.state === 'guest') {
+      const a = document.createElement('a');
+      a.href = '/me'; a.textContent = 'Add yourself';
+      el.append(a, ' on the Game Night hub to keep family records.');
+    } else {
+      el.textContent = {
+        sending: 'Sending to the family records…',
+        ok: `On the family records for ${st.name || 'you'}.`,
+        kept: "Kept on this device. It'll go to the family records when you're back online.",
+        refused: `Not recorded: ${st.error}`,
+      }[st.state];
+    }
+  }
+  // Your stars and bests follow your profile: whatever the records hold for
+  // you is merged into this device's save (the better of each).
+  async function syncProgress() {
+    let data;
+    try {
+      const res = await fetch('/final-approach/api/stats');
+      if (!res.ok) return;
+      data = await res.json();
+    } catch { return; }
+    familyBest = (data.leaderboard || [])[0] || null;
+    const mine = me();
+    let changed = false;
+    const player = mine && (data.players || []).find(pl => GN.fold(pl.name) === GN.fold(mine.name));
+    if (player) {
+      for (const [id, n] of Object.entries(player.stars || {})) {
+        if (n > (save.stars[id] || 0)) { save.stars[id] = n; changed = true; }
+      }
+      if (player.endless_best > (save.best || 0)) { save.best = player.endless_best; changed = true; }
+      if (player.endless_best_calm > (save.bestCalm || 0)) { save.bestCalm = player.endless_best_calm; changed = true; }
+      if (changed) persist();
+    }
+    if (S.screen === 'menu') {
+      if (changed) openMenu(); else refreshEndlessRow();
+    }
+  }
+  function updateController() {
+    const chip = $('controller');
+    const mine = me();
+    chip.textContent = '';
+    if (!mine) { chip.textContent = 'Add yourself'; return; }
+    chip.appendChild(GN.avatar(mine.name, 24));
+    const label = document.createElement('span');
+    label.append(mine.name);
+    chip.appendChild(label);
   }
 
   function flipWind() {
@@ -1013,11 +1156,53 @@
     drawConflicts(t);
     // At least 30 CSS pixels across on any screen, so a phone shows it.
     const markerR = Math.max(16, 16 / view.scale);
-    for (const s of S.incoming) Art.incoming(ctx, s, t, TYPES[s.type].color, markerR);
+    for (const s of S.incoming) Art.incoming(ctx, s, t, TYPES[s.type].color, markerR, TYPES[s.type].kind);
+    drawGhost(t);
     Art.cloudLayer(ctx, S.sky, false);
     if (S.snow.length) Art.drawSnow(ctx, S.snow);
     for (const e of S.effects) Art.effect(ctx, e);
     Art.vignette(ctx, !!th.night);
+    ctx.restore();
+  }
+
+  // The first airport teaches without words: until the first landing, a
+  // ghost finger drags from the arriving plane along the approach lights.
+  function drawGhost(t) {
+    if (S.level.id !== 1 || save.taught || S.screen !== 'play' || S.drawing) return;
+    if (S.planes.some(q => q.landing)) return;
+    const p = S.planes.find(q => q.state === 'fly' && q.entered);
+    if (!p) return;
+    const r = S.level.runways.find(rw => rw.kind === p.T.kind);
+    if (!r) return;
+    const end = runwayEnd(r);
+    const a = { x: end.x - Math.cos(end.angle) * 90, y: end.y - Math.sin(end.angle) * 90 };
+    const pts = [{ x: p.x, y: p.y }, a, { x: end.x, y: end.y }];
+    const seg = [dist(pts[0].x, pts[0].y, a.x, a.y), dist(a.x, a.y, end.x, end.y)];
+    const k = (t % 2.8) / 2.8;
+    const along = k < 0.15 ? 0 : k > 0.85 ? 1 : (k - 0.15) / 0.7;
+    let d = (seg[0] + seg[1]) * (along < 1 ? along * (2 - along) : 1);
+    let fx, fy;
+    if (d <= seg[0]) { fx = lerp(pts[0].x, a.x, d / seg[0]); fy = lerp(pts[0].y, a.y, d / seg[0]); }
+    else { d -= seg[0]; fx = lerp(a.x, end.x, d / seg[1]); fy = lerp(a.y, end.y, d / seg[1]); }
+    ctx.save();
+    ctx.globalAlpha = k > 0.9 ? (1 - k) / 0.1 : Math.min(1, k / 0.06);
+    ctx.lineCap = 'round';
+    ctx.setLineDash([0.01, 9]);
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y); ctx.lineTo(a.x, a.y); ctx.lineTo(end.x, end.y); ctx.stroke();
+    ctx.setLineDash([]);
+    if (k < 0.18) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(fx, fy, 10 + (k / 0.18) * 14, 0, TAU); ctx.stroke();
+    }
+    ctx.shadowColor = 'rgba(0,0,0,0.4)'; ctx.shadowBlur = 8 * view.dpr;
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.beginPath(); ctx.arc(fx, fy, 9, 0, TAU); ctx.fill();
+    ctx.shadowColor = 'transparent';
+    ctx.fillStyle = 'rgba(255,255,255,0.95)';
+    ctx.font = '600 13px Oswald, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('DRAG', pts[0].x, pts[0].y + 30);
     ctx.restore();
   }
 
@@ -1074,7 +1259,7 @@
 
   // ---------- UI ----------
   const show = (id, on) => $(id).classList.toggle('hidden', !on);
-  const overlays = ['menu', 'brief', 'pause', 'result'];
+  const overlays = ['menu', 'brief', 'pause', 'result', 'settings'];
   function only(id) { for (const o of overlays) show(o, o === id); }
 
   const boards = {
@@ -1118,7 +1303,7 @@
   function setupHud(L) {
     for (const k in hudState) delete hudState[k];
     boards.code.set(L.code, { stagger: 60 });
-    $('hud-name').textContent = L.name;
+    $('hud-name').textContent = L.name + (save.calm ? ' · calm skies' : '');
     show('hud-wind', !!L.windShift);
     $('hud-landed-label').textContent = L.endless ? 'Landed' : 'Landed / target';
     updateHud();
@@ -1148,9 +1333,10 @@
       row.className = 'row ' + tone;
       row.disabled = !unlocked;
       row.innerHTML = `<span class="c-flt"></span><span class="c-name"></span><span class="c-status"></span>` +
-        `<span class="c-rating">${L.endless ? (save.best ? `<span class="best">Best ${save.best}</span>` : '') : stars(save.stars[L.id] || 0)}</span>` +
+        `<span class="c-rating">${L.endless ? '<span class="best"></span>' : stars(save.stars[L.id] || 0)}</span>` +
         `<span class="lamp ${tone === 'amber' ? 'blink' : ''}"></span>`;
       row.addEventListener('click', () => openBrief(L));
+      if (L.endless) row.dataset.endless = '1';
       rows.appendChild(row);
       const delay = i * 70;
       new Flap.Board(row.querySelector('.c-flt'), 2).set(L.endless ? '--' : pad2(L.id), { delay, maxSteps: 5 });
@@ -1160,10 +1346,25 @@
     const total = LEVELS.reduce((s, L) => s + (save.stars[L.id] || 0), 0);
     const max = LEVELS.filter(L => !L.endless).length * 3;
     $('star-total').innerHTML = `${STAR}<span>${total} / ${max}</span>`;
-    $('btn-mute').textContent = save.muted ? 'Sound off' : 'Sound on';
-    $('btn-music').textContent = save.music === false ? 'Music off' : 'Music on';
+    refreshEndlessRow();
+    updateController();
     only('menu');
     if (actx) sfx.rattle();
+  }
+
+  // The Endless row: your best, and the family's best with their face.
+  function refreshEndlessRow() {
+    const cell = document.querySelector('.row[data-endless] .best');
+    if (!cell) return;
+    cell.textContent = save.best ? `Best ${save.best}` : '';
+    if (familyBest && familyBest.best > (save.best || 0)) {
+      const fam = document.createElement('span');
+      fam.className = 'family-best';
+      fam.append(GN.avatar(familyBest.name, 18), ` ${familyBest.best}`);
+      fam.title = `Family best: ${familyBest.name}`;
+      if (save.best) cell.append(' · ');
+      cell.append(fam);
+    }
   }
 
   function weather(L) {
@@ -1196,7 +1397,8 @@
       row.className = 'legend-row';
       row.appendChild(Art.icon(type, 34));
       const label = document.createElement('div');
-      label.innerHTML = `<b>${T.name}</b><span><i style="background:${T.color}"></i>${KINDS[T.kind].label}</span>`;
+      const shape = { short: '<path d="M6 1L11 10.5H1Z"/>', long: '<rect x="1.5" y="1.5" width="9" height="9"/>', pad: '<circle cx="6" cy="6" r="4.8"/>' }[T.kind];
+      label.innerHTML = `<b>${T.name}</b><span><svg class="kind-shape" viewBox="0 0 12 12" aria-hidden="true" style="fill:${T.color};stroke:#1e262c;stroke-width:1">${shape}</svg>${KINDS[T.kind].label}</span>`;
       row.appendChild(label);
       legend.appendChild(row);
     }
@@ -1214,6 +1416,7 @@
 
   function play() {
     S.screen = 'play';
+    S.assisted = !!save.calm;
     $('btn-pause').disabled = false;
     only(null);
     show('hud', true);
@@ -1246,6 +1449,7 @@
     const next = LEVELS[LEVELS.indexOf(L) + 1];
     const canNext = win && next && !next.endless && isUnlocked(next);
     show('btn-next', canNext);
+    showRecordLine();
     $('btn-retry').textContent = win ? 'Replay' : 'Try again';
     $('btn-retry').className = 'btn ' + (canNext ? 'ghost' : 'primary');
   }
@@ -1262,6 +1466,43 @@
     only(null);
   }
 
+  // ---------- settings ----------
+  function openSettings() {
+    S.settingsFrom = S.screen;
+    S.screen = 'settings';
+    $('set-sound').checked = !save.muted;
+    $('set-sfx').value = Math.round(save.vol.sfx * 100);
+    $('set-voice').value = Math.round(save.vol.voice * 100);
+    $('set-music').value = Math.round(save.vol.music * 100);
+    $('set-large').checked = !!save.large;
+    $('set-haptics').checked = save.haptics !== false;
+    $('set-calm').checked = !!save.calm;
+    only('settings');
+    new Flap.Board($('settings-flaps'), 8).set('Settings', { stagger: 30 });
+  }
+  function closeSettings() {
+    S.screen = S.settingsFrom || 'menu';
+    only(S.screen === 'pause' ? 'pause' : 'menu');
+    if (S.screen === 'menu') updateController();
+  }
+  function changeSettings() {
+    const musicWas = musicOn();
+    save.muted = !$('set-sound').checked;
+    save.vol = { sfx: $('set-sfx').value / 100, voice: $('set-voice').value / 100, music: $('set-music').value / 100 };
+    save.large = $('set-large').checked;
+    save.haptics = $('set-haptics').checked;
+    save.calm = $('set-calm').checked;
+    persist();
+    Art.setBoost(save.large ? 1.25 : 1);
+    if (S.level) $('hud-name').textContent = S.level.name + (save.calm ? ' · calm skies' : '');
+    audio(); applyVolumes();
+    if (actx && musicWas !== musicOn()) { const name = scape.musicName; scape.musicName = null; setMusic(name); }
+  }
+  for (const id of ['set-sound', 'set-sfx', 'set-voice', 'set-music', 'set-large', 'set-haptics', 'set-calm']) {
+    $(id).addEventListener('input', changeSettings);
+    $(id).addEventListener('change', changeSettings);
+  }
+
   function tickClock() {
     const d = new Date();
     boards.clock.set(`${pad2(d.getHours())}:${pad2(d.getMinutes())}`, { stagger: 40, maxSteps: 4 });
@@ -1276,18 +1517,9 @@
   $('btn-retry').addEventListener('click', restart);
   $('btn-result-menu').addEventListener('click', openMenu);
   $('btn-next').addEventListener('click', () => openBrief(LEVELS[LEVELS.indexOf(S.level) + 1]));
-  $('btn-mute').addEventListener('click', () => {
-    save.muted = !save.muted;
-    persist();
-    $('btn-mute').textContent = save.muted ? 'Sound off' : 'Sound on';
-    audio(); applyVolumes();
-  });
-  $('btn-music').addEventListener('click', () => {
-    save.music = save.music === false;
-    persist();
-    $('btn-music').textContent = save.music === false ? 'Music off' : 'Music on';
-    if (actx) { const name = scape.musicName; scape.musicName = null; setMusic(name); }
-  });
+  $('btn-settings').addEventListener('click', openSettings);
+  $('btn-pause-settings').addEventListener('click', openSettings);
+  $('btn-settings-done').addEventListener('click', closeSettings);
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) { pause(); if (actx) actx.suspend(); }
     else if (actx) actx.resume();
@@ -1296,6 +1528,7 @@
     if (e.key === 'Escape' || e.key === 'p') {
       if (S.screen === 'play') pause();
       else if (S.screen === 'pause') resume();
+      else if (S.screen === 'settings') closeSettings();
     }
   });
 
@@ -1304,7 +1537,10 @@
   function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
-    update(dt, now / 1000);
+    // Calm skies: the whole sky at three-quarter speed, and the shift marked.
+    const calm = save.calm && S.screen === 'play';
+    if (calm) S.assisted = true;
+    update(calm ? dt * 0.75 : dt, now / 1000);
     soundscape(now / 1000);
     render(now);
     requestAnimationFrame(frame);
@@ -1316,8 +1552,12 @@
     : Promise.resolve();
   Promise.race([fontsReady, new Promise(r => setTimeout(r, 2500))]).then(() => {
     resize();
+    Art.setBoost(save.large ? 1.25 : 1);
     loadLevel(LEVELS[0]);
     openMenu();
+    GN.profiles.load().then(() => { updateController(); refreshEndlessRow(); });
+    syncProgress();
+    flushOutbox();
     boards.title.set('Final Approach', { stagger: 45, maxSteps: 10, delay: 200 });
     tickClock();
     setInterval(tickClock, 10000);
@@ -1326,5 +1566,6 @@
 
   // Exposed for automated tests only.
   window.__finalApproach = { S, LEVELS, runwayEnd, update, queueArrival, clearOfStorms, stormAt, clearOfTraffic, track,
+    save, recordStatus, flushOutbox, syncProgress,
     sound: { audio, load, buffers, scape, bus: () => bus } };
 })();

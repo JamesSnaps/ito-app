@@ -295,7 +295,7 @@ Game Night.
 
 ---
 
-## 5. Current state (v1.21.1)
+## 5. Current state (v1.22.0)
 
 **Done:**
 
@@ -308,6 +308,11 @@ Game Night.
 - [x] Carry on a route from its end; bigger arrival markers with a countdown,
   never under the HUD; three seconds' warning early on; storm-safe arrivals
   (v1.19.0)
+- [x] Family records: shifts recorded against your Game Night profile, an
+  Endless leaderboard with faces, stars per airport for everyone, progress
+  that follows your profile (v1.22.0)
+- [x] Settings: volumes, large aircraft, vibration, calm skies; runway-kind
+  shapes; a ghost finger on the first airport (v1.22.0)
 - [x] Arrivals can't fly into traffic in their first five seconds (v1.21.1)
 - [x] Spoken radio dialogue, and varied, fading touchdowns (v1.21.0)
 - [x] Recorded sound and music (v1.20.0): touchdowns, chimes, radio, the
@@ -329,11 +334,9 @@ in v1.19.0.
 - **Not yet tried on a real phone.** Touch has only been tested in an
   emulated browser. Check the drawing feel, frame rate on an older phone,
   and the tile flips' cost on the board.
-- **Progress is per browser.** Safari and the home-screen app don't share
-  it, and clearing site data loses it. Records (Phase 2) fix the part that
-  matters.
-- **Colour is the only way to tell runway kinds apart.** That's a
-  colour-blindness problem (Phase 3).
+- **Progress without a profile is still per browser.** With one, it
+  follows you (v1.22.0).
+- **Vibration only works on Android**; iPhones' browsers don't allow it.
 - **The iOS app doesn't show it**; it's web only (Phase 12).
 - **Repainting the terrain on resize** takes a beat on slow devices
   (debounced, but noticeable when rotating).
@@ -413,6 +416,31 @@ recorded with its settings and shown separately, the way Fugitive marks
 - **Career progress is kept against your profile on the server**, so it
   follows you to any device. Without a profile it's kept on the device, as
   today.
+
+### Assists and tools
+
+Two different things that sit side by side (decided 31 October 2026):
+
+| | **Assists** (calm skies, and any future ones) | **Tools** (the career's "skills") |
+|---|---|---|
+| What it is | Changes the *conditions* to make the game kinder | Something you *do* in the moment |
+| How you get it | There from the start, in Settings | Earned through career promotions |
+| How it works | Applies to the whole shift; nothing to press | Two chosen per shift, a few charges each |
+| Who it's for | A player who's overwhelmed | A player getting good, wanting more ways to solve the sky |
+| On the records | Marked; earns your stars; never ranked | Part of the career game; career shifts count normally |
+
+- **They stack:** calm skies with your tools is fine.
+- **One rule for both:** anything that changes the challenge is marked, and
+  only like-for-like runs are ranked against each other. Ranked Endless and
+  the daily run use no tools (or one fixed loadout for everyone), and
+  assisted runs are kept off the ranked boards.
+- **Future assists join calm skies under "Assists" in Settings**, not the
+  tools: longer arrival warnings, a lower traffic cap and the like, all
+  marked and never ranked.
+- **For younger players, the first tool comes early.** Calm skies gives
+  time; tools like Hold and Slow down give *a move to make* when it gets
+  busy, which is what helps with panic. So the career hands out Hold in its
+  first chapter, not after several promotions.
 
 ### New mechanics
 
@@ -560,10 +588,12 @@ its own version bump. "Done when" is the bar for ticking it off.
 Moved from a standalone prototype into Game Night, with the tile, tests,
 docs and this playbook.
 
-### Phase 2: records and faces
+### Phase 2: records and faces ✅ (v1.22.0)
 
 The family leaderboard is the reason to be in Game Night, and the
-groundwork for career progress following your profile.
+groundwork for career progress following your profile. Built as below,
+except that the arrivals board shows the family's Endless best (with a
+face) beside yours, rather than a face per airport.
 
 - Post a finished shift to `POST /final-approach/api/stats/games`, keyed by
   the device's profile name (`GN.me`): `{level, landed, strikes, stars,
@@ -616,9 +646,9 @@ rationed to one call at a time.
   - It's small: a second kind of touch target in `pointerdown`, and
     `extendRoute` starting from the route's last point instead of the
     aircraft. About 30 lines, plus a staged scene to check it.
-- **Teach without words on airport 1:** a ghost finger drawing the first
+- ✅ **Teach without words on airport 1:** a ghost finger drawing the first
   route, until the first landing.
-- **Haptics** (`navigator.vibrate` where there is one) on conflict, lock
+- ✅ **Haptics** (`navigator.vibrate` where there is one) on conflict, lock
   and divert.
 
 **Seeing what's coming**
@@ -634,10 +664,10 @@ rationed to one call at a time.
   - three seconds' warning on the first airports, two later
   - never under the HUD's plates (those stretches of the top edge are off
     limits)
-- **A "large aircraft" setting** that draws aircraft 25% bigger on phones.
+- ✅ **A "large aircraft" setting** that draws aircraft 25% bigger on phones.
   Drawing only: separation distances stay the same, so the game doesn't
   get harder or easier.
-- **Shapes as well as colours:** a small runway-kind glyph on each
+- ✅ **Shapes as well as colours:** a small runway-kind glyph on each
   aircraft's arrival marker and on the runway's end (▲ short, ■ long, ● pad),
   so colour is never the only cue.
 
@@ -718,7 +748,14 @@ and the tower opening and closing the shift and calling wind shifts.
 
 - Play every airport by hand on a phone and tune `traffic` per airport.
   Record the numbers here.
-- A settings sheet: sound, music, haptics, large aircraft, left-handed HUD.
+- ✅ A settings sheet (v1.22.0): sound, effects/voices/music volumes,
+  large aircraft, vibration, calm skies. A left-handed HUD is still to do.
+
+**Louis and the difficulty curve** (31 October 2026): he loves it but
+panics when it gets busy. The curve stays (it's the game), but calm skies
+(v1.22.0) is an honest assist: three-quarter speed and calm music, his own
+stars still earned, his shifts marked "calm skies" on the records and never
+ranked. The early airports are there to replay for confidence.
 
 **Done when:**
 - someone new lands their first plane without help
@@ -758,7 +795,8 @@ The first big new mechanic (section 6).
   checkride.
 - The controller's licence card, using your profile's name and photo, and
   ranks from Trainee to Chief.
-- Experience, cosmetic unlocks, and the tools and two-tool loadout.
+- Experience, cosmetic unlocks, and the tools and two-tool loadout, with
+  Hold handed out in the first chapter (see "Assists and tools").
 - Progress kept against the profile (from Phase 2).
 - **Done when:** a new player can go from Trainee to Tower through the
   first chapters, with at least two tools and three cosmetics to earn.
@@ -881,6 +919,10 @@ play:
 | Approach must be lined up | It makes the angle of approach the skill, and the approach lights make it readable. |
 | A collision ends the shift; diversions are strikes | Collisions are the cardinal sin; fuel and weather are pressure, so they forgive twice. |
 | Arrivals announced two seconds ahead | Calm tension: you always get a warning. |
+| Assists and tools stay separate: assists change conditions, tools are moves you make; anything that changes the challenge is marked, only like-for-like runs rank | Assists help the overwhelmed, tools reward the skilled; one rule keeps every leaderboard fair. |
+| The first tool (Hold) comes in the career's first chapter | It gives a young player a move to make when the sky gets busy, which helps with panic more than slowing down alone. |
+| Calm skies is an assist, not an easy mode: slower, honestly labelled, earns your stars, never ranks | Helps a young player who panics without hiding the difficulty curve, and keeps the leaderboard fair (pillar 6). |
+| A shift is recorded under the profile that posts it, never a name in the request | The token says who; no posting as someone else. |
 | No arrival may come within warning distance of other traffic in its first five seconds; it waits at the edge if it must | Same promise as storms (pillar 2): a crash should always follow a warning you had time to act on. Holding an arrival costs a moment; an ambush costs the game. |
 | No arrival may meet a storm in its first five seconds | Storm movement is predictable, so the game can promise it; failure should always follow a warning (pillar 2). |
 | Route ends are handles: touch the end to carry on, the aircraft to start again | Fixing a route shouldn't mean redrawing it, and the gesture everyone already knows keeps its meaning. |
@@ -911,6 +953,10 @@ play:
   everyone?
 - **Career without a profile.** Allow it on the device only (my
   recommendation), or require a profile?
+- **Records controls.** A "share my shifts" switch (on by default), and an
+  Authelia-protected "clear Final Approach's records" button? Neither exists
+  yet; removing someone from the records today means editing stats.json on
+  vm-core.
 - **Endless unlock.** After airport 5, or after the first checkride once the
   career exists?
 - **The repo's name.** `ito-app` no longer describes it; `game-night` would

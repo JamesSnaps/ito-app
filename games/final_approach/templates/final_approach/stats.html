@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{# The family's records, in the game's own board style: Endless best runs,
+   everyone's stars per airport, the last few shifts. Faces come from
+   profiles.js once the profile list arrives. #}
+{% block title %}Records · Final Approach · {{ app_name }}{% endblock %}
+{% block theme_color %}#0d0f10{% endblock %}
+{% block shell_css %}<link rel="stylesheet" href="{{ asset('final-approach/style.css') }}">{% endblock %}
+{% block head %}<script src="{{ asset('profiles.js') }}"></script>{% endblock %}
+{% block body %}
+{% set names = {} %}{% for a in data.airports %}{% set _ = names.update({a.id: a}) %}{% endfor %}
+<div class="overlay records">
+  <div class="housing">
+    <div class="board">
+      <div class="board-head">
+        <div id="records-flaps"></div>
+        <div class="records-nav">
+          <a class="btn ghost small" href="{{ url_for('final-approach.landing') }}">← Final Approach</a>
+        </div>
+      </div>
+
+      <section class="rec-section">
+        <h2 class="rec-heading">Endless · best run</h2>
+        {% if data.leaderboard %}
+        <ol class="rec-board">
+          {% for row in data.leaderboard %}
+          <li class="rec-row">
+            <span class="rec-rank">{{ loop.index }}</span>
+            <span class="face" data-name="{{ row.name }}" data-size="34"></span>
+            <span class="rec-name">{{ row.name }}</span>
+            <span class="rec-score">{{ row.best }}<small> landed</small></span>
+            <span class="rec-when" data-at="{{ row.at or '' }}"></span>
+          </li>
+          {% endfor %}
+        </ol>
+        {% else %}
+        <p class="rec-empty">No Endless runs yet. Clear Running on Fumes to open Endless.</p>
+        {% endif %}
+        {% set calm = data.players | selectattr('endless_best_calm') | list %}
+        {% if calm %}
+        <p class="rec-note">With calm skies:
+          {% for p in calm %}{{ p.name }} {{ p.endless_best_calm }}{% if not loop.last %} · {% endif %}{% endfor %}
+        </p>
+        {% endif %}
+      </section>
+
+      <section class="rec-section">
+        <h2 class="rec-heading">Stars by airport</h2>
+        {% if data.players %}
+        <div class="rec-grid-wrap">
+          <table class="rec-grid">
+            <thead>
+              <tr>
+                <th></th>
+                {% for a in data.airports if not a.endless %}<th title="{{ a.name }}">{{ a.code }}</th>{% endfor %}
+                <th>★</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for p in data.players %}
+              <tr>
+                <th class="rec-who"><span class="face" data-name="{{ p.name }}" data-size="26"></span>{{ p.name }}</th>
+                {% for a in data.airports if not a.endless %}
+                {% set n = p.stars.get(a.id|string, 0) %}
+                <td class="stars-{{ n }}">{% if n %}{{ '★' * n }}{% else %}·{% endif %}</td>
+                {% endfor %}
+                <td class="rec-total">{{ p.total_stars }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <p class="rec-empty">No shifts recorded yet. Add yourself on the Game Night hub, then play.</p>
+        {% endif %}
+      </section>
+
+      {% if data.recent %}
+      <section class="rec-section">
+        <h2 class="rec-heading">Recent shifts</h2>
+        <ul class="rec-recent">
+          {% for s in data.recent %}
+          {% set a = names.get(s.level) %}
+          <li>
+            <span class="face" data-name="{{ s.name }}" data-size="24"></span>
+            <span class="rec-name">{{ s.name }}</span>
+            <span class="rec-what">
+              {{ a.name if a else 'An airport' }}:
+              {% if s.endless %}{{ s.landed }} landed
+              {% elif s.outcome == 'win' %}cleared {{ '★' * s.stars }}
+              {% elif s.outcome == 'crash' %}collision after {{ s.landed }} of {{ a.target if a else '?' }}
+              {% else %}three diversions after {{ s.landed }} of {{ a.target if a else '?' }}{% endif %}
+              {% if s.assisted %}<span class="rec-tag">calm skies</span>{% endif %}
+            </span>
+            <span class="rec-when" data-at="{{ s.at }}"></span>
+          </li>
+          {% endfor %}
+        </ul>
+      </section>
+      {% endif %}
+    </div>
+  </div>
+</div>
+<script src="{{ asset('final-approach/flap.js') }}"></script>
+<script>
+  (async () => {
+    new Flap.Board(document.getElementById('records-flaps'), 7).set('Records', { stagger: 45, delay: 150 });
+    for (const el of document.querySelectorAll('[data-at]')) {
+      const at = el.dataset.at && new Date(el.dataset.at);
+      if (at && !isNaN(at)) el.textContent = at.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+    }
+    await GN.profiles.load();
+    for (const el of document.querySelectorAll('.face[data-name]')) {
+      el.replaceWith(GN.avatar(el.dataset.name, +el.dataset.size || 30));
+    }
+  })();
+</script>
+{% endblock %}

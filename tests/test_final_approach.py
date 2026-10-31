@@ -114,7 +114,7 @@ def test_the_page_is_told_where_each_sound_lives():
     body = page()
     for name in sound_list():
         assert f"/static/final-approach/audio/{name}.mp3?v=" in body, name
-    assert 'id="btn-music"' in body
+    assert 'id="set-music"' in body
 
 
 def test_the_sounds_stay_a_small_download():
@@ -135,3 +135,110 @@ def test_every_runway_number_has_a_readback():
             heading = ((end + 90) % 360 + 360) % 360
             number = f"{(math.floor(heading / 10 + 0.5) % 36) or 36:02d}"
             assert f"say_land_{number}_1" in names, number
+
+
+# --- family records (v1.22.0) ----------------------------------------------------
+
+def profile(c, name):
+    res = c.post("/api/profiles", json={"name": name})
+    assert res.status_code == 200, res.get_json()
+    return {"X-Profile-Token": res.get_json()["token"]}
+
+
+def shift(**overrides):
+    import uuid
+
+    body = {"id": uuid.uuid4().hex, "level": 1, "outcome": "win", "landed": 6, "strikes": 0,
+            "duration": 120.5, "assisted": False}
+    body.update(overrides)
+    return body
+
+
+def post(c, headers, body):
+    return c.post("/final-approach/api/shifts", json=body, headers=headers)
+
+
+def test_a_shift_needs_a_profile():
+    c = client()
+    assert post(c, {}, shift()).status_code == 403
+    assert post(c, {"X-Profile-Token": "nope"}, shift()).status_code == 403
+
+
+def test_a_cleared_shift_records_its_stars_under_the_profiles_name():
+    c = client()
+    louis = profile(c, "Louis")
+    res = post(c, louis, shift(strikes=1, name="Somebody else"))
+    assert res.status_code == 200
+    assert res.get_json()["recorded"] is True
+    data = c.get("/final-approach/api/stats").get_json()
+    player = data["players"][0]
+    assert player["name"] == "Louis" and player["stars"] == {"1": 2} and player["total_stars"] == 2
+    assert data["recent"][0]["name"] == "Louis" and data["recent"][0]["stars"] == 2
+
+
+def test_stars_keep_the_best_and_a_retry_counts_once():
+    c = client()
+    louis = profile(c, "Louis")
+    perfect = shift()
+    assert post(c, louis, perfect).get_json()["recorded"] is True
+    assert post(c, louis, perfect).get_json()["recorded"] is False
+    post(c, louis, shift(strikes=2))
+    post(c, louis, shift(outcome="crash", landed=3))
+    player = c.get("/final-approach/api/stats").get_json()["players"][0]
+    assert player["stars"] == {"1": 3}
+    assert player["shifts"] == 3
+
+
+def test_calm_skies_endless_runs_stay_off_the_ranked_board():
+    c = client()
+    louis, james = profile(c, "Louis"), profile(c, "James")
+    endless = dict(level=10, outcome="crash", strikes=0, duration=300)
+    post(c, louis, shift(landed=40, assisted=True, **endless))
+    data = c.get("/final-approach/api/stats").get_json()
+    assert data["leaderboard"] == []
+    assert data["players"][0]["endless_best_calm"] == 40
+    post(c, louis, shift(landed=12, **endless))
+    post(c, james, shift(landed=20, **endless))
+    board = c.get("/final-approach/api/stats").get_json()["leaderboard"]
+    assert [(row["name"], row["best"]) for row in board] == [("James", 20), ("Louis", 12)]
+
+
+def test_impossible_shifts_are_refused():
+    c = client()
+    louis = profile(c, "Louis")
+    for bad in (
+        shift(level=99),                                  # no such airport
+        shift(level=True),                                # a bool isn't a level
+        shift(landed=5),                                  # cleared without the whole target
+        shift(landed=7),                                  # more than the target
+        shift(outcome="strikes", strikes=2, landed=3),    # strikes ends with all three
+        shift(outcome="win", strikes=3),                  # can't clear with three strikes
+        shift(level=10, outcome="win", landed=30, duration=300),  # Endless has no win
+        shift(landed=6, duration=0.5),                    # no time to land six
+        shift(outcome="draw"),
+        shift(id="x"),
+        shift(assisted="yes"),
+    ):
+        assert post(c, louis, bad).status_code == 400, bad
+    assert c.post("/final-approach/api/shifts", data="[1,2]", headers=dict(louis, **{"Content-Type": "application/json"})).status_code == 400
+    assert c.get("/final-approach/api/stats").get_json()["players"] == []
+
+
+def test_the_records_page_renders_with_and_without_records():
+    c = client()
+    empty = c.get("/final-approach/stats")
+    assert empty.status_code == 200 and "No shifts recorded yet" in empty.get_data(as_text=True)
+    louis = profile(c, "Louis")
+    post(c, louis, shift())
+    post(c, louis, shift(level=10, outcome="crash", landed=9, duration=200, assisted=True))
+    body = c.get("/final-approach/stats").get_data(as_text=True)
+    assert "Louis" in body and "calm skies" in body and "Meadow Strip" in body
+    assert "http://" not in body and "https://" not in body
+
+
+def test_the_game_page_has_settings_records_and_profiles():
+    body = page()
+    for needle in ('id="settings"', 'id="set-calm"', 'id="set-large"', 'id="btn-settings"',
+                   'href="/final-approach/stats"', '/static/profiles.js', 'id="controller"'):
+        assert needle in body, needle
+    assert 'id="btn-mute"' not in body
