@@ -1,10 +1,21 @@
 # Game Night
 
-A small hub for companion web apps to the physical board games on the
-shelf. Each game is self-contained; the hub provides what they all need —
-room codes, joining, persisted stats, QR links.
+The family's games night, on a phone. It started as a helper for the board
+games on the shelf and has grown past that, so it now holds three kinds of
+game:
 
-Three games so far: **ito**, **Flip 7** and **Fugitive**. `/` is the menu.
+- **Help for a box on the shelf**: the real cards stay on the table and the
+  app replaces one fiddly part (ito's topic booklet, Flip 7's score pad).
+- **A board game played on the app**: the whole game on phones or one
+  passed-round device, for nights without the box (Flip 7's Play mode,
+  Fugitive).
+- **Games of our own**: designed here, for us (Wildwood, Final Approach).
+
+Each game is self-contained; the hub provides what they need: room codes,
+joining, player profiles, persisted records, QR links.
+
+Five games so far: **ito**, **Flip 7**, **Fugitive**, **Wildwood** and
+**Final Approach**. `/` is the menu.
 
 ## ito
 
@@ -51,6 +62,28 @@ numbers to turn them over.
 - The Marshal's notepad can show what each hideout could still be.
 - Finished games are recorded at `/fugitive/stats`; a rematch swaps roles.
 
+## Wildwood
+
+Our own card game in the Crazy Eights family, made for the youngest at the
+table: match the colour or the creature, wilds change the colour, call
+"Last card!" or get caught, and empty your hand first. Two to four players,
+any of them the computer, on one device passed round or a phone each.
+
+## Final Approach
+
+Our own solo air-traffic game. Drag from an aircraft to draw its route and
+bring it down on the runway that matches its colour, lined up with the
+approach lights. Keep everything apart; low fuel, storm cells and wind
+shifts make it harder airport by airport.
+
+- Nine airports, each adding one idea, plus an Endless mode. Stars for
+  diversions avoided; clearing an airport unlocks the next.
+- Runs entirely in the browser; progress is kept on the device.
+- The menu is a split-flap arrivals board and each briefing is a boarding
+  pass. Every airport is painted in code; there are no image files.
+- Its playbook (what it is, how it's built, where it's going) is
+  [`docs/final-approach/PLAYBOOK.md`](docs/final-approach/PLAYBOOK.md).
+
 ## Player profiles
 
 Tap **Add yourself** on the hub (or go to `/me`) to claim your name and take
@@ -96,6 +129,9 @@ games/fugitive/game.py    Fugitive's blueprint, seats, records
 data/ito/topics.json   live topics, seeded on first run, gitignored
 data/stats.json        win/loss history — runtime state, gitignored
 data/**/*.bak          last good copy of each file, written on every save
+games/final_approach/game.py  Final Approach's blueprint: one page, the game is client-side
+static/final-approach/  Final Approach's scripts, stylesheet and fonts
+docs/final-approach/   Final Approach's playbook and screenshots
 templates/             hub-level pages
 templates/art/         per-game menu artwork, one SVG per game id
 static/style.css       shared styling
@@ -113,7 +149,10 @@ only way to tell which build is live. `/healthz` reports it.
    `GAME = GameSpec(...)` at the bottom, with an `accent` colour. Add a
    `new_room_state()` factory and the host/player endpoints only if the
    game actually needs rooms; Flip 7 doesn't.
-2. `games/<id>/templates/<id>/` — its pages, extending `base.html`.
+2. `games/<id>/templates/<id>/` — its pages, extending `base.html`. A
+   game with a look entirely its own can override the `shell_css` block to
+   swap the shared stylesheet for its own, as Final Approach does. An id
+   with a hyphen (`final-approach`) lives in a package with an underscore.
 3. `templates/art/<id>.html` — the menu tile's artwork.
 4. Import it in `games/registry.py:all_games()`.
 

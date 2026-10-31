@@ -1,9 +1,12 @@
-"""Game Night — a small hub for companion apps to physical party games.
+"""Game Night — the family's games, on a phone.
 
-Each game is a self-contained blueprint under games/, and the hub provides
-what they all need: room codes, joining, persisted stats and QR links.
-/ is the menu: ito (a topic randomiser), Flip 7 (a scorekeeper, or the
-deck itself) and Fugitive (a two-player game played entirely on the app).
+Some are help for the board games on the shelf, some are whole games played
+on the app, and some are games of our own. Each is a self-contained
+blueprint under games/, and the hub provides what they all need: room codes,
+joining, profiles, persisted records and QR links. / is the menu: ito (a
+topic randomiser), Flip 7 (a scorekeeper, or the deck itself), Fugitive (a
+two-player game played entirely on the app), Wildwood (our own card game)
+and Final Approach (our own solo air-traffic game).
 """
 
 import json
@@ -25,7 +28,7 @@ APP_NAME = "Game Night"
 # Bump this in the same commit as any user-visible change, before pushing.
 # Watchtower deploys `latest`, so this is the only way to tell from a phone
 # which build the server is actually running. See CLAUDE.md.
-APP_VERSION = "1.17.1"
+APP_VERSION = "1.18.0"
 
 # The iOS app (ios/project.yml): team C729B84RYG, the paid personal
 # membership Dishes, Keepsake and Brief use. Named in the file Apple checks
