@@ -86,13 +86,20 @@
     return loading[name];
   }
 
-  // A one-shot from a file. False when it isn't loaded, so the caller can fall back.
-  function playSound(name, { vol = 1, rate = 1, pan = 0 } = {}) {
+  // A one-shot from a file. False when it isn't loaded, so the caller can fall
+  // back. Every sound fades in over a few milliseconds (no click), and can
+  // fade out over its last `fadeOut` seconds, so nothing stops dead.
+  function playSound(name, { vol = 1, rate = 1, pan = 0, fadeOut = 0.08 } = {}) {
     if (!actx || !buffers[name]) { if (actx) load(name); return false; }
     const src = actx.createBufferSource(), g = actx.createGain();
     src.buffer = buffers[name];
     src.playbackRate.value = rate;
-    g.gain.value = vol;
+    const t0 = actx.currentTime, dur = src.buffer.duration / rate;
+    const fade = Math.min(fadeOut, dur / 2);
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(vol, t0 + 0.015);
+    g.gain.setValueAtTime(vol, t0 + dur - fade);
+    g.gain.linearRampToValueAtTime(0, t0 + dur);
     let out = g;
     if (pan && actx.createStereoPanner) { const p = actx.createStereoPanner(); p.pan.value = pan; g.connect(p); out = p; }
     src.connect(g);
@@ -101,6 +108,26 @@
     return true;
   }
   const pick = list => list[Math.floor(Math.random() * list.length)];
+
+  // Every recording of something (`touchdown_jet` → touchdown_jet_1, _2, …),
+  // dealt like a shuffled deck: all of them before any repeats, and never the
+  // same one twice running.
+  const decks = {};
+  function variants(prefix) {
+    return Object.keys(AUDIO).filter(n => n === prefix || n.startsWith(prefix + '_'));
+  }
+  function deal(prefix) {
+    const all = variants(prefix);
+    if (!all.length) return null;
+    let d = decks[prefix];
+    if (!d || !d.left.length) {
+      const left = all.slice().sort(() => Math.random() - 0.5);
+      if (d && left.length > 1 && left[left.length - 1] === d.last) left.unshift(left.pop());
+      d = decks[prefix] = { left, last: d && d.last };
+    }
+    d.last = d.left.pop();
+    return d.last;
+  }
 
   // A loop that never clicks: each repeat fades in over the last one's tail.
   // (MP3 adds a sliver of silence at both ends, so buffer looping would gap.)
@@ -165,13 +192,28 @@
 
   const FAMILY = { prop: 'prop', jet: 'jet', heavy: 'jet', heli: 'heli' };
   const panOf = x => Math.max(-0.7, Math.min(0.7, (x / 960 - 0.5) * 1.4));
-  let lastFlap = 0;
+  let lastFlap = 0, lastTouchdown = -9, radioFree = 0;
+  // Radio chatter is a treat, not a receipt: at most one call at a time, then
+  // a few seconds' quiet. Locking a route always gets a soft click either way.
+  function radio(prefix, p, opts = {}) {
+    if (!actx || actx.currentTime < radioFree) return false;
+    const name = deal(prefix);
+    if (!name || !buffers[name]) { if (name) load(name); return false; }
+    playSound(name, { vol: 0.6, pan: p ? panOf(p.x) * 0.6 : 0, fadeOut: 0.15, ...opts });
+    radioFree = actx.currentTime + buffers[name].duration + (opts.gap || 4);
+    return true;
+  }
   const sfx = {
     land:      () => tone(1320, 0.14, { vol: 0.05 }),
-    touchdown: p => playSound('touchdown_' + FAMILY[p.type], { vol: 0.8, pan: panOf(p.x) }) ||
-                    (tone(660, 0.12), tone(990, 0.18, { delay: 0.1 })),
-    lock:      p => playSound(pick(['radio_1', 'radio_2', 'radio_3']), { vol: 0.55, pan: panOf(p.x) }) ||
-                    tone(760, 0.08, { type: 'triangle', vol: 0.08 }),
+    // A landing right after another is quieter, and each fades out gently.
+    touchdown: p => {
+      const name = actx && deal('touchdown_' + FAMILY[p.type]);
+      const close = actx && actx.currentTime - lastTouchdown < 2;
+      if (actx) lastTouchdown = actx.currentTime;
+      return (name && playSound(name, { vol: close ? 0.35 : 0.75, pan: panOf(p.x), rate: 0.94 + Math.random() * 0.12, fadeOut: 1.4 })) ||
+             (tone(660, 0.12), tone(990, 0.18, { delay: 0.1 }));
+    },
+    lock:      p => { tone(1180, 0.05, { type: 'triangle', vol: 0.05 }); radio('radio', p); },
     // A two-tone traffic alert: high, then low.
     warn:      () => { tone(1046, 0.09, { type: 'square', vol: 0.035 }); tone(784, 0.11, { type: 'square', vol: 0.035, delay: 0.1 }); },
     spawn:     () => tone(520, 0.1, { type: 'triangle', vol: 0.035 }),

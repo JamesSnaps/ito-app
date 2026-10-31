@@ -28,9 +28,18 @@ API = "https://api.elevenlabs.io/v1"
 # still cross-fades each repeat, as MP3 adds a little silence at either end.
 SOUNDS = {
     # one-shots
-    "touchdown_jet": ("sfx", 3.0, "Airliner landing heard from beside the runway: a sharp tyre chirp on touchdown, then a short roar of reverse thrust fading away"),
-    "touchdown_prop": ("sfx", 2.5, "Small propeller plane landing: a light tyre squeak on tarmac, then the engine throttling back to idle"),
-    "touchdown_heli": ("sfx", 3.0, "Helicopter settling onto a helipad: skids touching down, rotor blades slowing and winding down"),
+    # Touchdowns: three of each, longer than they sound, each fading to
+    # silence by itself (the game fades the tail too). One recording heard
+    # every landing was the first thing the family noticed.
+    "touchdown_jet_1": ("sfx", 4.5, "Airliner landing heard from beside the runway: a tyre chirp on touchdown, a short swell of reverse thrust, then fading smoothly away to silence"),
+    "touchdown_jet_2": ("sfx", 4.5, "Distant jet airliner touching down on a runway: soft double tyre squeak, engines spooling down, gently fading out to silence"),
+    "touchdown_jet_3": ("sfx", 4.5, "Passenger jet landing far down the runway: muffled thump of the wheels, a brief rumble of reverse thrust dying away to silence"),
+    "touchdown_prop_1": ("sfx", 4.0, "Small propeller plane landing: a light tyre squeak on tarmac, the engine throttling back to idle, then fading away to silence"),
+    "touchdown_prop_2": ("sfx", 4.0, "Light aircraft touching down on a grass and tarmac strip: a little bump and squeak, propeller buzz easing off and fading out"),
+    "touchdown_prop_3": ("sfx", 4.0, "Single-engine plane landing in the distance: a soft chirp of tyres, engine note dropping, then quiet"),
+    "touchdown_heli_1": ("sfx", 4.5, "Helicopter settling onto a helipad: skids touching down, rotor blades slowing and winding down to silence"),
+    "touchdown_heli_2": ("sfx", 4.5, "Helicopter landing nearby: rotor wash easing, a soft thud of skids on concrete, turbine whine winding down and fading out"),
+    "touchdown_heli_3": ("sfx", 4.5, "Distant helicopter landing: rotor thudding slowing gradually, then fading away to silence"),
     "chime_start": ("sfx", 2.5, "Vintage airport public address chime, three soft ascending bell tones, warm and clean, no voice"),
     "chime_clear": ("sfx", 3.0, "Cheerful airport chime, four bright ascending bell tones resolving, celebratory but gentle, no voice"),
     "chime_fail": ("sfx", 2.5, "Soft descending airport chime, three low bell tones, gentle and a little sad, no voice"),
