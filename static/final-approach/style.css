@@ -679,3 +679,7 @@ a.btn { display: inline-block; text-decoration: none; }
 .records .board-head { flex-wrap: wrap; row-gap: 10px; }
 .records-nav { flex-wrap: wrap; }
 .act-people td, .act-airports td { color: #cfc9b8; }
+/* A drawn back arrow, centred on the capitals (a text "←" sits on the
+   lowercase middle, so it looked low next to uppercase labels). */
+a.btn:has(.btn-arrow) { display: inline-flex; align-items: center; gap: 0.5em; }
+.btn-arrow { width: 1.05em; height: 0.75em; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
