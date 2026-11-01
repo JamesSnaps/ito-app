@@ -789,7 +789,7 @@ const Art = (() => {
     ctx.restore();
   }
 
-  function approach(ctx, end, color, t, highlight, night) {
+  function approach(ctx, end, color, t, highlight, night, lights = 6) {
     ctx.save();
     if (end.kind === 'pad') {
       if (highlight) {
@@ -815,7 +815,7 @@ const Art = (() => {
       ctx.restore();
     }
     // approach light bars shaped as chevrons, with a sequenced flash running in to the threshold
-    const n = 6, gap = 10;
+    const n = lights, gap = 10;
     const seq = Math.floor(((t * 1.5) % 1) * (n + 3));
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     for (let i = 0; i < n; i++) {
@@ -1008,6 +1008,91 @@ const Art = (() => {
     }
   }
 
+  // ---------- conditions ----------
+  // A theme's colours after dark: each one dimmed and pulled toward a night
+  // blue, so fields, roads and roofs keep their differences. `night` turns
+  // on the lit windows, street lamps and glowing approach lights.
+  const NIGHT = [20, 33, 46];
+  function nightColour(r, g, b) {
+    const k = 0.2;
+    return [Math.round(r * k + NIGHT[0] * 0.8), Math.round(g * k + NIGHT[1] * 0.8), Math.round(b * k + NIGHT[2] * 0.85)];
+  }
+  function mapColours(value, fn) {
+    if (Array.isArray(value)) return value.map(v => mapColours(v, fn));
+    if (typeof value !== 'string') return value;
+    let m = /^#([0-9a-f]{6})$/i.exec(value);
+    if (m) {
+      const n = parseInt(m[1], 16);
+      return '#' + fn(n >> 16, (n >> 8) & 255, n & 255).map(v => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')).join('');
+    }
+    m = /^rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)$/.exec(value);
+    if (m) {
+      const [r, g, b] = fn(+m[1], +m[2], +m[3]);
+      return `rgba(${r},${g},${b},${m[4]})`;
+    }
+    return value;
+  }
+  function nightTheme(th) {
+    const out = {};
+    for (const [k, v] of Object.entries(th)) out[k] = mapColours(v, nightColour);
+    return Object.assign(out, { night: true, clouds: false });
+  }
+  // The same layout under snow: the ground, hedges, roofs and water take the
+  // snow theme's colours; the sea and the desert's style stay as they are.
+  const SNOW_KEYS = ['base', 'fields', 'rows', 'hedge', 'tree', 'airfield', 'airfieldStripe', 'road', 'roadEdge',
+    'river', 'riverEdge', 'concrete', 'taxi', 'asphalt', 'roof'];
+  function snowTheme(th, snow) {
+    const out = Object.assign({}, th);
+    // `river` is both the river's colour and the switch that paints one, so a
+    // landscape without a river must not be given the snow theme's.
+    for (const k of SNOW_KEYS) {
+      if ((k === 'river' || k === 'riverEdge') && !th.river) continue;
+      if (snow[k] != null) out[k] = snow[k];
+    }
+    if (th.sand) out.sand = '#e4e9ec';
+    return Object.assign(out, { snowfall: true, treeSnow: true });
+  }
+
+  function rainfall(n) {
+    return Array.from({ length: n }, () => ({ x: Math.random() * W, y: Math.random() * H, v: 380 + Math.random() * 160, l: 7 + Math.random() * 7 }));
+  }
+  function updateRain(drops, dt) {
+    for (const d of drops) {
+      d.y += d.v * dt; d.x -= d.v * 0.18 * dt;
+      if (d.y > H + 10) { d.y = -10; d.x = Math.random() * (W + 80); }
+    }
+  }
+  function drawRain(ctx, drops) {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(210,225,240,0.32)'; ctx.lineWidth = 0.8; ctx.lineCap = 'round';
+    ctx.beginPath();
+    for (const d of drops) { ctx.moveTo(d.x, d.y); ctx.lineTo(d.x + d.l * 0.18, d.y - d.l); }
+    ctx.stroke();
+    ctx.restore();
+  }
+  // Fog: a pale wash, thickest at the edges, under the approach lights and
+  // the aircraft (so it changes how you land, never what you can see).
+  let fogCache = null;
+  function fog(ctx, t) {
+    if (!fogCache) {
+      const g = ctx.createRadialGradient(W / 2, H / 2, 120, W / 2, H / 2, 620);
+      g.addColorStop(0, 'rgba(226,231,233,0.38)');
+      g.addColorStop(1, 'rgba(226,231,233,0.8)');
+      fogCache = g;
+    }
+    ctx.save();
+    ctx.fillStyle = fogCache;
+    ctx.fillRect(0, 0, W, H);
+    // slow drifting banks
+    ctx.globalAlpha = 0.18;
+    ctx.fillStyle = '#eef1f2';
+    for (let i = 0; i < 5; i++) {
+      const x = ((t * (6 + i * 2) + i * 230) % (W + 400)) - 200, y = 70 + i * 115;
+      ctx.beginPath(); ctx.ellipse(x, y, 190, 34, 0, 0, TAU); ctx.fill();
+    }
+    ctx.restore();
+  }
+
   function snowfall(n) {
     return Array.from({ length: n }, () => ({ x: Math.random() * W, y: Math.random() * H, r: 0.6 + Math.random() * 1.4, v: 14 + Math.random() * 18, ph: Math.random() * TAU }));
   }
@@ -1101,6 +1186,7 @@ const Art = (() => {
   return {
     COLORS, mulberry32, buildTerrain, sprite, icon, aircraft, aircraftShadow, approach, route, trail,
     incoming, storm, stormSprite, sky, updateSky, cloudLayer, snowfall, updateSnow, drawSnow, effect,
+    nightTheme, snowTheme, rainfall, updateRain, drawRain, fog,
     foam, vignette, designator, hexA, glyph, setBoost,
   };
 })();

@@ -295,10 +295,12 @@ Game Night.
 
 ---
 
-## 5. Current state (v1.26.0)
+## 5. Current state (v1.27.0)
 
 **Done:**
 
+- [x] Conditions: Dusk, Night, Snow, Storm and Fog on any cleared airport,
+  each with its own rule; stamps and the Passport (v1.27.0)
 - [x] Who's playing: a browser without a profile is asked once; guests'
   shifts kept anonymously for the owner's Activity page (who, when, how
   far, where people struggle); time and last played on the records
@@ -839,7 +841,7 @@ The first big new mechanic (section 6).
 - **Done when:** a teaching airport and two existing airports run arrivals
   and departures together, and a runway incursion is impossible to miss.
 
-### Phase 5: free play and conditions (free play ✅ v1.25.0)
+### Phase 5: free play and conditions ✅ (v1.25.0, v1.27.0)
 
 Planned 31 October 2026. Two parts, built and shipped in this order:
 free play first (it's the "try out different options" part, and it needs
@@ -897,7 +899,7 @@ never stars, Endless boards or medals.
 haven't been taught never shows; a free-play run never changes stars or a
 leaderboard.
 
-#### Part B: conditions (v1.26.0)
+#### Part B: conditions ✅ (v1.27.0)
 
 **What each condition is.** Each changes how the airport looks *and* one
 rule about how it plays, so a stamp means something. Everything else (the

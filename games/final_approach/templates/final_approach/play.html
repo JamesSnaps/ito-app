@@ -54,6 +54,7 @@
           <span class="foot-actions">
             <a class="btn ghost small" href="{{ url_for('hub') }}"><svg class="btn-arrow" viewBox="0 0 14 10" aria-hidden="true"><path d="M5 1L1 5l4 4M1.4 5H13"/></svg>Game Night</a>
             <a class="btn ghost small" href="{{ url_for('final-approach.stats_page') }}">Records</a>
+            <button id="btn-passport" class="btn ghost small">Passport</button>
             <button id="btn-settings" class="btn ghost small">Settings</button>
           </span>
         </div>
@@ -80,6 +81,7 @@
             </div>
           </div>
           <p class="pass-hint" id="pass-hint"></p>
+          <div class="pass-conds hidden" id="pass-conds" aria-label="Conditions"></div>
           <div class="pass-legend" id="pass-legend"></div>
         </div>
       </div>
@@ -121,6 +123,7 @@
       <div class="board">
         <div id="result-flaps" class="big"></div>
         <div id="result-stars"></div>
+        <button id="result-stamp" class="result-stamp hidden" aria-label="Open the passport"></button>
         <p id="result-text"></p>
         <p id="result-record" class="result-record"></p>
         <div class="buttons">
@@ -155,6 +158,25 @@
       </div>
     </div>
   </div>
+
+  {# The Passport: condition stamps, a contents page then a page per airport
+     (passport.js draws it). #}
+  <div id="passport" class="overlay hidden">
+    <div class="pp-book">
+      <div class="pp-band"><span class="pp-title"></span><span class="pp-folio"></span></div>
+      <div class="pp-page"></div>
+      <div class="pp-nav">
+        <button class="btn ink small pp-prev" aria-label="Previous page">‹</button>
+        <button class="btn ink small pp-contents">Contents</button>
+        <button class="btn ink small pp-next" aria-label="Next page">›</button>
+        <button class="btn ink small pp-close">Close</button>
+      </div>
+    </div>
+  </div>
+  {# Rough edges for inked stamps, shared by every stamp on the page. #}
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <filter id="fa-ink"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="3" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="1.6"/></filter>
+  </svg>
 
   {# Asked once per browser when it has no Game Night profile (game.js,
      askWhoIsPlaying). Guests can always play; only profiles keep records. #}
@@ -209,6 +231,7 @@
   <script src="{{ asset('profiles.js') }}"></script>
   <script src="{{ asset('final-approach/levels.js') }}"></script>
   <script src="{{ asset('final-approach/art.js') }}"></script>
+  <script src="{{ asset('final-approach/passport.js') }}"></script>
   <script src="{{ asset('final-approach/flap.js') }}"></script>
   <script src="{{ asset('final-approach/game.js') }}"></script>
 {% endblock %}
