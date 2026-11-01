@@ -1373,12 +1373,16 @@
     p.pend = null;
     if (p.state !== 'fly') return;
     let landing = q.landing;
-    // The runway may have closed, or the wind turned, while it was on its way.
+    // The runway may have closed, or the wind turned, while it was on its way:
+    // break off, as any go-around does (no route, fly on and be given another).
     if (landing && (isClosed(landing.runway, p) || (landing.kind !== 'pad' && q.flipped !== S.flipped))) {
-      landing = null;
+      p.path = []; p.landing = null;
+      if (p.hold && !p.hold.on) p.hold = null;
       addText(p.x, p.y - 22, 'Go around', '#ffffff', 13);
+      say('say_goaround', p, { priority: true });
+      return;
     }
-    p.path = q.path;
+    p.path = sinceStart(p, q.path, q.from);
     p.landing = landing;
     if (q.hold) {
       const slot = freeSlot(q.hold.fix, p);
@@ -1389,6 +1393,21 @@
     const b = S.radar && S.radar.seen.get(p);
     if (b) b.path = p.path.slice();
     if (!b) S.effects.push({ kind: 'ring', x: p.x, y: p.y, color: '#f3ead2', t: 0, life: 0.5 });
+  }
+
+  // A route drawn during a radar fault starts where the blip was. By the time
+  // it reaches the pilot the aircraft is further on, so the start of the
+  // route it has already flown past is dropped: only points behind it and no
+  // further from the route's start than the aircraft itself is (a route that
+  // deliberately turns back further out is left alone).
+  function sinceStart(p, path, from) {
+    if (!from || !path.length) return path;
+    const hx = Math.cos(p.heading), hy = Math.sin(p.heading);
+    const reach = dist(from.x, from.y, p.x, p.y) + 10;
+    let k = 0;
+    while (k < path.length - 1 && (path[k].x - p.x) * hx + (path[k].y - p.y) * hy < 6 &&
+           dist(path[k].x, path[k].y, from.x, from.y) <= reach) k++;
+    return path.slice(k);
   }
 
   // The ransom note: three rows of flaps on the HUD, under the landed count.
@@ -2191,7 +2210,11 @@
     let into = null;
     if (commsOn()) {
       into = Object.create(p);
-      Object.assign(into, { pendingOf: p, path: pick.end ? p.path.slice() : [], landing: null, hold: null, flipped: S.flipped });
+      // During a radar fault a fresh route starts at the blip you touched, not
+      // at the aircraft's hidden position (applyRoute trims what it's passed).
+      const blip = !pick.end && S.radar && S.radar.seen.get(p);
+      Object.assign(into, { pendingOf: p, path: pick.end ? p.path.slice() : [], landing: null, hold: null, flipped: S.flipped,
+        from: blip ? { x: blip.x, y: blip.y } : null });
     } else if (!pick.end) {
       p.path = [];
       p.landing = null;
@@ -2199,7 +2222,7 @@
       // stays in the hold until the new route has a point (a tap is no harm).
       if (p.hold && !p.hold.on) p.hold = null;
     }
-    const from = pick.end || { x: p.x, y: p.y };
+    const from = pick.end || (into && into.from) || { x: p.x, y: p.y };
     S.drawing = { plane: p, into, pointerId: e.pointerId, last: { x: from.x, y: from.y }, done: false, extending: !!pick.end };
     extendRoute(w);
   });
