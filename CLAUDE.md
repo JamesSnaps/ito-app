@@ -1497,7 +1497,7 @@ it current when you do (its "Current state" and roadmap especially).
   corner. A pixel check found every airport within 0.25% of its old
   painting. Weather particles, clouds and fog cover `B`; diverting aircraft
   leave at `B` + 40. `drawBoundary` dims beyond the airspace and draws the
-  dashed amber edge with "<AIRPORT> CONTROL ZONE".
+  dashed amber edge with "<CODE> CONTROL ZONE" (the airport's three letters, by choice).
 - **`window.__finalApproach`** exposes the state for Playwright checks,
   plus `update` (step the simulation, e.g. ten minutes in a loop),
   `queueArrival`, `clearOfStorms`, `stormAt`, `clearOfTraffic`, `track`,

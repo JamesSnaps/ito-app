@@ -1716,8 +1716,8 @@
 
   // ---------- the edge of the control zone ----------
   // Outside the airspace the landscape carries on, a little dimmer, behind a
-  // dashed amber line named after the airport, like a real control zone
-  // ("Thunderheads CTR"). Only drawn where the screen shows past the airspace.
+  // dashed amber line labelled with the airport's code ("THD CONTROL ZONE").
+  // Only drawn where the screen shows past the airspace.
   function drawBoundary(Bd, t) {
     if (Bd.x0 >= 0 && Bd.y0 >= 0 && Bd.x1 <= W && Bd.y1 <= H) return;
     ctx.save();
@@ -1734,7 +1734,7 @@
     ctx.letterSpacing = '2px';
     ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
     ctx.fillStyle = 'rgba(242,179,61,0.95)';
-    const label = `${(S.level.base || S.level).name.toUpperCase()} CONTROL ZONE`;
+    const label = `${S.level.code} CONTROL ZONE`;
     if (Bd.x0 < -14) {
       ctx.save(); ctx.translate(-9, H / 2); ctx.rotate(-Math.PI / 2); ctx.fillText(label, 0, 0); ctx.restore();
       ctx.save(); ctx.translate(W + 9, H / 2); ctx.rotate(Math.PI / 2); ctx.fillText(label, 0, 0); ctx.restore();
