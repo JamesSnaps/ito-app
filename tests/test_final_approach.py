@@ -118,10 +118,26 @@ def test_the_page_is_told_where_each_sound_lives():
 
 
 def test_the_sounds_stay_a_small_download():
-    """Effects load when the game starts and music in the background; keep
-    the whole lot comfortably under 8 MB."""
-    total = sum(path.stat().st_size for path in (STATIC / "audio").glob("*.mp3"))
-    assert total < 8 * 1024 * 1024, total
+    """Effects and voices all load when the game starts, so that download is
+    what a phone waits for: keep it under 4 MB (3.1 MB at v1.29.0). Music,
+    landscape beds and engine loops load in the background as they're
+    needed: under 6 MB (3.7 MB)."""
+    later = re.compile(r"^(music|bed|engine)_")
+    files = list((STATIC / "audio").glob("*.mp3"))
+    upfront = sum(f.stat().st_size for f in files if not later.match(f.name))
+    background = sum(f.stat().st_size for f in files if later.match(f.name))
+    assert upfront < 4 * 1024 * 1024, upfront
+    assert background < 6 * 1024 * 1024, background
+
+
+def test_every_hold_fix_is_read_back_by_name():
+    """Joining a hold, the pilot says the fix's name ("Holding at Bovingdon"),
+    so every name in HOLD_FIXES needs its lines."""
+    names = set(sound_list())
+    levels = (STATIC / "levels.js").read_text(encoding="utf-8")
+    block = levels.split("const HOLD_FIXES = {")[1].split("};")[0]
+    for key in re.findall(r"([A-Z]{3}):", block):
+        assert f"say_hold_{key.lower()}_1" in names and f"say_hold_{key.lower()}_2" in names, key
 
 
 def test_every_runway_number_has_a_readback():
@@ -447,7 +463,7 @@ def test_activity_sums_people_and_airports():
     data = game.activity_payload()
     assert data["totals"]["today"] == 3 and data["totals"]["week_people"] == 1 and data["totals"]["week_guests"] == 1
     people = {p["name"]: p for p in data["people"]}
-    assert people["Louis"]["progress"] == "1 of 10" and people["Louis"]["stars"] == 2
+    assert people["Louis"]["progress"] == "1 of 11" and people["Louis"]["stars"] == 2
     assert people["Louis"]["furthest"] == "Meadow Strip" and people["Guest ABCD"]["stars"] is None
     twin = next(a for a in data["airports"] if a["code"] == "TWF")
     assert twin["shifts"] == 2 and twin["crashes"] == 2 and twin["clear_rate"] == 0
@@ -481,7 +497,8 @@ def test_each_airport_offers_the_conditions_that_differ_from_it():
     assert offered["WVN"] == ("dusk", "night", "storm", "fog")          # already snow
     assert offered["NGT"] == ("snow", "storm", "fog")                   # already night
     assert offered["INF"] == ()
-    assert sum(len(v) for v in offered.values()) == 45
+    assert offered["HLD"] == ("dusk", "night", "snow", "storm", "fog")  # Holding Pattern (v1.29.0): meadow
+    assert sum(len(v) for v in offered.values()) == 50
 
 
 def test_a_condition_earns_a_stamp_not_airport_stars():
@@ -519,4 +536,115 @@ def test_the_game_page_has_the_passport():
     body = page()
     for needle in ('id="passport"', 'id="btn-passport"', 'id="pass-conds"', 'id="result-stamp"',
                    'final-approach/passport.js', 'id="fa-ink"'):
+        assert needle in body, needle
+
+
+# --- holding and disruptions (v1.29.0) -------------------------------------------
+
+def level_entries():
+    levels = (STATIC / "levels.js").read_text(encoding="utf-8")
+    return levels.split("const LEVELS")[1].split("\n  {\n")[1:]
+
+
+def test_holding_pattern_comes_third_with_its_own_id():
+    """It teaches holding early. Ids are the keys for saves and records, so
+    it gets a new one and nobody else's moves; the board numbers by position."""
+    from games.final_approach import game
+    ids = [int(re.search(r"id: (\d+)", e).group(1)) for e in level_entries()]
+    assert len(ids) == len(set(ids))
+    assert ids[:4] == [1, 2, 12, 3] and ids[-2:] == [11, 10]
+    hld = game.airports()[12]
+    assert hld["code"] == "HLD" and hld["name"] == "Holding Pattern" and hld["target"] and not hld["endless"]
+    assert len([a for a in game.airports().values() if not a["endless"]]) == 11
+
+
+def test_unlocking_never_closes_an_airport_someone_has_reached():
+    """Inserting an airport early must not lock anyone out: an airport is open
+    when the one before it is cleared, or it or any later one is."""
+    js = (STATIC / "game.js").read_text(encoding="utf-8")
+    rule = js.split("function isUnlocked(L) {")[1].split("\n  }")[0]
+    assert "cleared(LEVELS[i - 1].id)" in rule and "cleared(L.id)" in rule
+    assert "LEVELS.slice(i + 1).some(" in rule
+
+
+def test_every_airport_has_two_or_three_hold_fixes_clear_of_its_runways():
+    """Fix names come from one shared pool (spoken lines will be recorded per
+    name), placed per airport."""
+    import math
+    levels = (STATIC / "levels.js").read_text(encoding="utf-8")
+    pool = dict(re.findall(r"([A-Z]{3}): '([A-Za-z]+)'", levels.split("const HOLD_FIXES = {")[1].split("};")[0]))
+    assert pool == {"BOV": "Bovingdon", "OCK": "Ockham", "LAM": "Lambourne", "BIG": "Biggin", "WIL": "Willo", "TIM": "Timba"}
+    used = set()
+    for entry in level_entries():
+        code = re.search(r"code: '([A-Z]{3})'", entry).group(1)
+        fixes = re.findall(r"\{ fix: '([A-Z]{3})', x: (\d+), y: (\d+) \}", entry)
+        assert 2 <= len(fixes) <= 3, code
+        assert len({f[0] for f in fixes}) == len(fixes)
+        assert all(f[0] in pool for f in fixes), code
+        used.update(f[0] for f in fixes)
+        runways = re.findall(r"kind: '(long|short)', x: (\d+), y: (\d+), angle: (-?\d+), length: (\d+)", entry)
+        pads = re.findall(r"kind: 'pad', x: (\d+), y: (\d+)", entry)
+        for _, x, y in fixes:
+            x, y = int(x), int(y)
+            # inside the airspace with room for the whole stack (rings out to 52)
+            assert 80 <= x <= 880 and 120 <= y <= 520, (code, x, y)
+            for px, py in pads:
+                assert math.dist((x, y), (int(px), int(py))) > 120, code
+            for _, rx, ry, angle, length in runways:
+                a = math.radians(int(angle))
+                ax, ay = int(rx) - math.cos(a) * 190, int(ry) - math.sin(a) * 190
+                bx, by = int(rx) + math.cos(a) * (int(length) + 190), int(ry) + math.sin(a) * (int(length) + 190)
+                dx, dy = bx - ax, by - ay
+                t = max(0, min(1, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy)))
+                # well clear of the runway and both approaches (either wind)
+                assert math.dist((x, y), (ax + t * dx, ay + t * dy)) > 85, (code, x, y)
+    assert used == set(pool)
+
+
+def test_disruptions_are_taught_before_they_turn_up():
+    entries = level_entries()
+    kinds_at = []
+    for entry in entries:
+        found = re.search(r"disruptions: \{ kinds: \[([^\]]*)\], every: \[(\d+), (\d+)\], first: (\d+) \}", entry)
+        kinds_at.append(re.findall(r"'(\w+)'", found.group(1)) if found else [])
+        if found:
+            low, high, first = map(int, found.groups()[1:])
+            assert 40 <= low <= high and first >= 25          # never in a shift's first seconds
+    codes = [re.search(r"code: '([A-Z]{3})'", e).group(1) for e in entries]
+    hld = codes.index("HLD")
+    assert kinds_at[hld] == ["runway"]
+    assert not any(kinds_at[:hld])                             # the first airports stay gentle
+    assert all(k in ("runway", "drone", "wave") for ks in kinds_at for k in ks)
+    assert not kinds_at[codes.index("INF")]                    # Endless: not yet
+
+
+def test_free_play_disruptions_are_checked_and_old_pages_still_count():
+    c = client()
+    louis = profile(c, "Louis")
+    for value in ("off", "some", "lots"):
+        assert post(c, louis, shift(free=free(disruptions=value))).status_code == 200, value
+    # a shift from a page older than v1.29.0, still waiting in someone's outbox
+    assert post(c, louis, shift(free=free())).status_code == 200
+    for bad in (free(disruptions="loads"), free(disruptions=True), dict(free(disruptions="some"), extra=1)):
+        assert post(c, louis, shift(free=bad)).status_code == 400, bad
+    recent = c.get("/final-approach/api/stats").get_json()["recent"]
+    assert recent[0]["free"]["disruptions"] == "off" and recent[0]["free_summary"] == "As usual"
+    assert [r["free_summary"] for r in recent[1:4]] == ["Lots of disruptions", "Disruptions", "As usual"]
+    body = c.get("/final-approach/stats").get_data(as_text=True)
+    assert "Lots of disruptions" in body
+
+
+def test_free_play_summary_matches_the_game():
+    from games.final_approach.game import free_summary
+    assert free_summary(free(traffic="rush", storms=2, emergencies="some", disruptions="lots", length="endless")) == \
+        "Rush · 2 storms · emergencies · lots of disruptions · endless"
+    assert free_summary(free()) == "As usual"                  # no key at all: recorded before v1.29.0
+    js = (STATIC / "game.js").read_text(encoding="utf-8")
+    assert "'lots of disruptions' : 'disruptions'" in js
+
+
+def test_the_game_page_has_the_disruption_parts():
+    body = page()
+    for needle in ('id="hud-dis"', 'id="hud-dis-flaps"', 'id="notice"', 'id="explain"', 'id="btn-explain-ok"',
+                   'id="free-disruptions-row"', 'data-k="disruptions"'):
         assert needle in body, needle

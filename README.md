@@ -76,7 +76,7 @@ bring it down on the runway that matches its colour, lined up with the
 approach lights. Keep everything apart; low fuel, storm cells and wind
 shifts make it harder airport by airport.
 
-- Ten airports, each adding one idea, plus an Endless mode. Emergencies
+- Eleven airports, each adding one idea, plus an Endless mode. Emergencies
   (fuel, medical, air ambulance, damaged aircraft, State One) come first:
   land one for a medal, lose one and it costs two strikes. Lifeline teaches
   them; Endless has them Off, Some or Lots. Grown-ups' profiles also get a
@@ -89,8 +89,17 @@ shifts make it harder airport by airport.
   to any device.
 - **Free play** on any airport you've cleared: shift or endless, light to
   rush traffic, which aircraft, low fuel, 0–3 storms, wind shifts and
-  emergencies. A toggle only appears once the airport that teaches it is
-  cleared. Free play earns no stars and never ranks; the records tag it.
+  emergencies and disruptions. A toggle only appears once the airport that
+  teaches it is cleared. Free play earns no stars and never ranks; the
+  records tag it.
+- **Holding and disruptions** (v1.29.0): every airport has two or three hold
+  fixes (BOV, OCK, LAM…): let a route go at one and the aircraft circles
+  there, using fuel, until you draw it out; up to four stack on a fix
+  without conflicting. Holding Pattern, the third airport, teaches it, along
+  with disruptions: a runway closed by a deer, a dog or a runaway luggage
+  trolley, a drone closing a patch of sky, and a wave of diversions from
+  another airport. Each is announced on the board with a countdown, one at a
+  time, never during an emergency, and explained the first time it happens.
 - **Conditions** on any airport you've cleared: Dusk (an evening rush as
   it gets dark), Night (arrivals seen a second later), Snow (icy runways:
   line up within 45°), Storm (an extra storm cell) and Fog (follow the
