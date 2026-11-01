@@ -33,7 +33,7 @@ class GameSpec:
     available: bool = True
     # The iOS app has a screen of its own for this game. Games without one
     # are still in the app: /api/games lists them, and the app opens their
-    # web page full screen (app 1.14.0) — so a new web game reaches the app
+    # web page full screen (app 1.16.0) — so a new web game reaches the app
     # with no app update.
     native_app: bool = False
 

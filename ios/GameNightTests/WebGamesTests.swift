@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import GameNight
 
-/// The hub's web games (app 1.14.0): the server's list decodes, the app keeps
+/// The hub's web games (app 1.16.0): the server's list decodes, the app keeps
 /// its own tiles for its own games, the list is kept for offline, a web game
 /// is signed in as the app's profile exactly as the web stores it, and links
 /// off the server leave the game.

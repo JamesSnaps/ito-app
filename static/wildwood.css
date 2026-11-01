@@ -1,8 +1,8 @@
 /* Wildwood: a clearing in the wood. Moss-green ground, warm light from
    above, and cards in four bright colours with an animal in each. Scoped
-   under .wildwood on <body>, over the shared shell. Baloo 2 (the app's own,
-   self-hosted) for every number and heading: round, friendly, and readable
-   by someone who's just learnt to read. No images, nothing fetched. */
+   under .wildwood on <body>, over the shared shell. Bricolage Grotesque (the
+   app's own, self-hosted) for every number and heading: bold, open, and
+   readable by someone who's just learnt to read. No images, nothing fetched. */
 
 .wildwood {
   --ww-bg: #13291b;

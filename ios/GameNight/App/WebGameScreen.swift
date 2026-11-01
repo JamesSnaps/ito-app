@@ -9,7 +9,7 @@ struct WebGameLaunch: Identifiable {
 }
 
 /// A web-only game (Final Approach, and whatever the server lists later)
-/// played full screen, signed in as this device's profile (app 1.14.0).
+/// played full screen, signed in as this device's profile (app 1.16.0).
 ///
 /// A WKWebView rather than the Safari sheet: no browser chrome, its own
 /// persistent storage (the game's progress and settings survive), sound

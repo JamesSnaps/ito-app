@@ -9,7 +9,7 @@ be scanned inside the app. The rules and the game state live on the server;
 the app shows the table and sends moves. Games the app has no screen of its
 own for — Final Approach, and any web game added to the server later — get a
 hub tile from the server's `/api/games` and play full screen as their web
-page, signed in as the app's profile (1.14.0). See `../CLAUDE.md` → "iOS
+page, signed in as the app's profile (1.16.0). See `../CLAUDE.md` → "iOS
 app" (and "Web games in the app") for the design notes.
 
 ## Develop
@@ -118,10 +118,10 @@ Then in App Store Connect → TestFlight:
 The server has to be running a version with the app's API before a build
 goes out — the app talks to production by default: v1.6.1 for Flip 7, v1.8.2
 for 1.2.0 (Fugitive, profiles and the `/fugitive/play` and `/me/link` app
-links), v1.31.1 for 1.14.0's web-game tiles (`/api/games`; an older server
+links), v1.33.1 for 1.16.0's web-game tiles (`/api/games`; an older server
 just means no web tiles).
 
-### What's new in 1.14.0 (for TestFlight's "What to Test")
+### What's new in 1.16.0 (for TestFlight's "What to Test")
 
 > Final Approach is in the app: its tile on the home screen opens it full
 > screen, signed in as you, so your stars and records are yours. To leave a

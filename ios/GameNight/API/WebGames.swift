@@ -1,6 +1,6 @@
 import Foundation
 
-// The hub's web-only games (app 1.14.0): Final Approach today, and whatever
+// The hub's web-only games (app 1.16.0): Final Approach today, and whatever
 // the server's registry gains later, with no app update. The server lists
 // every game (`GET /api/games`); the app draws its own tiles for the games it
 // has screens for and a tile opening the web page full screen for the rest
@@ -36,7 +36,7 @@ nonisolated struct GameList: Decodable, Equatable {
 }
 
 extension GameNightClient {
-    /// The hub's games, in the hub's order (server 1.31.1+).
+    /// The hub's games, in the hub's order (server 1.33.1+).
     func games() async throws -> [GameListing] {
         let list: GameList = try await send("GET", "api/games")
         return list.games

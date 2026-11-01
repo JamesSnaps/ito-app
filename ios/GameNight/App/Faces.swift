@@ -82,7 +82,7 @@ struct AvatarView: View {
         ZStack {
             Circle().fill(Color(hue: Self.hue(name), saturation: 0.45, brightness: 0.45))
             Text(Self.initials(name))
-                .font(.system(size: size * 0.38, weight: .heavy, design: .rounded))
+                .font(Theme.display(size * 0.38, weight: .heavy))
                 .foregroundStyle(.white)
         }
     }
