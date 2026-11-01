@@ -127,7 +127,8 @@ shifts make it harder airport by airport.
 - The landscape fills any screen, phone or tablet: the airspace is the
   same 960 × 600 everywhere (so the game is equally hard on every device),
   and the scenery carries on past it, dimmed behind the control zone's
-  dashed amber edge.
+  dashed amber edge. Arrivals can be seen flying in from beyond it, and
+  sometimes check in as they cross.
 - The menu is a split-flap arrivals board and each briefing is a boarding
   pass. Every airport is painted in code; there are no image files.
 - Its playbook (what it is, how it's built, where it's going) is
