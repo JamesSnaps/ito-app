@@ -61,6 +61,56 @@ nonisolated struct ProfileLink: Decodable, Equatable {
 
 nonisolated struct Done: Decodable, Equatable {}
 
+// Pairing (server 1.36.0): the other way round from the link above. A new
+// device picks a face and asks; a device that's already that person says yes.
+
+/// What asking hands the new device: the code both screens show, the secret
+/// only it keeps (only that collects the token), and the page its QR opens.
+nonisolated struct PairAsk: Decodable, Equatable {
+    let code: String
+    let secret: String
+    let url: String
+    let expiresIn: Int
+}
+
+/// The asking device's poll: "waiting", "refused", or "approved" with the
+/// profile and this device's token, handed over once.
+nonisolated struct PairStatus: Decodable, Equatable {
+    let status: String
+    let profile: Profile?
+    let token: String?
+}
+
+/// A request waiting for this device's profile to answer.
+nonisolated struct PairRequest: Decodable, Equatable, Identifiable {
+    let code: String
+    /// "Chrome on a Mac", from the asking device's browser.
+    let device: String
+    /// "home" or "away", or nil when the server doesn't know.
+    let `where`: String?
+    let expiresIn: Int
+
+    var id: String { code }
+
+    /// "Chrome on a Mac, on the home Wi-Fi" — what the person saying yes reads.
+    var description: String {
+        switch `where` {
+        case "home": "\(device), on the home Wi-Fi"
+        case "away": "\(device), not on the home Wi-Fi"
+        default: device
+        }
+    }
+
+    /// "K7F 2QD": the code as both screens show it.
+    static func spaced(_ code: String) -> String {
+        code.count == 6 ? "\(code.prefix(3)) \(code.suffix(3))" : code
+    }
+}
+
+nonisolated struct PairRequests: Decodable, Equatable {
+    let requests: [PairRequest]
+}
+
 /// Signing out: the last device out deletes the profile (server 1.8.1+;
 /// older servers leave `deleted` out).
 nonisolated struct Forgotten: Decodable, Equatable {
@@ -102,6 +152,33 @@ extension GameNightClient {
 
     func redeemLink(code: String) async throws -> HeldProfile {
         try await send("POST", "api/profiles/link/\(code)")
+    }
+
+    // MARK: Pairing
+
+    static let pairSecretHeader = "X-Pair-Secret"
+
+    func askToPair(profileID: String) async throws -> PairAsk {
+        try await send("POST", "api/profiles/pair", body: ["profile": profileID])
+    }
+
+    /// A 404 means the request has gone: run out, or cancelled.
+    func pairStatus(code: String, secret: String) async throws -> PairStatus {
+        try await send("GET", "api/profiles/pair/\(code)", token: secret, tokenHeader: Self.pairSecretHeader)
+    }
+
+    func cancelPair(code: String, secret: String) async {
+        let _: Done? = try? await send("DELETE", "api/profiles/pair/\(code)", token: secret, tokenHeader: Self.pairSecretHeader)
+    }
+
+    func pairRequests(token: String) async throws -> [PairRequest] {
+        let waiting: PairRequests = try await send("GET", "api/profiles/me/pairs", token: token, tokenHeader: Self.profileHeader)
+        return waiting.requests
+    }
+
+    func answerPair(code: String, approve: Bool, token: String) async throws {
+        let _: Done = try await send("POST", "api/profiles/me/pairs/\(code)", body: ["approve": approve],
+                                     token: token, tokenHeader: Self.profileHeader)
     }
 
     /// True if this was the last device, so the profile is gone too.

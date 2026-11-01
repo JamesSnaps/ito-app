@@ -41,6 +41,8 @@ struct HubView: View {
     @State private var webGames: [GameListing] = WebGames.webOnly(WebGames().cached)
     @State private var webGame: WebGameLaunch?
     @State private var linkError: String?
+    @State private var pairs = PairWatcher.shared
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     var body: some View {
@@ -128,6 +130,18 @@ struct HubView: View {
         .fullScreenCover(item: $webGame) { launch in WebGameScreen(launch: launch) }
         .sheet(isPresented: $scanning) {
             ScanSheet { url in Task { await openLink(url) } }
+        }
+        // Another device asking to be you: answered here, over the hub or You.
+        .sheet(item: $pairs.request) { request in PairApprovalSheet(request: request) }
+        .task(id: watchingPairs) {
+            guard watchingPairs else { return }
+            // Wait first: closing the scanner turns watching back on while
+            // its link is still opening, and a game may be about to appear.
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(4))
+                if Task.isCancelled { return }
+                await pairs.check()
+            }
         }
         .alert("Couldn’t open that link", isPresented: Binding(get: { linkError != nil }, set: { if !$0 { linkError = nil } })) {
             Button("OK", role: .cancel) {}
@@ -397,9 +411,21 @@ struct HubView: View {
             path = [ItoHostTokens().token(for: code) == nil ? .ito(code) : .itoHost(code)]
         case .profileLink(let code):
             path = [.you(code)]
+        case .pairRequest(let code):
+            Task { if let problem = await pairs.review(code: code) { linkError = problem } }
         case .web(let url):
             webPage = WebPage(url: url)
         }
+    }
+
+    /// Sign-in requests are looked for on the hub and You only, in the
+    /// foreground: never over a game.
+    private var watchingPairs: Bool {
+        let onHub = path.allSatisfy { route in
+            if case .you = route { return true }
+            return false
+        }
+        return onHub && scenePhase == .active && webGame == nil && webPage == nil && !scanning
     }
 
     private func open(_ serverPath: String) {

@@ -377,6 +377,9 @@ SECRET_HEADER = "X-Pair-Secret"
 def device_label(agent):
     """"Chrome on a Mac" from a User-Agent, for the person saying yes."""
     agent = agent or ""
+    # The iOS app's own requests: URLSession names the app, then CFNetwork.
+    if "CFNetwork/" in agent:
+        return "The Game Night app"
     browsers = (("Edg/", "Edge"), ("Firefox/", "Firefox"), ("FxiOS", "Firefox"), ("CriOS", "Chrome"),
                 ("Chrome/", "Chrome"), ("Safari/", "Safari"))
     places = (("iPhone", "an iPhone"), ("iPad", "an iPad"), ("Android", "an Android phone"),

@@ -18,6 +18,7 @@ struct YouScreen: View {
     @State private var confirmingDelete = false
     @State private var confirmingSignOut = false
     @State private var started = false
+    @State private var asking: Profile?
 
     var body: some View {
         ZStack {
@@ -36,6 +37,7 @@ struct YouScreen: View {
                         .padding(.horizontal, 4)
                     } else {
                         createCard
+                        if !faces.profiles.isEmpty { alreadyCard }
                     }
                     if let message {
                         Text(message).font(.subheadline).foregroundStyle(Theme.cream.opacity(0.8))
@@ -83,6 +85,7 @@ struct YouScreen: View {
         } message: {
             Text("It goes from every device. Past games keep the name.")
         }
+        .sheet(item: $asking) { profile in PairAskSheet(profile: profile) }
         .task { await start() }
     }
 
@@ -101,8 +104,16 @@ struct YouScreen: View {
             Button(busy ? "Making it…" : "Make my profile") { Task { await create() } }
                 .buttonStyle(FeltButtonStyle())
                 .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || busy)
-            Text("Already made one on another phone? Open You there, tap Add another device, and scan its code with this one.")
-                .font(.caption).foregroundStyle(Theme.cream.opacity(0.55))
+        }
+    }
+
+    /// Signing in as a profile made on another device: tap your face, and a
+    /// device that's already you says yes (or scan its add-a-device QR).
+    private var alreadyCard: some View {
+        Panel(title: "Already have a profile?") {
+            Text("Tap your face, then say yes on a phone, iPad or computer that’s already you.")
+                .font(.subheadline).foregroundStyle(Theme.cream.opacity(0.75))
+            PairFacePicker { asking = $0 }
         }
     }
 
@@ -150,7 +161,7 @@ struct YouScreen: View {
 
     private var devicesCard: some View {
         Panel(title: "Your other devices") {
-            Text("Scan this with your iPad or another phone to sign it in as you too. It works once, for ten minutes.")
+            Text("On the new device, open Game Night and tap your face: this one will ask you to say yes. Or scan this code with it. It works once, for ten minutes.")
                 .font(.subheadline).foregroundStyle(Theme.cream.opacity(0.75))
             if let link, let qr = QRCode.image(link.url) {
                 Image(uiImage: qr).interpolation(.none).resizable()
