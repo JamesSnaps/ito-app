@@ -5,7 +5,8 @@ concept, not yet a plan: work starts after Final Approach's Disruptions
 part 2. Mockups are drawn to look like the real thing on an
 iPad held sideways; the live mockup is [`img/mockup.html`](img/mockup.html)
 (`?m=scope|dial|voice|lesson`). The first prototype was built in
-v1.32.0: what it has, and what's next, is section 15.*
+v1.34.0: what it has, and what's next, is section 15. Day-to-day work
+(issues, releasing, testing, the release log) is in [the runbook](RUNBOOK.md).*
 
 ## 1. The pitch
 
@@ -308,7 +309,7 @@ Heathrow, departures, debrief replays, readback errors.
   stacks' real levels, or a simplified set).
 - Whether departures come into the first full release or later.
 
-## 15. The prototype (v1.32.0)
+## 15. The prototype (v1.34.0)
 
 Built to the scope of section 12, at `/final-vector/` (a preview tile on
 the hub, and a quiet link under Final Approach's arrivals board). How it's

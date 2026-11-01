@@ -1,0 +1,16 @@
+name: Idea
+description: Something to add or change, for the roadmap
+labels: [idea]
+body:
+  - type: dropdown
+    id: where
+    attributes:
+      label: Which game or app
+      options: [Final Approach, Final Vector, The iOS app, The Game Night hub, Another game]
+    validations: { required: true }
+  - type: textarea
+    id: idea
+    attributes:
+      label: The idea
+      description: What it is and why it'd be good. Who it's for (Louis, grown-ups, everyone)?
+    validations: { required: true }

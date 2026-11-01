@@ -28,7 +28,7 @@ APP_NAME = "Game Night"
 # Bump this in the same commit as any user-visible change, before pushing.
 # Watchtower deploys `latest`, so this is the only way to tell from a phone
 # which build the server is actually running. See CLAUDE.md.
-APP_VERSION = "1.32.0"
+APP_VERSION = "1.34.0"
 
 # The iOS app (ios/project.yml): team C729B84RYG, the paid personal
 # membership Dishes, Keepsake and Brief use. Named in the file Apple checks
@@ -199,6 +199,23 @@ def create_app():
             "game": game.id,
             "path": url_for(game.player_endpoint, code=room.code),
         })
+
+    @app.route("/api/games")
+    def api_games():
+        """The hub's menu for an app: every playable game, in the hub's
+        order, with what its tile needs and the page it opens. `native_app`
+        says the iOS app has a screen of its own for it; the app opens the
+        others' `path` full screen, so a new web game reaches it without an
+        app update (app 1.16.0). Public, like the hub."""
+        return jsonify({"games": [{
+            "id": game.id,
+            "name": game.name,
+            "tagline": game.tagline,
+            "accent": game.accent,
+            "path": url_for(f"{game.id}.landing"),
+            "action": "Start a room" if game.starts_rooms else game.hub_action,
+            "native_app": game.native_app,
+        } for game in playable_games()]})
 
     @app.route("/qr.svg")
     def qr():

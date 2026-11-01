@@ -117,7 +117,7 @@ struct ItoHostView: View {
                     Task { await store.requestDraw() }
                 } label: {
                     Text(store.roundNumber == 0 ? "Draw a card" : "Next card")
-                        .font(.system(size: 19, weight: .heavy, design: .rounded))
+                        .font(Theme.display(19, weight: .heavy))
                         .frame(maxWidth: 420)
                 }
                 .buttonStyle(ItoButtonStyle(primary: true))
@@ -184,7 +184,7 @@ struct ItoCategoryStrip: View {
         let colour = value.map(ItoCategory.colour) ?? Color(hex: 0xC9CCD2)
         return Button { selection = value } label: {
             Text(label.capitalized)
-                .font(.system(size: 15, weight: .heavy, design: .rounded))
+                .font(Theme.display(15, weight: .heavy))
                 .padding(.horizontal, 14).padding(.vertical, 9)
                 .foregroundStyle(on ? Color(hex: 0x2F3033) : colour)
                 .background(on ? colour : colour.opacity(0.12), in: Capsule())
@@ -211,7 +211,7 @@ struct ItoInviteSheet: View {
                         .padding(14).background(.white, in: RoundedRectangle(cornerRadius: 16))
                         .accessibilityLabel("QR code for room \(code)")
                 }
-                Text(code).font(.system(size: 44, weight: .heavy, design: .rounded)).kerning(8)
+                Text(code).font(Theme.display(44, weight: .heavy)).kerning(8)
                 InviteLink(url: url, message: "Join our ito game on Game Night — code \(code)")
                     .font(.headline)
                     .buttonStyle(ItoButtonStyle(primary: true))
@@ -236,7 +236,7 @@ struct ItoButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(primary ? nil : .system(size: 15, weight: .semibold, design: .rounded))
+            .font(primary ? nil : Theme.display(15, weight: .semibold))
             .padding(.horizontal, 22).padding(.vertical, primary ? 15 : 10)
             .foregroundStyle(primary ? Color.white : Ito.muted)
             .background(primary ? Ito.accent : Color.white.opacity(0.06), in: Capsule())

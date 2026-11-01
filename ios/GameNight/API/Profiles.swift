@@ -12,6 +12,32 @@ nonisolated struct Profile: Decodable, Equatable, Identifiable {
     let photo: String?
 }
 
+/// The profile this device holds, if any — the app's `gamenight:me`.
+/// UserDefaults like the game tokens: a profile token can change a name's
+/// photo, nothing more, and the web keeps the same thing in localStorage.
+/// (Here rather than in Faces.swift so the web games' sign-in in
+/// WebGames.swift builds, and is tested, on Linux.)
+nonisolated struct HeldMe: Codable, Equatable {
+    var id: String
+    var name: String
+    var photo: String?
+    var token: String
+}
+
+enum Me {
+    private static let key = "gamenight.me"
+
+    static var current: HeldMe? {
+        get {
+            guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
+            return try? JSONDecoder().decode(HeldMe.self, from: data)
+        }
+        set {
+            UserDefaults.standard.set(newValue.flatMap { try? JSONEncoder().encode($0) }, forKey: key)
+        }
+    }
+}
+
 nonisolated struct ProfileList: Decodable, Equatable {
     let profiles: [Profile]
 }

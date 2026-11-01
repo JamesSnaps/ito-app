@@ -35,6 +35,11 @@ struct HubView: View {
     /// The ito room this device last hosted, once it's confirmed still open.
     @State private var itoRoom: String?
     @State private var webPage: WebPage?
+    /// The server's games this app has no screen for, played full screen as
+    /// their web page. The last list is kept, so they're here at launch and
+    /// with no signal; none at all if the server has never answered.
+    @State private var webGames: [GameListing] = WebGames.webOnly(WebGames().cached)
+    @State private var webGame: WebGameLaunch?
     @State private var linkError: String?
     @Environment(\.horizontalSizeClass) private var sizeClass
 
@@ -109,6 +114,8 @@ struct HubView: View {
                         await OfflineUploads.sendWaiting()
                         await WildwoodOfflineUploads.sendWaiting()
                     }
+                    // New web games appear without an app update.
+                    Task { webGames = await WebGames().refresh(from: AppSettings.client) }
                     await Faces.shared.load()
                     await checkResume()
                     await checkItoRoom()
@@ -118,6 +125,7 @@ struct HubView: View {
         // Awake like the tables: the scorekeeper and a spectator board sit
         // on the table all night.
         .sheet(item: $webPage) { page in SafariView(url: page.url).ignoresSafeArea().keepsScreenAwake() }
+        .fullScreenCover(item: $webGame) { launch in WebGameScreen(launch: launch) }
         .sheet(isPresented: $scanning) {
             ScanSheet { url in Task { await openLink(url) } }
         }
@@ -207,6 +215,7 @@ struct HubView: View {
                 fugitiveTile
                 wildwoodTile
                 itoTile
+                ForEach(webGames) { webTile($0) }
             }
         } else {
             Grid(horizontalSpacing: 20, verticalSpacing: 20) {
@@ -218,28 +227,44 @@ struct HubView: View {
                     wildwoodTile
                     itoTile
                 }
+                // Web games after, two to a row like the rest.
+                ForEach(webRows, id: \.[0].id) { row in
+                    GridRow {
+                        ForEach(row) { webTile($0) }
+                        if row.count == 1 {
+                            Color.clear.gridCellUnsizedAxes([.horizontal, .vertical])
+                        }
+                    }
+                }
             }
         }
+    }
+
+    private var webRows: [[GameListing]] {
+        stride(from: 0, to: webGames.count, by: 2).map { Array(webGames[$0..<min($0 + 2, webGames.count)]) }
     }
 
     // Every tile is the same shape: one button across, then Records and Rules.
 
     private var flip7Tile: some View {
         GameTile(title: "Flip 7", accent: Theme.gold,
-                 blurb: "Push your luck, bank your cards — first to 200 takes it. The app is the deck: it shuffles, deals and adds it all up. Playing with the real cards? Keep score here instead.") {
+                 blurb: "Push your luck, bank your cards — first to 200 takes it.") {
             Flip7Art()
         } actions: {
-            HStack(spacing: 10) {
+            // Both ways in are "a game", so each is named by what's on the
+            // table and says so in a line — "Start a game" beside "Keep
+            // score" read as the gold one either way.
+            VStack(spacing: 10) {
                 Button { path.append(.newGame) } label: {
-                    Label("Start a game", systemImage: "suit.spade.fill")
+                    ChoiceLabel(title: "Play on the app", line: "No cards needed — the app deals", systemImage: "iphone")
                 }
-                .buttonStyle(FeltButtonStyle(kind: resumable == nil ? .gold : .ghost))
+                .buttonStyle(FeltChoiceStyle(kind: resumable == nil ? .gold : .ghost))
                 // The real deck's score pad is the web's scorekeeper, not
                 // rebuilt here: its scoring and records are the server's pages.
-                Button { open("/flip7/") } label: {
-                    Label("Keep score", systemImage: "list.number")
+                Button { open("/flip7/score") } label: {
+                    ChoiceLabel(title: "Score a real game", line: "Got the box out? We’ll add it up", systemImage: "pencil.and.list.clipboard")
                 }
-                .buttonStyle(FeltButtonStyle(kind: .ghost))
+                .buttonStyle(FeltChoiceStyle(kind: .ghost))
             }
             moreRow(records: { path.append(.records) }, rules: "/flip7/rules")
         }
@@ -294,6 +319,26 @@ struct HubView: View {
             .buttonStyle(FeltButtonStyle(kind: .ghost))
             // ito's records are the server's stats page.
             moreRow(records: { open("/ito/stats") }, rules: "/ito/rules")
+        }
+    }
+
+    /// A game the app has no screen for: its web page, full screen, signed in
+    /// as this device's profile. Title, line and colour are the web hub's.
+    private func webTile(_ game: GameListing) -> some View {
+        let accent = game.accentHex.map { Color(hex: $0) } ?? Theme.gold
+        return GameTile(title: game.name, accent: accent, blurb: game.tagline) {
+            if game.id == "final-approach" {
+                FinalApproachArt(accent: accent)
+            } else {
+                WebGameArt(name: game.name, accent: accent)
+            }
+        } actions: {
+            Button {
+                webGame = WebGameLaunch(game: game, url: AppSettings.client.webURL(game.path))
+            } label: {
+                Label(game.action ?? "Play", systemImage: "play.fill")
+            }
+            .buttonStyle(FeltButtonStyle(kind: .ghost))
         }
     }
 
@@ -556,9 +601,88 @@ private struct ItoArt: View {
     }
 
     private func dot(_ label: String) -> some View {
-        Text(label).font(.system(size: label.count > 1 ? 10 : 13, weight: .heavy, design: .rounded))
+        Text(label).font(Theme.display(label.count > 1 ? 10 : 13, weight: .heavy))
             .foregroundStyle(.white)
             .frame(width: 28, height: 28)
             .background(Color(hex: 0x45474C), in: Circle())
+    }
+}
+
+/// Final Approach's tile, as on the web hub: a runway from above, its
+/// approach chevrons lit in the game's colour, and a jet on the dotted route
+/// the player drew to bring it in. The web's SVG, point for point.
+private struct FinalApproachArt: View {
+    let accent: Color
+
+    var body: some View {
+        ZStack {
+            ZStack {
+                Path(roundedRect: CGRect(x: 104, y: 86, width: 126, height: 28), cornerRadius: 4)
+                    .fill(Color(hex: 0x2A2D30))
+                Path(roundedRect: CGRect(x: 104, y: 86, width: 126, height: 28), cornerRadius: 4)
+                    .stroke(Theme.cream.opacity(0.22), lineWidth: 1.5)
+                Path { path in
+                    for x in [140.0, 162, 184] {
+                        path.move(to: CGPoint(x: x, y: 100))
+                        path.addLine(to: CGPoint(x: x + 12, y: 100))
+                    }
+                }
+                .stroke(Theme.cream.opacity(0.55), style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                Path { path in
+                    for x in [110.0, 115, 220, 225] {
+                        path.move(to: CGPoint(x: x, y: 92))
+                        path.addLine(to: CGPoint(x: x, y: 108))
+                    }
+                }
+                .stroke(Theme.cream.opacity(0.55), style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                Path { path in
+                    for x in [58.0, 74, 90] {
+                        path.move(to: CGPoint(x: x, y: 91))
+                        path.addLine(to: CGPoint(x: x + 8, y: 100))
+                        path.addLine(to: CGPoint(x: x, y: 109))
+                    }
+                }
+                .stroke(accent, style: StrokeStyle(lineWidth: 4.5, lineCap: .round, lineJoin: .round))
+            }
+            .rotationEffect(.degrees(-10), anchor: UnitPoint(x: 160.0 / 240, y: 100.0 / 140))
+
+            Path { path in
+                path.move(to: CGPoint(x: 18, y: 18))
+                path.addCurve(to: CGPoint(x: 52, y: 88), control1: CGPoint(x: 40, y: 40), control2: CGPoint(x: 30, y: 72))
+                path.addCurve(to: CGPoint(x: 100, y: 102), control1: CGPoint(x: 74, y: 104), control2: CGPoint(x: 90, y: 104))
+            }
+            .stroke(Theme.cream.opacity(0.85), style: StrokeStyle(lineWidth: 4, lineCap: .round, dash: [0, 9]))
+
+            Image(systemName: "airplane")
+                .font(.system(size: 30))
+                .foregroundStyle(Theme.cream)
+                .shadow(color: .black.opacity(0.4), radius: 3, y: 2)
+                .rotationEffect(.degrees(62))
+                .position(x: 34, y: 52)
+        }
+        .frame(width: 240, height: 140)
+        .accessibilityHidden(true)
+    }
+}
+
+/// Any other web game: a screen in the game's colour with its initials, until
+/// it earns art of its own.
+private struct WebGameArt: View {
+    let name: String
+    let accent: Color
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color(hex: 0x14161B))
+                .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(accent.opacity(0.75), lineWidth: 2))
+                .frame(width: 190, height: 112)
+                .shadow(color: .black.opacity(0.35), radius: 6, y: 4)
+            VStack(spacing: 8) {
+                Text(AvatarView.initials(name)).font(Theme.display(40)).foregroundStyle(accent)
+                Capsule().fill(accent.opacity(0.5)).frame(width: 60, height: 4)
+            }
+        }
+        .accessibilityHidden(true)
     }
 }

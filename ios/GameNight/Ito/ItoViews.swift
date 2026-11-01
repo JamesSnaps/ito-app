@@ -111,7 +111,7 @@ struct ItoCardFront: View {
                 RoundedRectangle(cornerRadius: unit * 0.9).fill(Color(hex: 0xF4F4F2))
                 VStack(spacing: unit * 0.45) {
                     Text(title)
-                        .font(.system(size: unit * Self.titleScale(title), weight: .heavy, design: .rounded))
+                        .font(Theme.display(unit * Self.titleScale(title), weight: .heavy))
                         .foregroundStyle(.white)
                         .multilineTextAlignment(.center)
                         .lineLimit(3).minimumScaleFactor(0.6)
@@ -119,7 +119,7 @@ struct ItoCardFront: View {
                         .frame(maxWidth: .infinity)
                         .background(Color(hex: 0x45474C), in: Capsule())
                     Text(note.uppercased())
-                        .font(.system(size: unit * 0.8, weight: .bold, design: .rounded)).kerning(unit * 0.08)
+                        .font(Theme.display(unit * 0.8, weight: .bold)).kerning(unit * 0.08)
                         .foregroundStyle(Color(hex: 0x8C9099))
                         .frame(minHeight: unit)
                     Spacer(minLength: 0)
@@ -136,7 +136,7 @@ struct ItoCardFront: View {
 
                 let category = state.currentCategory ?? state.currentType ?? "ito"
                 Text(category.uppercased())
-                    .font(.system(size: unit * 0.8, weight: .heavy, design: .rounded)).kerning(unit * 0.14)
+                    .font(Theme.display(unit * 0.8, weight: .heavy)).kerning(unit * 0.14)
                     .foregroundStyle(Color(hex: 0x2F3033))
                     .padding(.horizontal, unit * 1.5).padding(.top, unit * 0.4).padding(.bottom, unit * 0.5)
                     .background(ItoCategory.colour(category),
@@ -151,12 +151,12 @@ struct ItoCardFront: View {
     private func pole(_ label: String, _ number: String, unit: CGFloat) -> some View {
         VStack(spacing: unit * 0.25) {
             Text(label)
-                .font(.system(size: unit * 0.72, weight: .heavy, design: .rounded))
+                .font(Theme.display(unit * 0.72, weight: .heavy))
                 .foregroundStyle(Color(hex: 0x45474C))
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: unit * 5.4)
             Text(number)
-                .font(.system(size: unit * (number.count > 2 ? 0.95 : 1.05), weight: .heavy, design: .rounded))
+                .font(Theme.display(unit * (number.count > 2 ? 0.95 : 1.05), weight: .heavy))
                 .foregroundStyle(.white)
                 .frame(width: unit * 2.4, height: unit * 2.4)
                 .background(Color(hex: 0x45474C), in: Circle())
@@ -192,7 +192,7 @@ struct ItoCardBack: View {
                                            startPoint: .leading, endPoint: .trailing),
                             style: StrokeStyle(lineWidth: unit * 0.4, lineCap: .round, lineJoin: .round))
                     .padding(unit)
-                Text("ito").font(.system(size: unit * 3.4, weight: .heavy, design: .rounded))
+                Text("ito").font(Theme.display(unit * 3.4, weight: .heavy))
                     .foregroundStyle(Color(hex: 0xF3F3F3))
                     .offset(y: unit * 1.2)
             }

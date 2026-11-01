@@ -2,7 +2,9 @@
 
 What the game is, how it's built, what it wants to be, and how we plan to
 get there. Keep it current: when something here stops being true, change
-it in the same pull request as the code.
+it in the same pull request as the code. Day-to-day work (bugs and ideas as
+GitHub issues, releasing, testing, the release log) is in
+[the runbook](RUNBOOK.md).
 
 ![The arrivals board](img/arrivals-board.jpg)
 
@@ -429,7 +431,9 @@ in v1.19.0.
 - **Progress without a profile is still per browser.** With one, it
   follows you (v1.22.0).
 - **Vibration only works on Android**; iPhones' browsers don't allow it.
-- **The iOS app doesn't show it**; it's web only (Phase 12).
+- **In the iOS app as its web page** (app 1.16.0): a hub tile opens it
+  full screen in a WKWebView, signed in as the app's profile (CLAUDE.md,
+  "Web games in the app"). Not yet tried on a device.
 - **Repainting the terrain on resize** takes a beat on slow devices
   (debounced, but noticeable when rotating).
 
@@ -1333,9 +1337,11 @@ play:
 
 ### Phase 12: platform
 
-- **iOS app:** a tile opening `/final-approach/` in the in-app Safari sheet,
-  like Flip 7's Keep score, with the screen kept awake. Consider a native
-  port only if web performance on iPhone falls short.
+- **iOS app:** done in app 1.16.0, better than planned — not the Safari
+  sheet but a full-screen WKWebView (no browser chrome, kept awake, signed
+  in as the app's profile), from a hub tile the server lists
+  (`/api/games`). Consider a native port only if web performance on iPhone
+  falls short.
 - **Offline:** Game Night has deliberately no service worker. This game
   would genuinely work offline, so if we want it on a plane, decide
   whether a worker scoped to `/final-approach/` is worth the exception.

@@ -22,7 +22,7 @@ the computer — see its section), *Wildwood* (our own Crazy Eights-style
 card game for the family, two to four, also played entirely on the app)
 *Final Approach* (our own solo air-traffic game, all client-side; its
 playbook is `docs/final-approach/PLAYBOOK.md`) and *Final Vector* (its
-grown-up sibling, radar approach control; a prototype since v1.32.0, see
+grown-up sibling, radar approach control; a prototype since v1.34.0, see
 its section). `/` is the menu — it used
 to redirect straight to ito when ito was the only game.
 
@@ -61,6 +61,8 @@ problem.
   missing from memory is looked for there first.
 - Each game is a blueprint under `games/<id>/`, listed in
   `games/registry.py`. Adding a game shouldn't touch `app.py` at all.
+  `GameSpec.native_app` says the iOS app has its own screen for it; leave it
+  False for a web game and the app lists it from `/api/games` by itself.
 - Not every game needs rooms, and the two halves are independent.
   `GameSpec.host_endpoint` is "the hub tile starts a room" (`starts_rooms`,
   ito only); `player_endpoint` is "a code resolves here at `/join`"
@@ -140,11 +142,21 @@ problem.
   stops working past a handful; the wheel is native scrolling (flicks
   properly on touch, no drag handling of its own) and stays one row
   tall however many categories exist.
-- **Baloo 2, self-hosted** (`static/fonts/`, OFL, latin subset, one
-  variable file covering 400–800). Deliberately not linked from Google's
-  CDN: the app has to work on a LAN with no internet, and no player's
-  browser should call a third party mid-game. `--font-display` falls
-  back through `ui-rounded` if it ever fails to load.
+- **Bricolage Grotesque, self-hosted** (v1.32.0; `static/fonts/`, OFL,
+  latin subset, one variable file covering 200–800, the 96pt optical
+  size). It replaced Baloo 2, whose round, bubbly look (and SF Rounded on
+  iOS) read young; Bricolage is still lively at heavy weights but
+  grown-up, and sits well beside Fugitive's and Final Approach's own
+  faces. It's `--font-display` only (titles, buttons, cards, numbers);
+  body text stays on the platform's UI face, which is also the fallback.
+  Deliberately not linked from Google's CDN: the app has to work on a LAN
+  with no internet, and no player's browser should call a third party
+  mid-game. **iOS bundles it as five static weights** (400–800,
+  `ios/GameNight/Fonts/BricolageGrotesque-*.ttf`) cut from that same
+  woff2 with fontTools' instancer, so both draw identical letters;
+  `Theme.display` picks the nearest and uses `fixedSize`, as
+  `.system(size:)` didn't follow Dynamic Type either. Wildwood's card
+  PNGs bake the face in: change it → re-render them.
 - **The player view is the display view.** It's sized in vw/vmin so the
   same URL works on a phone and cast to a TV — the topic is the reason
   the app exists, so it gets the whole screen. The host page carries a
@@ -264,11 +276,32 @@ problem.
 - **Its felt-and-gold theme is `static/flip7.css`, scoped under `.flip7`
   on `<body>`**, layered over the shared shell rather than replacing it.
 - **Fonts are the app's own.** The standalone page pulled Fraunces and
-  IBM Plex Mono from Google's CDN; that's out for the same reason ito
-  self-hosts Baloo 2 — LAN with no internet, and no third-party calls
+  IBM Plex Mono from Google's CDN; that's out for the same reason the hub
+  self-hosts its display face — LAN with no internet, and no third-party calls
   mid-game. A test asserts the page and its CSS contain no absolute URLs.
 - **Bust and Freeze are exclusive** — they're how a turn ended. Bust also
   locks the number/modifier chips so a stray tap can't score a bust.
+
+### Two ways in (v1.33.0, app 1.15.0)
+
+- **`/flip7/` is a start page, not the scorekeeper.** "How are you playing
+  tonight?": **Play on the app** (no cards needed) or **Score a real game**
+  (bring your own cards), each with a line saying what it means. Keeping
+  score with the real cards is starting a game too, so names like "Start a
+  game" / "Keep score" left people guessing; and on the web the hub's "Play
+  or keep score" landed on the scorekeeper with Play behind an unlabelled ▶.
+  Name new ways in by what's on the table.
+- **The scorekeeper is `/flip7/score`** (endpoint `scorekeeper`; `landing`
+  is the start page, so the hub tile and every back link land there). Its
+  ▶ and the "No deck to hand?" panel are gone — that choice is made on the
+  start page — and its back arrow leads there rather than to the hub.
+- **A scoring game under way is offered back** on the start page ("Carry on
+  scoring · names · round N"), read straight from `flip7:game`; a finished
+  one isn't. A Play game is offered back by the Play setup page, as before.
+- **iOS says the same**: the tile's two stacked `FeltChoiceStyle` rows
+  ("Play on the app — No cards needed", "Score a real game — Got the box
+  out?"), the tile's blurb cut to the one line the others have, and the
+  deal screen is titled "Play on the app".
 
 ### Flip 7 spectator rooms (added v1.4.0)
 
@@ -519,10 +552,14 @@ games' records, ito hosting (since app 1.4.0) and its
 topic display, and player profiles. Rules pages, ito's
 stats, the Flip 7 scorekeeper and a scorekeeper's spectator board open the
 server's own pages in an in-app Safari sheet rather than being rebuilt.
+Games with no screen of their own here (Final Approach, and whatever the
+registry gains) are played full screen as their web page (app 1.16.0, see
+"Web games in the app" below).
 
-- **Keep score is the web scorekeeper** (app 1.12.0): the Flip 7 tile's
-  second button opens `/flip7/` in the Safari sheet, for nights with the real
-  cards. Its game is in that sheet's localStorage, which is the app's own —
+- **Score a real game is the web scorekeeper** (app 1.12.0; `/flip7/score`
+  since app 1.15.0): the Flip 7 tile's second choice opens it in the Safari
+  sheet, for nights with the real cards. Older builds open `/flip7/`, which
+  is the start page now, one tap from it. Its game is in that sheet's localStorage, which is the app's own —
   not Safari's, not the home-screen web app's — and survives the sheet
   closing or a swipe down, so opening it again carries on. Every web sheet
   keeps the screen awake, as the tables do.
@@ -625,7 +662,9 @@ server's own pages in an in-app Safari sheet rather than being rebuilt.
   games against the computer; v1.12.0+ for app 1.6.0's records against the
   computer; v1.15.0+ for app 1.9.0's games without hints, which an older
   server deals with hints on — the app holds offline computer games back until the server's
-  stats carry `computer_leaderboard`; v1.17.0+ for app 1.11.0's Wildwood) before a build goes out.
+  stats carry `computer_leaderboard`; v1.17.0+ for app 1.11.0's Wildwood;
+  v1.33.1+ for app 1.16.0's web games — an older server 404s `/api/games`
+  and the hub simply shows no web tiles) before a build goes out.
 - **`.dockerignore` keeps `ios/` out of the server image.**
 - **QR codes are scanned in the app** (`ScanSheet`, VisionKit's
   `DataScannerViewController`, QR only), from the hub's toolbar and the Join
@@ -636,6 +675,69 @@ server's own pages in an in-app Safari sheet rather than being rebuilt.
   `/wildwood/play`, `/ito/play`, `/join?code=` and `/me/link`. Claiming a path sends it to every
   installed version of the app, so claim a new one only once a build that
   handles it is on TestFlight.
+
+### Web games in the app (app 1.16.0, server 1.33.1)
+
+- **The server lists its games; the app decides which are its own.**
+  `GET /api/games` (app.py) is the hub's menu as JSON: `id`, `name`,
+  `tagline`, `accent`, `path` (the game's landing page), `action` (the web
+  tile's call to action) and `native_app`, from `GameSpec.native_app`
+  (True for Flip 7, Fugitive, Wildwood and ito; False by default, so a game
+  added to the registry is a web game in the app with no app update). The app
+  keeps its four tiles and adds one per game whose id isn't in
+  `WebGames.native` — its own list, not `native_app`: a game a later build
+  makes native is still only a web page to this one. A game marked
+  `available=False` is in neither the hub nor the list.
+- **The last list is kept** (UserDefaults `webGames.last`), so the tiles are
+  there at launch and with no signal; if the server has never answered there
+  are none. Refreshed whenever the hub comes back into view.
+- **Tiles**: the web hub's title, tagline and accent, in the same `GameTile`
+  and the same layout (column on a phone; two to a row in the iPad's Grid,
+  an empty cell beside an odd one). Final Approach's art is the web's SVG
+  drawn in SwiftUI (`FinalApproachArt`); any other web game gets its
+  initials on a screen in its colour (`WebGameArt`) until it earns its own.
+- **`WebGameScreen` is a WKWebView, full screen** (a `fullScreenCover`),
+  not the Safari sheet: no browser chrome, status bar hidden, home indicator
+  hidden (`persistentSystemOverlays`), edge swipes deferred so a route drawn
+  off the bottom doesn't go home, kept awake (`.keepsScreenAwake()`, the
+  counted one), audio without a tap (`mediaTypesRequiringUserActionForPlayback
+  = []`, inline playback), the default persistent website data store (the
+  game's own localStorage — Final Approach's save, settings and outbox —
+  survives; it's the app's own, apart from Safari's, the home-screen web
+  app's and the Safari sheet's), and no automatic content inset
+  (`contentInsetAdjustmentBehavior = .never`) so the safe area reaches the
+  page's `env(safe-area-inset-*)`. The app already allows every orientation
+  (`project.yml`), so the screen turns with the device; Final Approach asks
+  for sideways itself. A failed first load shows "Couldn't reach the Game
+  Night server" with Try again; a killed web process reloads.
+- **The way out is a grabber at the top centre** — the games' HUDs use the
+  corners (Final Approach: plates top left, strikes and pause top right;
+  Final Vector's concept: strips down the left, push-to-talk bottom right).
+  Pull it down to close, or tap it for a "Close game" button that goes away
+  after four seconds, so a stray touch mid-shift doesn't end it. VoiceOver
+  reads it as a "Close game" button.
+- **Signed in as the app's profile.** A `WKUserScript` at document start,
+  main frame only, writes `Me.current` into localStorage `gamenight:me` as
+  the web stores it (`{id, name, photo, token}`, `photo` null when there's
+  none — me.html's shape), or removes it when the app is signed out, so the
+  page's own scripts (`GN.me.get()`, `X-Profile-Token`) see the app's
+  profile: records, the child/grown-up rules and the guest prompt follow the
+  app. The script checks `location.origin` is the server's before touching
+  anything, and the values go in as JSON string literals (`WebSignIn`, in
+  API/WebGames.swift, tested on Linux). It runs on every page load, so
+  signing in or out on the web's own "You" page inside the game lasts only
+  until the next page: the app's profile is the one that counts. The token
+  isn't logged or sent anywhere else. (`HeldMe`/`Me` moved from Faces.swift
+  to Profiles.swift so this builds without SwiftUI.)
+- **Links** (`WebGameLinks`): anything on the server's origin stays in the
+  screen — records, Final Approach's link to another game; other
+  hosts and other schemes (mailto:) open in the system browser; frames
+  inside a page load what they like. A `target=_blank` link follows the
+  same rule in the one window.
+  The server's front page (`/`, a game's "Game Night" button) is the
+  exception: it closes the game (`closeToHub`), since the app's hub is home.
+- **Not tried on a device from here**: the screen is UI code written on
+  Linux; the model, script and link rules are what the Linux tests cover.
 
 ### Fugitive on a phone held sideways (app 1.8.1)
 
@@ -843,8 +945,9 @@ phones side by side.
   1280pt wide, three across from 1100pt and two-and-one below that, in a
   `Grid` so a row's tiles end level (app 1.8.2: capped at 1000 with three
   across, a tile's two half-width buttons were too narrow and "Records"
-  broke over two lines). Every tile is one row of buttons across (Flip 7's
-  Start a game and Keep score, ito's Back to / New room), then Records and
+  broke over two lines). Every tile is one row of buttons across (ito's Back
+  to / New room) — except Flip 7's, whose two ways in are stacked rows with
+  a line each (app 1.15.0, see "Two ways in") — then Records and
   Rules — ito's Records is the server's stats page — and the buttons are
   one line each. New game
   and Join: a centred column. Records: two columns. Table: mats capped at
@@ -1014,7 +1117,7 @@ read in full; not in the repo).
 - **Three bundled faces give it its voice**: Bebas Neue (wanted-poster
   capitals — title, card numbers, nameplates), Special Elite (a worn
   typewriter — case tags, notes, stamps, the folder) and Caveat (the
-  Marshal's handwriting). Self-hosted in `static/fonts/` like Baloo 2, latin
+  Marshal's handwriting). Self-hosted in `static/fonts/` like the display face, latin
   subsets only, licences and sources in its README. Body copy stays on the
   system UI face for legibility.
 - **Drawn mugshots when there's no photo.** Each player without one gets a silhouette drawn from a hash of their name (`mugshotSVG()`):
@@ -1252,6 +1355,13 @@ Built exactly the way Fugitive is — read that section first.
   version of the app).
 
 ## Final Approach (added v1.18.0)
+
+**Runbooks:** `docs/final-approach/RUNBOOK.md` and
+`docs/final-vector/RUNBOOK.md`: bugs and ideas live in GitHub Issues
+(labels `final-approach`, `final-vector`, `ios-app`, `bug`, `balance`,
+`idea`, `next`; templates in `.github/ISSUE_TEMPLATE`), the release steps,
+testing and the release log. A PR that fixes an issue says `Fixes #NN`;
+update the runbook's release log in the PR that bumps the version.
 
 A solo air-traffic game: aircraft arrive at the edges, you drag from one to
 draw its route, and it lands if the route ends lined up with the approach
@@ -1667,11 +1777,11 @@ it current when you do (its "Current state" and roadmap especially).
   its files and the level data's shape, and visual changes are checked by
   driving the page in a headless browser at desktop and phone-landscape
   sizes (the playbook has the routine).
-- **Not in the iOS app.** The native hub's tiles are its own; the cheap way
-  in is a tile opening `/final-approach/` in the Safari sheet, like Keep
-  score (playbook roadmap).
+- **In the iOS app as its web page** (app 1.16.0): a hub tile from
+  `/api/games` opens `/final-approach/` full screen in a WKWebView, signed
+  in as the app's profile — see "Web games in the app".
 
-## Final Vector (added v1.32.0, a prototype)
+## Final Vector (added v1.34.0, a prototype)
 
 Radar approach control for grown-ups, Final Approach's sibling. **Read
 `docs/final-vector/CONCEPT.md` first**: the design, the decisions (section
