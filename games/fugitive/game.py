@@ -792,4 +792,5 @@ GAME = GameSpec(
     host_endpoint=None,
     player_endpoint="fugitive.play_view",
     hub_action="Play",
+    native_app=True,
 )

@@ -490,4 +490,5 @@ GAME = GameSpec(
     new_room_state=new_room_state,
     host_endpoint="ito.host_view",
     player_endpoint="ito.player_view",
+    native_app=True,
 )

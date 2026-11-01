@@ -731,4 +731,5 @@ GAME = GameSpec(
     host_endpoint=None,
     player_endpoint="flip7.watch_view",
     hub_action="Play or keep score",
+    native_app=True,
 )
