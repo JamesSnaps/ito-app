@@ -31,3 +31,6 @@ data/**/.*.tmp
 ios/GameNight.xcodeproj/
 ios/build/
 xcuserdata/
+
+# Claude Code worktrees (parallel working copies), never part of the repo
+.claude/worktrees/
