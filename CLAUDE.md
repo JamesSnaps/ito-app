@@ -1504,8 +1504,10 @@ it current when you do (its "Current state" and roadmap especially).
   three `{ fix, x, y }`, where `fix` is a key into **`HOLD_FIXES`** (levels.js:
   BOV Bovingdon, OCK Ockham, LAM Lambourne, BIG Biggin, WIL Willo, TIM
   Timba). **One shared pool of names, repeated across airports, on purpose:
-  spoken lines will be recorded per name**, so a new name means new
-  recordings; read the list from that constant. `S.fixes` is the airport's
+  each name has its own spoken readbacks** (`say_hold_<key>_1/_2`,
+  "Holding at Bovingdon"), so a new name means new recordings:
+  `tools/final_approach_sounds.py` reads the list from that constant, and a
+  test fails if a name has no lines. `S.fixes` is the airport's
   holds when `holdingOn(L)` (Holding Pattern or later on the board, or
   Holding Pattern cleared), else empty. A route is caught by a fix only when
   it's *let go* near one (`endDraw` → `holdAt`, within `HOLD_CATCH` or 22
@@ -1558,10 +1560,19 @@ it current when you do (its "Current state" and roadmap especially).
     the target; normal arrivals pause during it, and on `on` it queues one
     arrival every 1.1 s through `queueArrival` (every safety rule applies; the
     traffic cap doesn't). Its name is another of our airports.
-  - Radio: only lines that fit (`tower_closed_1` as a runway closes,
-    `tower_open` after); a divert speaks only for a storm or fuel now (it said
-    "out of fuel" for every other reason). No new recordings; the chime is
-    synthesised.
+  - Radio and sound (recorded with ElevenLabs, like the rest): each
+    announcement has the tower's line (`tower_obstruct_deer|dog|cart`,
+    `tower_drone`, `tower_wave_3|4|5`), then `tower_clearing` with the
+    `ops_van` sound as a runway closes, `tower_open_1` when it reopens,
+    `drone_buzz` and `tower_drone_gone`; wave arrivals may check in
+    (`say_divert_in`); joining a hold plays `hold_ping` and the pilot's
+    readback, leaving it `say_unhold`; the warning chime is `attention`, and
+    a loose dog barks (`dog_bark`). A divert speaks only for a storm or fuel
+    (it said "out of fuel" for every other reason).
+  - `variants(prefix)` only deals numbered recordings of exactly that prefix
+    (`tower_drone_1`), never a longer name that starts the same way
+    (`tower_drone_gone_1`): before v1.29.0 the drone's announcement could
+    play "the drone's gone".
   - Hooks: `__finalApproach.disrupt(kind)` starts one now; also `holdAt`,
     `fixNear`, `stacked`, `planDrone`, `loadLevel`, `isUnlocked`, `HOLD_FIXES`.
 - **`window.__finalApproach`** exposes the state for Playwright checks,

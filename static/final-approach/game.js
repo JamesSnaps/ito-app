@@ -148,8 +148,10 @@
   // dealt like a shuffled deck: all of them before any repeats, and never the
   // same one twice running.
   const decks = {};
+  // A prefix's variants are its numbered recordings only ("tower_drone_1",
+  // "tower_drone_2"), so "tower_drone" never deals "tower_drone_gone_1".
   function variants(prefix) {
-    return Object.keys(AUDIO).filter(n => n === prefix || n.startsWith(prefix + '_'));
+    return Object.keys(AUDIO).filter(n => n === prefix || (n.startsWith(prefix + '_') && /^\d+$/.test(n.slice(prefix.length + 1))));
   }
   function deal(prefix) {
     const all = variants(prefix);
@@ -316,7 +318,7 @@
     wind:      () => playSound('wind_shift', { vol: 0.7 }) || tone(260, 0.5, { type: 'triangle', vol: 0.08, slide: 240 }),
     rattle:    () => playSound('flap_rattle', { vol: 0.35 }),
     // An airport announcement chime for disruptions: two soft notes, down.
-    chime:     () => { tone(659, 0.5, { vol: 0.09 }); tone(523, 0.7, { vol: 0.09, delay: 0.32 }); },
+    chime:     () => playSound('attention', { vol: 0.6 }) || (tone(659, 0.5, { vol: 0.09 }), tone(523, 0.7, { vol: 0.09, delay: 0.32 })),
     // A rubber stamp coming down on the passport.
     thunk:     () => { noise(0.07, 0.4, 260, 'lowpass'); tone(95, 0.14, { vol: 0.16, slide: -45 }); },
     flap:      () => {
@@ -913,9 +915,11 @@
     p.hold = { fix, slot, on: false };
     S.effects.push({ kind: 'ring', x: fix.x, y: fix.y, color: '#f3ead2', t: 0, life: 0.6 });
     addText(fix.x, fix.y - holdR(HOLD_MAX - 1) - 6, `Hold · ${HOLD_FIXES[fix.fix] || fix.fix}`, '#f3ead2', 12);
-    tone(880, 0.06, { type: 'triangle', vol: 0.045 }); tone(660, 0.09, { type: 'triangle', vol: 0.04, delay: 0.07 });
+    playSound('hold_ping', { vol: 0.5, pan: panOf(fix.x) }) ||
+      (tone(880, 0.06, { type: 'triangle', vol: 0.045 }), tone(660, 0.09, { type: 'triangle', vol: 0.04, delay: 0.07 }));
     buzz(12);
-    say('say_turn', p, { chance: 0.6 });
+    // The pilot reads the fix back by name ("Holding at Bovingdon").
+    say(`say_hold_${fix.fix.toLowerCase()}`, p, { chance: 0.85 });
     return true;
   }
   function enterHold(p) {
@@ -964,8 +968,8 @@
   // what's happening and what to do (the countdown waits for "Got it").
   const DIS_TITLE = { runway: 'Runway closing', drone: 'Drone sighted', wave: 'Diversions' };
   const DIS_HOW = {
-    runway: 'In 8 seconds the runway closes for about 20 while a van clears it. Hold arrivals at a beacon, or land them on another runway of the same colour. The countdown is at the top left.',
-    drone: 'In 8 seconds that patch of sky closes for about 30: anything that flies into the red circle diverts, like a storm. Route round it, or hold until it\'s gone.',
+    runway: 'In 8 seconds the runway closes for about 20 seconds while a van clears it. Hold arrivals at a beacon, or land them on another runway of the same colour. The countdown is at the top left.',
+    drone: 'In 8 seconds that patch of sky closes for about 30 seconds: anything that flies into the red circle diverts, like a storm. Route round it, or hold until it\'s gone.',
     wave: 'Park them at the hold beacons and bring them in one at a time.',
   };
   function emergencyBusy() {
@@ -1073,6 +1077,11 @@
     if (d.kind === 'drone') { toast('Drone sighted'); line = 'A drone has been spotted near an approach!'; }
     if (d.kind === 'wave') { toast(`${d.n} diversions`); line = `${d.from} is closed: ${d.n} diversions inbound in 10 seconds.`; }
     sfx.chime();
+    // The tower says it too (the lines were recorded for each kind and wave size).
+    if (d.kind === 'runway') say(`tower_obstruct_${d.what}`, null, { priority: true, delay: 1.2 });
+    if (d.kind === 'drone') say('tower_drone', null, { priority: true, delay: 1.2 });
+    if (d.kind === 'wave' && d.n >= 3) say(`tower_wave_${Math.min(5, d.n)}`, null, { priority: true, delay: 1.2 });
+    if (d.kind === 'runway' && d.what === 'dog') setTimeout(() => playSound('dog_bark', { vol: 0.5 }), 2600);
     buzz([30, 40, 30]);
     if (first) explain(DIS_TITLE[d.kind], `${line} ${DIS_HOW[d.kind]}`);
     else notice(line, 5);
@@ -1085,10 +1094,12 @@
         S.closures.push({ runway: d.runway, until: Infinity, since: S.time, obstruction: d });
         goAround(d.runway);
         toast(`Runway ${rwyNumber(d)} closed`);
-        say('tower_closed_1', null, { priority: true });
+        say('tower_clearing', null, { priority: true });
+        playSound('ops_van', { vol: 0.5 });
       }
       if (d.kind === 'drone') {
         toast('No-fly zone on');
+        playSound('drone_buzz', { vol: 0.45, pan: panOf(d.x) });
         for (const p of S.planes) if (p.state === 'fly' && p.entered && inDrone(p)) divert(p, 'Drone');
       }
       if (d.kind === 'wave') toast('Inbound now');
@@ -1097,14 +1108,14 @@
     if (d.kind === 'wave') {
       d.gap -= dt;
       if (d.gap <= 0) {
-        if (queueArrival()) { d.left--; d.gap = 1.1; } else d.gap = 0.4;
+        if (queueArrival()) { S.incoming[S.incoming.length - 1].wave = true; d.left--; d.gap = 1.1; } else d.gap = 0.4;
       }
       if (d.left <= 0) endDisruption();
     } else if (S.time >= d.until) {
       if (d.kind === 'runway') {
         const c = S.closures.find(x => x.obstruction === d);
         if (c) reopenRunway(c);
-      } else toast('Drone gone');
+      } else { toast('Drone gone'); say('tower_drone_gone', null, { priority: true }); }
       endDisruption();
     }
   }
@@ -1179,7 +1190,10 @@
     if (p.emg) {
       say(EMG[p.emg].call, p, { priority: true });
       if (p.emg === 'state') say('tower_state', null, { priority: true });
-    } else sfx.spawn();
+    } else {
+      sfx.spawn();
+      if (s.wave) say('say_divert_in', p, { chance: 0.5 });
+    }
   }
 
   // ---------- simulation ----------
@@ -1279,7 +1293,7 @@
     let step = p.T.speed * (p.speedK || 1) * dt;
     // Holding: drawn out the moment a new route has a point; joins its ring
     // as it reaches it (or its route's end).
-    if (p.hold && p.hold.on && p.path.length) p.hold = null;
+    if (p.hold && p.hold.on && p.path.length) { p.hold = null; say('say_unhold', p, { chance: 0.6 }); }
     if (p.hold && !p.hold.on && dist(p.x, p.y, p.hold.fix.x, p.hold.fix.y) <= holdR(p.hold.slot) + 2) enterHold(p);
     if (p.hold && p.hold.on) {
       holdStep(p, p.hold, dt, S.time);
@@ -1756,7 +1770,8 @@
   function reopenRunway(c) {
     S.closures = S.closures.filter(x => x !== c);
     toast('Runway open');
-    say('tower_open', null, { priority: true });
+    // "Emergency vehicles clear" only fits an emergency's closure.
+    say(c.obstruction ? 'tower_open_1' : 'tower_open', null, { priority: true });
   }
 
   function flipWind() {

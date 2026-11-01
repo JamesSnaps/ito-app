@@ -118,10 +118,26 @@ def test_the_page_is_told_where_each_sound_lives():
 
 
 def test_the_sounds_stay_a_small_download():
-    """Effects load when the game starts and music in the background; keep
-    the whole lot comfortably under 8 MB."""
-    total = sum(path.stat().st_size for path in (STATIC / "audio").glob("*.mp3"))
-    assert total < 8 * 1024 * 1024, total
+    """Effects and voices all load when the game starts, so that download is
+    what a phone waits for: keep it under 4 MB (3.1 MB at v1.29.0). Music,
+    landscape beds and engine loops load in the background as they're
+    needed: under 6 MB (3.7 MB)."""
+    later = re.compile(r"^(music|bed|engine)_")
+    files = list((STATIC / "audio").glob("*.mp3"))
+    upfront = sum(f.stat().st_size for f in files if not later.match(f.name))
+    background = sum(f.stat().st_size for f in files if later.match(f.name))
+    assert upfront < 4 * 1024 * 1024, upfront
+    assert background < 6 * 1024 * 1024, background
+
+
+def test_every_hold_fix_is_read_back_by_name():
+    """Joining a hold, the pilot says the fix's name ("Holding at Bovingdon"),
+    so every name in HOLD_FIXES needs its lines."""
+    names = set(sound_list())
+    levels = (STATIC / "levels.js").read_text(encoding="utf-8")
+    block = levels.split("const HOLD_FIXES = {")[1].split("};")[0]
+    for key in re.findall(r"([A-Z]{3}):", block):
+        assert f"say_hold_{key.lower()}_1" in names and f"say_hold_{key.lower()}_2" in names, key
 
 
 def test_every_runway_number_has_a_readback():
