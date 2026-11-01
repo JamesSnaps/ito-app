@@ -211,6 +211,16 @@ def speech_lines():
                                         f"Copy, we'll hold at {name}. Call us when you're ready."])
     add("say_unhold", ["Leaving the hold. Thanks, tower.", "Out of the hold, heading in.",
                        "Leaving {fix}, thank you.".replace(" {fix}", " the stack")])
+    # An arrival crossing into your airspace checks in now and then, as real
+    # aircraft do with each new controller (v1.31.0).
+    add("say_checkin", ["Approach, good day. With you, inbound for landing.",
+                        "Hello approach, with you, descending.",
+                        "Good afternoon, approach. We're with you.",
+                        "Approach, with you, looking for vectors.",
+                        "Evening approach, with you, inbound.",
+                        "Hi approach, with you. Nice day for it.",
+                        "Approach, with you, ready for whatever you've got.",
+                        "With you, approach. Thanks."])
     # Arrivals in a diversion wave check in.
     add("say_divert_in", ["Tower, hello. We're diverting to you, thanks for having us.",
                           "Good day tower, diverted in from up the road. Glad you're open.",

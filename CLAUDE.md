@@ -1646,6 +1646,15 @@ it current when you do (its "Current state" and roadmap especially).
     `balloon_burner` (as they come on, then now and then), `display_flypast`,
     `cyber_glitch` and `gremlin_giggle` (as the board scrambles), and
     `restore_ok`.
+- **Inbound beyond the edge** (v1.31.0): while an arrival's marker counts
+  down, `drawInbound` draws the aircraft itself where it is at that moment
+  (its spawn point less speed × time left, along its heading; a held one
+  circles just outside), but only where the screen shows past the
+  airspace, so the timing is identical on every device. It's drawn before
+  `drawBoundary` dims the outside, it isn't in `S.planes` (can't be
+  touched), and the real aircraft spawns at the same point as the countdown
+  ends. An ordinary arrival sometimes checks in as it does
+  (`say_checkin`, chance 0.35; a wave's arrivals say `say_divert_in`).
 - **`window.__finalApproach`** exposes the state for Playwright checks,
   plus `update` (step the simulation, e.g. ten minutes in a loop),
   `queueArrival`, `clearOfStorms`, `stormAt`, `clearOfTraffic`, `track`,

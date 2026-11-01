@@ -351,10 +351,13 @@ Game Night.
 
 ---
 
-## 5. Current state (v1.30.0)
+## 5. Current state (v1.31.0)
 
 **Done:**
 
+- [x] Arrivals seen flying in beyond the control zone while their marker
+  counts down (where the screen has room, so the timing is the same on
+  every device), and checking in by radio as they cross (v1.31.0)
 - [x] Disruptions, part 2: hot-air balloons (Crossroads), the Kestrels'
   air display (Running on Fumes) and the cyber attack, a system gremlin for
   children and guests (Heavy Metal, Night Shift), each announced with a

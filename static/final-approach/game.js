@@ -1568,7 +1568,10 @@
       if (p.emg === 'state') say('tower_state', null, { priority: true });
     } else {
       sfx.spawn();
+      // Crossing into your airspace: now and then the pilot checks in, as
+      // real aircraft do with each new controller.
       if (s.wave) say('say_divert_in', p, { chance: 0.5 });
+      else say('say_checkin', p, { chance: 0.35 });
     }
   }
 
@@ -2392,6 +2395,7 @@
     for (const c of S.closures) drawClosure(c, t);
     if (S.police) drawPolice(t);
     drawObstruction(t);
+    drawInbound(Bd, t);
     drawBoundary(Bd, t);
     drawFixes(t);
 
@@ -2647,6 +2651,37 @@
     ctx.beginPath(); ctx.arc(end.x, end.y, r * 0.62, -Math.PI / 2, -Math.PI / 2 + TAU * Math.max(0.02, k)); ctx.stroke();
     Art.tag(ctx, 'SENDING', end.x, end.y - r - 9 * markK(), markK(), '#f2b33d');
     ctx.restore();
+  }
+
+  // ---------- inbound, beyond the control zone ----------
+  // While an arrival's marker counts down, the aircraft itself is drawn
+  // flying in along its real heading, where it is at that moment: only where
+  // the screen shows past the airspace (a phone's sides, an iPad's top and
+  // bottom), so the timing is the same on every device. It's drawn before
+  // the boundary dims the outside, can't be touched, and becomes the real
+  // aircraft as the countdown ends. One held at the edge (the sky not clear
+  // yet) circles where it waits.
+  function inboundAt(s, t) {
+    const v = TYPES[s.type].speed * (s.speedK || 1);
+    const ux = Math.cos(s.heading), uy = Math.sin(s.heading);
+    if (s.held) {
+      const cx = s.x - ux * 26, cy = s.y - uy * 26, a = t * 1.1 + s.lead;
+      return { x: cx + Math.cos(a) * 16, y: cy + Math.sin(a) * 16, rot: a + Math.PI / 2 };
+    }
+    const back = v * Math.max(0, s.t);
+    return { x: s.x - ux * back, y: s.y - uy * back, rot: s.heading };
+  }
+  function drawInbound(Bd, t) {
+    if (Bd.x0 >= 0 && Bd.y0 >= 0 && Bd.x1 <= W && Bd.y1 <= H) return;
+    for (const s of S.incoming) {
+      const at = inboundAt(s, t);
+      const m = 16;
+      if (at.x < Bd.x0 - m || at.x > Bd.x1 + m || at.y < Bd.y0 - m || at.y > Bd.y1 + m) continue;
+      if (at.x > 0 && at.x < W && at.y > 0 && at.y < H) continue;      // inside: the real aircraft takes over
+      const ghost = { type: s.type, x: at.x, y: at.y, rot: at.rot, heading: at.rot, t: t + s.lead * 3, id: Math.round(s.lead * 97), scale: 1, alpha: 0.9, alt: 1 };
+      Art.aircraftShadow(ctx, ghost);
+      Art.aircraft(ctx, ghost, ghost.t, isNight());
+    }
   }
 
   // ---------- the edge of the control zone ----------
