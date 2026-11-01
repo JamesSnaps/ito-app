@@ -99,6 +99,12 @@ def test_flip7_start_page_offers_both_ways_in():
     assert "calcRoundScore" in pad
     assert 'href="/flip7/play"' not in pad  # chosen at the start page now
     assert 'href="/flip7/"' in pad  # back leads there
+    # Its side pages lead back to the pad, not the start page: a rules check
+    # mid-game mustn't drop the scorer out of it.
+    assert 'href="/flip7/rules?back=/flip7/score"' in pad
+    assert 'href="/flip7/stats?back=/flip7/score"' in pad
+    rules = c.get("/flip7/rules?back=/flip7/score").get_data(as_text=True)
+    assert 'href="/flip7/score"' in rules
 
 
 def test_flip7_does_not_call_out_to_the_internet():

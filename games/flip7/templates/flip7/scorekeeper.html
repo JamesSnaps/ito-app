@@ -12,9 +12,9 @@
     <a class="f7-btn-icon" href="{{ url_for('flip7.landing') }}"
        aria-label="Back" title="Back">←</a>
     <h1 class="f7-title">Flip <span>7</span></h1>
-    <a class="f7-btn-icon" href="{{ url_for('flip7.stats_view') }}"
+    <a class="f7-btn-icon" href="{{ url_for('flip7.stats_view', back=url_for('flip7.scorekeeper')) }}"
        aria-label="Records" title="Records">★</a>
-    <a class="f7-btn-icon" href="{{ url_for('flip7.rules_view') }}"
+    <a class="f7-btn-icon" href="{{ url_for('flip7.rules_view', back=url_for('flip7.scorekeeper')) }}"
        aria-label="Scoring reference" title="Scoring reference">?</a>
   </header>
   <div class="f7-subtitle">Scorekeeper · first to {{ target }} wins</div>
