@@ -2215,6 +2215,9 @@
       const blip = !pick.end && S.radar && S.radar.seen.get(p);
       Object.assign(into, { pendingOf: p, path: pick.end ? p.path.slice() : [], landing: null, hold: null, flipped: S.flipped,
         from: blip ? { x: blip.x, y: blip.y } : null });
+      // The landing checks (landingFor, straightIn) read the route's origin
+      // from the aircraft: for a route drawn from the blip, that's the blip.
+      if (blip) Object.assign(into, { x: blip.x, y: blip.y, heading: blip.heading != null ? blip.heading : p.heading });
     } else if (!pick.end) {
       p.path = [];
       p.landing = null;
