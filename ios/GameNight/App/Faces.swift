@@ -1,30 +1,6 @@
 import Observation
 import SwiftUI
 
-/// The profile this device holds, if any — the app's `gamenight:me`.
-/// UserDefaults like the game tokens: a profile token can change a name's
-/// photo, nothing more, and the web keeps the same thing in localStorage.
-nonisolated struct HeldMe: Codable, Equatable {
-    var id: String
-    var name: String
-    var photo: String?
-    var token: String
-}
-
-enum Me {
-    private static let key = "gamenight.me"
-
-    static var current: HeldMe? {
-        get {
-            guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
-            return try? JSONDecoder().decode(HeldMe.self, from: data)
-        }
-        set {
-            UserDefaults.standard.set(newValue.flatMap { try? JSONEncoder().encode($0) }, forKey: key)
-        }
-    }
-}
-
 /// Everyone's faces: the server's profile list, fetched once and refreshed
 /// when the hub appears. A name with no profile behind it is a guest.
 @Observable

@@ -6,8 +6,11 @@ cards (the web scorekeeper, in an in-app Safari sheet), Fugitive (dealt here, pl
 two phones or passed across one), both games' records, ito (host a room or
 watch its topic), and "You" — a profile name and selfie shared with the web. Room QR codes can
 be scanned inside the app. The rules and the game state live on the server;
-the app shows the table and sends moves. See `../CLAUDE.md` → "iOS app" for
-the design notes.
+the app shows the table and sends moves. Games the app has no screen of its
+own for — Final Approach, and any web game added to the server later — get a
+hub tile from the server's `/api/games` and play full screen as their web
+page, signed in as the app's profile (1.14.0). See `../CLAUDE.md` → "iOS
+app" (and "Web games in the app") for the design notes.
 
 ## Develop
 
@@ -115,7 +118,24 @@ Then in App Store Connect → TestFlight:
 The server has to be running a version with the app's API before a build
 goes out — the app talks to production by default: v1.6.1 for Flip 7, v1.8.2
 for 1.2.0 (Fugitive, profiles and the `/fugitive/play` and `/me/link` app
-links).
+links), v1.31.1 for 1.14.0's web-game tiles (`/api/games`; an older server
+just means no web tiles).
+
+### What's new in 1.14.0 (for TestFlight's "What to Test")
+
+> Final Approach is in the app: its tile on the home screen opens it full
+> screen, signed in as you, so your stars and records are yours. To leave a
+> game, pull down the little bar at the top centre (or tap it, then "Close
+> game"). New web games on Game Night will appear here by themselves.
+
+Worth checking on a device (it can't be built on Linux): the tile appears
+(and still does in Airplane Mode, from the last list); the game fills the
+screen with no status bar or home indicator and turns sideways; the sound
+plays without an extra tap; Final Approach's guest prompt doesn't appear and
+a finished shift lands in the records under your name; progress survives
+closing and reopening; the grabber closes it and doesn't get in the way of
+the HUD; a link to another site opens Safari; with "You" signed out, the game
+plays as a guest.
 
 Since 1.2.0 the app collects a name and an optional photo when a player makes
 a profile, so App Store Connect's App Privacy answers need **Name** and
