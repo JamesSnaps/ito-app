@@ -1284,6 +1284,13 @@ Built exactly the way Fugitive is — read that section first.
 
 ## Final Approach (added v1.18.0)
 
+**Runbooks:** `docs/final-approach/RUNBOOK.md` and
+`docs/final-vector/RUNBOOK.md`: bugs and ideas live in GitHub Issues
+(labels `final-approach`, `final-vector`, `ios-app`, `bug`, `balance`,
+`idea`, `next`; templates in `.github/ISSUE_TEMPLATE`), the release steps,
+testing and the release log. A PR that fixes an issue says `Fixes #NN`;
+update the runbook's release log in the PR that bumps the version.
+
 A solo air-traffic game: aircraft arrive at the edges, you drag from one to
 draw its route, and it lands if the route ends lined up with the approach
 lights of a runway in its colour. Two touching is a collision (shift over);
