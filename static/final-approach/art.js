@@ -532,7 +532,9 @@ const Art = (() => {
     c.fillStyle = 'rgba(90,60,20,0.2)';
     for (const t of trees) { c.beginPath(); c.arc(t.x + 1.2, t.y + 1.6, t.r, 0, TAU); c.fill(); }
     for (const t of trees) {
-      c.fillStyle = th.scrub[Math.floor((t.x * 7 + t.y) % 3)];
+      // Wrapped so scrub left of or above the airspace (negative x or y)
+      // still picks a colour; the same index as before for positive ones.
+      c.fillStyle = th.scrub[((Math.floor(t.x * 7 + t.y) % 3) + 3) % 3];
       c.beginPath(); c.arc(t.x, t.y, t.r, 0, TAU); c.fill();
     }
   }
@@ -809,7 +811,7 @@ const Art = (() => {
       const off = 2 + ((t * 5 + k * 9) % 27);
       ctx.strokeStyle = `rgba(255,255,255,${0.55 * (1 - off / 28)})`;
       ctx.beginPath();
-      for (let y = -5; y <= H + 5; y += 8) ctx.lineTo(shoreX(y) + off + Math.sin(y / 9 + t) * 1.5, y);
+      for (let y = Math.min(-5, B.y0 - 5); y <= Math.max(H + 5, B.y1 + 5); y += 8) ctx.lineTo(shoreX(y) + off + Math.sin(y / 9 + t) * 1.5, y);
       ctx.stroke();
     }
     ctx.restore();
