@@ -86,6 +86,56 @@ struct FeltButtonStyle: ButtonStyle {
     }
 }
 
+/// A choice that needs a line of explanation: an icon, a title, what it
+/// means, and a chevron — Flip 7's two ways in on the hub. Gold or ghost,
+/// like `FeltButtonStyle`.
+struct FeltChoiceStyle: ButtonStyle {
+    var kind: FeltButtonStyle.Kind = .gold
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .foregroundStyle(kind == .gold ? Theme.ink : Theme.cream)
+            .background {
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(kind == .gold ? AnyShapeStyle(Theme.goldGradient) : AnyShapeStyle(Theme.cream.opacity(0.08)))
+                    .overlay {
+                        if kind == .ghost {
+                            RoundedRectangle(cornerRadius: 14).strokeBorder(Theme.cream.opacity(0.25))
+                        }
+                    }
+            }
+            .opacity(isEnabled ? (configuration.isPressed ? 0.8 : 1) : 0.45)
+            .offset(y: configuration.isPressed ? 1 : 0)
+    }
+}
+
+/// The label for a `FeltChoiceStyle` button.
+struct ChoiceLabel: View {
+    let title: String
+    let line: String
+    let systemImage: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.system(size: 18, weight: .semibold))
+                .frame(width: 40, height: 40)
+                .background(Color.black.opacity(0.15), in: RoundedRectangle(cornerRadius: 10))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(Theme.display(17))
+                Text(line).font(.footnote).opacity(0.8)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.right").font(.footnote.weight(.bold)).opacity(0.6)
+        }
+    }
+}
+
 /// A felt panel, like `.f7-panel`.
 struct Panel<Content: View>: View {
     var title: String?

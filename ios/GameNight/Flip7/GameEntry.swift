@@ -124,7 +124,7 @@ struct NewGameView: View {
             Theme.background
             list.frame(maxWidth: 620)
         }
-        .navigationTitle("New game")
+        .navigationTitle("Play on the app")
         .task { await Faces.shared.load() }
         .toolbarBackground(Theme.feltDark, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
