@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{# Final Vector: radar approach control (a prototype). The page is the whole
+   game: a top bar, the strips, the scope (a canvas), the radio log and the
+   command line, with the Academy and the debrief as sheets over it. It
+   brings its own look, so it swaps the shell's stylesheet for its own, and
+   borrows Final Approach's bundled Oswald and Barlow. The design is
+   docs/final-vector/CONCEPT.md. #}
+{% block title %}Final Vector · {{ app_name }}{% endblock %}
+{% block theme_color %}#0b1014{% endblock %}
+{% block shell_css %}<link rel="stylesheet" href="{{ asset('final-vector/style.css') }}">{% endblock %}
+{% block body %}
+<div class="fv" id="fv">
+  <header class="top">
+    <b class="brand">Final Vector</b>
+    <span class="pill" id="where">Ambleford Approach</span>
+    <span class="pill wide">Rwy 27</span>
+    <span class="pill wide">QNH 1013</span>
+    <span class="pill wide">Wind 260/08</span>
+    <span class="sp"></span>
+    <button class="pill btn" id="btn-speed" title="Double speed for quiet stretches: drops back by itself on any alert">×1</button>
+    <span class="pill amber" id="clock">Live</span>
+    <span class="pill" id="traffic">Traffic 0</span>
+    <button class="pill btn" id="btn-sound">Sound on</button>
+    <button class="pill btn" id="btn-menu">Academy</button>
+  </header>
+
+  <aside class="side">
+    {# The lesson in progress: its tasks, Ann's coaching and the check (game.js drawLesson). #}
+    <section class="lesson hidden" id="lesson" aria-live="polite"></section>
+    <div class="strips" id="strips"></div>
+  </aside>
+
+  <main class="scope" id="scope">
+    <canvas id="radar"></canvas>
+    <div id="overlay"></div>
+  </main>
+
+  <footer class="comms">
+    <div class="log" id="log" aria-live="polite"></div>
+    <div class="cmdline">
+      <label for="cmd">Command</label>
+      <input id="cmd" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="SKY412 L270 D40 S210">
+      <div class="cmd-hint" id="cmd-hint"></div>
+    </div>
+  </footer>
+</div>
+
+{# The Academy: the lessons, the shift, a way back. #}
+<div class="sheet" id="menu">
+  <div class="panel menu">
+    <div class="m-head">
+      <div>
+        <div class="eyebrow">Game Night · Preview</div>
+        <h1>Final Vector</h1>
+        <p class="m-sub">Radar approach control, the real way: headings, levels and speeds, three miles apart, onto the ILS. A grown-up sibling to Final Approach.</p>
+      </div>
+      <button class="fv-btn primary hidden" id="btn-resume">Resume</button>
+    </div>
+    <div class="m-bay">Academy · Ambleford</div>
+    <div id="lesson-list"></div>
+    <div class="m-bay">Shift</div>
+    <div class="m-shift">
+      <div><b>A shift at Ambleford</b><small id="shift-note"></small></div>
+      <button class="fv-btn primary" id="btn-shift">Start a shift</button>
+    </div>
+    <p class="m-who" id="m-who"></p>
+    <div class="m-foot">
+      <a class="fv-btn ghost" href="{{ url_for('hub') }}">← Game Night</a>
+      <a class="fv-btn ghost" href="{{ url_for('final-approach.landing') }}">Final Approach</a>
+      <span class="m-tip">Tap an aircraft for the dial, or type: SKY412 L270 D40 S210 · ILS · TWR</span>
+    </div>
+  </div>
+</div>
+
+{# After a shift. #}
+<div class="sheet hidden" id="debrief">
+  <div class="panel debrief">
+    <div class="eyebrow">Debrief</div>
+    <h1>Shift over</h1>
+    <div id="debrief-rows"></div>
+    <div class="coach"><span class="face">AN</span><span id="debrief-verdict"></span></div>
+    <div class="l-buttons">
+      <button class="fv-btn ghost" id="btn-debrief-menu">Academy</button>
+      <button class="fv-btn primary" id="btn-debrief-again">Another shift</button>
+    </div>
+  </div>
+</div>
+
+<div class="sheet small-screen" id="small">
+  <div class="panel">
+    <h1>Final Vector</h1>
+    <p>The scope needs room: an iPad held sideways, or a laptop.</p>
+    <a class="fv-btn ghost" href="{{ url_for('hub') }}">← Game Night</a>
+  </div>
+</div>
+
+{# Where each recorded voice piece lives, cache-busted like every other asset. #}
+{% set urls = {} %}{% for v, clips in voice.items() %}{% set per = {} %}{% for c in clips %}{% set _ = per.update({c: asset('final-vector/voice/' ~ v ~ '/' ~ c ~ '.mp3')}) %}{% endfor %}{% set _ = urls.update({v: per}) %}{% endfor %}
+<script>window.FV_VOICE = {{ urls|tojson }};</script>
+<script src="{{ asset('profiles.js') }}"></script>
+<script src="{{ asset('final-vector/command.js') }}"></script>
+<script src="{{ asset('final-vector/sim.js') }}"></script>
+<script src="{{ asset('final-vector/radio.js') }}"></script>
+<script src="{{ asset('final-vector/scope.js') }}"></script>
+<script src="{{ asset('final-vector/lessons.js') }}"></script>
+<script src="{{ asset('final-vector/game.js') }}"></script>
+{% endblock %}

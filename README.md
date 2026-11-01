@@ -9,13 +9,14 @@ game:
 - **A board game played on the app**: the whole game on phones or one
   passed-round device, for nights without the box (Flip 7's Play mode,
   Fugitive).
-- **Games of our own**: designed here, for us (Wildwood, Final Approach).
+- **Games of our own**: designed here, for us (Wildwood, Final Approach,
+  Final Vector).
 
 Each game is self-contained; the hub provides what they need: room codes,
 joining, player profiles, persisted records, QR links.
 
-Five games so far: **ito**, **Flip 7**, **Fugitive**, **Wildwood** and
-**Final Approach**. `/` is the menu.
+Six games so far: **ito**, **Flip 7**, **Fugitive**, **Wildwood**,
+**Final Approach** and **Final Vector** (a preview). `/` is the menu.
 
 ## ito
 
@@ -134,6 +135,38 @@ shifts make it harder airport by airport.
 - Its playbook (what it is, how it's built, where it's going) is
   [`docs/final-approach/PLAYBOOK.md`](docs/final-approach/PLAYBOOK.md).
 
+## Final Vector (preview)
+
+Final Approach's grown-up sibling: real radar approach control. On a radar
+scope, arrivals come down out of two holding stacks at a training airport,
+**Ambleford**, and you turn, descend and slow them onto the ILS for runway
+27, three miles or 1,000 feet apart, then hand each one to the tower by 8
+miles. Grown-up in difficulty, not in content. The design is
+[`docs/final-vector/CONCEPT.md`](docs/final-vector/CONCEPT.md); this is its
+first prototype.
+
+- **Tap an aircraft** for the command dial: drag round the heading ring
+  (it turns the way you drag), scroll the altitude and speed columns (only
+  what that type can do), Cleared ILS, Hold, Contact tower, then Send,
+  which shows the instruction in words first.
+- **Or type it** on a laptop: `SKY412 L270 D40 S210`, `SKY412 ILS`,
+  `SKY412 TWR`, `SKY412 HOLD DNK`. The first letters of a callsign are
+  enough; Tab completes, Enter sends, Up recalls.
+- **Pilots read every instruction back**, spoken: each of two pilot voices
+  recorded the pieces once (digits, "heading", "descend", "flight
+  level"…) and the game strings them together through a radio filter.
+- **The Academy**: five lessons (reading the scope, headings, altitudes,
+  separation, intercepting the ILS), each a short scenario with a task list
+  that ticks itself off, Ann the instructor's coaching, hints on the scope
+  and a short check. Passing lesson 5 opens a **shift**: eight arrivals at
+  Ambleford, then a debrief (losses of separation, handoffs, average
+  delay). ×2 speeds up quiet stretches and drops back by itself on any
+  alert.
+- Signed in to a Game Night profile, lessons passed and shifts flown go on
+  the family records; otherwise progress stays on the device.
+- Final Approach's arrivals board has a quiet link to it, for a harder
+  challenge.
+
 ## Player profiles
 
 Tap **Add yourself** on the hub (or go to `/me`) to claim your name and take
@@ -182,6 +215,10 @@ data/**/*.bak          last good copy of each file, written on every save
 games/final_approach/game.py  Final Approach's blueprint: one page, the game is client-side
 static/final-approach/  Final Approach's scripts, stylesheet and fonts
 docs/final-approach/   Final Approach's playbook and screenshots
+games/final_vector/game.py  Final Vector's blueprint: one page, lesson and shift records
+static/final-vector/   Final Vector's scripts (command, sim, radio, scope, lessons, game), CSS, voices
+docs/final-vector/     Final Vector's concept, mockups and prototype notes
+tools/final_vector_voice.py  records the pilots' voice pieces with ElevenLabs
 templates/             hub-level pages
 templates/art/         per-game menu artwork, one SVG per game id
 static/style.css       shared styling
