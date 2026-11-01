@@ -1050,13 +1050,40 @@
     if (!open.length) return null;
     const r = open[Math.floor(Math.random() * open.length)];
     const a = r.angle * Math.PI / 180;
-    const mid = { x: r.x + Math.cos(a) * r.length * 0.5, y: r.y + Math.sin(a) * r.length * 0.5 };
-    // The van comes from the side nearer the middle of the map, so it's on screen.
-    let nx = -Math.sin(a), ny = Math.cos(a);
-    if (nx * (W / 2 - mid.x) + ny * (H / 2 - mid.y) < 0) { nx = -nx; ny = -ny; }
+    // Where along the runway it happens, and from which side: the animal
+    // wanders in (and is shooed out) on one side, the ops van drives in from
+    // the other. Neither may cross another runway or the pad (a dog running
+    // over the open runway next door would close nothing), and the van's side
+    // should face the middle of the map, so it's on screen.
+    const others = S.level.runways.filter(o => o !== r);
+    const clearOf = (x0, y0, x1, y1) => {
+      for (let k = 0; k <= 12; k++) {
+        const x = lerp(x0, x1, k / 12), y = lerp(y0, y1, k / 12);
+        if (x < 4 || x > W - 4 || y < 4 || y > H - 4) continue;     // off the map is out of sight
+        for (const o of others) {
+          if (o.kind === 'pad') { if (dist(x, y, o.x, o.y) < 30) return false; continue; }
+          const oa = o.angle * Math.PI / 180;
+          const w = o.kind === 'long' ? 11 : 8;
+          if (segDist(x, y, o.x, o.y, o.x + Math.cos(oa) * o.length, o.y + Math.sin(oa) * o.length) < w + 24) return false;
+        }
+      }
+      return true;
+    };
+    let best = null;
+    for (const f of [0.5, 0.38, 0.62, 0.28, 0.72]) {
+      const mid = { x: r.x + Math.cos(a) * r.length * f, y: r.y + Math.sin(a) * r.length * f };
+      for (const side of [1, -1]) {
+        const nx = -Math.sin(a) * side, ny = Math.cos(a) * side;   // the van's side
+        const animal = clearOf(mid.x, mid.y, mid.x - nx * 90, mid.y - ny * 90);
+        const van = clearOf(mid.x, mid.y, mid.x + nx * 125, mid.y + ny * 125);
+        const facing = nx * (W / 2 - mid.x) + ny * (H / 2 - mid.y) >= 0;
+        const score = (animal ? 4 : 0) + (van ? 2 : 0) + (facing ? 1 : 0) - Math.abs(f - 0.5);
+        if (!best || score > best.score) best = { score, mid, nx, ny };
+      }
+    }
     const what = pick(Object.keys(OBSTACLES));
     const end = runwayEnd(r);
-    return { runway: r, mid, nx, ny, a, what, number: Art.designator(end.angle * 180 / Math.PI), since: S.time };
+    return { runway: r, mid: best.mid, nx: best.nx, ny: best.ny, a, what, number: Art.designator(end.angle * 180 / Math.PI), since: S.time };
   }
   // Near an approach, but never over a runway, a pad, a hold fix or anyone
   // who'd be inside it when it closes.
