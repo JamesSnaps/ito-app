@@ -36,3 +36,6 @@ xcuserdata/
 # The pxl pixel-art skill (see "Pixel art" in CLAUDE.md): a clone of
 # someone else's repo, installed per machine, not part of the app.
 .claude/skills/pxl-pixel-art/
+
+# Claude Code worktrees (parallel working copies), never part of the repo
+.claude/worktrees/

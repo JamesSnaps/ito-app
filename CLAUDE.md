@@ -140,11 +140,21 @@ problem.
   stops working past a handful; the wheel is native scrolling (flicks
   properly on touch, no drag handling of its own) and stays one row
   tall however many categories exist.
-- **Baloo 2, self-hosted** (`static/fonts/`, OFL, latin subset, one
-  variable file covering 400–800). Deliberately not linked from Google's
-  CDN: the app has to work on a LAN with no internet, and no player's
-  browser should call a third party mid-game. `--font-display` falls
-  back through `ui-rounded` if it ever fails to load.
+- **Bricolage Grotesque, self-hosted** (v1.32.0; `static/fonts/`, OFL,
+  latin subset, one variable file covering 200–800, the 96pt optical
+  size). It replaced Baloo 2, whose round, bubbly look (and SF Rounded on
+  iOS) read young; Bricolage is still lively at heavy weights but
+  grown-up, and sits well beside Fugitive's and Final Approach's own
+  faces. It's `--font-display` only (titles, buttons, cards, numbers);
+  body text stays on the platform's UI face, which is also the fallback.
+  Deliberately not linked from Google's CDN: the app has to work on a LAN
+  with no internet, and no player's browser should call a third party
+  mid-game. **iOS bundles it as five static weights** (400–800,
+  `ios/GameNight/Fonts/BricolageGrotesque-*.ttf`) cut from that same
+  woff2 with fontTools' instancer, so both draw identical letters;
+  `Theme.display` picks the nearest and uses `fixedSize`, as
+  `.system(size:)` didn't follow Dynamic Type either. Wildwood's card
+  PNGs bake the face in: change it → re-render them.
 - **The player view is the display view.** It's sized in vw/vmin so the
   same URL works on a phone and cast to a TV — the topic is the reason
   the app exists, so it gets the whole screen. The host page carries a
@@ -264,11 +274,32 @@ problem.
 - **Its felt-and-gold theme is `static/flip7.css`, scoped under `.flip7`
   on `<body>`**, layered over the shared shell rather than replacing it.
 - **Fonts are the app's own.** The standalone page pulled Fraunces and
-  IBM Plex Mono from Google's CDN; that's out for the same reason ito
-  self-hosts Baloo 2 — LAN with no internet, and no third-party calls
+  IBM Plex Mono from Google's CDN; that's out for the same reason the hub
+  self-hosts its display face — LAN with no internet, and no third-party calls
   mid-game. A test asserts the page and its CSS contain no absolute URLs.
 - **Bust and Freeze are exclusive** — they're how a turn ended. Bust also
   locks the number/modifier chips so a stray tap can't score a bust.
+
+### Two ways in (v1.33.0, app 1.15.0)
+
+- **`/flip7/` is a start page, not the scorekeeper.** "How are you playing
+  tonight?": **Play on the app** (no cards needed) or **Score a real game**
+  (bring your own cards), each with a line saying what it means. Keeping
+  score with the real cards is starting a game too, so names like "Start a
+  game" / "Keep score" left people guessing; and on the web the hub's "Play
+  or keep score" landed on the scorekeeper with Play behind an unlabelled ▶.
+  Name new ways in by what's on the table.
+- **The scorekeeper is `/flip7/score`** (endpoint `scorekeeper`; `landing`
+  is the start page, so the hub tile and every back link land there). Its
+  ▶ and the "No deck to hand?" panel are gone — that choice is made on the
+  start page — and its back arrow leads there rather than to the hub.
+- **A scoring game under way is offered back** on the start page ("Carry on
+  scoring · names · round N"), read straight from `flip7:game`; a finished
+  one isn't. A Play game is offered back by the Play setup page, as before.
+- **iOS says the same**: the tile's two stacked `FeltChoiceStyle` rows
+  ("Play on the app — No cards needed", "Score a real game — Got the box
+  out?"), the tile's blurb cut to the one line the others have, and the
+  deal screen is titled "Play on the app".
 
 ### Flip 7 spectator rooms (added v1.4.0)
 
@@ -520,9 +551,10 @@ topic display, and player profiles. Rules pages, ito's
 stats, the Flip 7 scorekeeper and a scorekeeper's spectator board open the
 server's own pages in an in-app Safari sheet rather than being rebuilt.
 
-- **Keep score is the web scorekeeper** (app 1.12.0): the Flip 7 tile's
-  second button opens `/flip7/` in the Safari sheet, for nights with the real
-  cards. Its game is in that sheet's localStorage, which is the app's own —
+- **Score a real game is the web scorekeeper** (app 1.12.0; `/flip7/score`
+  since app 1.15.0): the Flip 7 tile's second choice opens it in the Safari
+  sheet, for nights with the real cards. Older builds open `/flip7/`, which
+  is the start page now, one tap from it. Its game is in that sheet's localStorage, which is the app's own —
   not Safari's, not the home-screen web app's — and survives the sheet
   closing or a swipe down, so opening it again carries on. Every web sheet
   keeps the screen awake, as the tables do.
@@ -843,8 +875,9 @@ phones side by side.
   1280pt wide, three across from 1100pt and two-and-one below that, in a
   `Grid` so a row's tiles end level (app 1.8.2: capped at 1000 with three
   across, a tile's two half-width buttons were too narrow and "Records"
-  broke over two lines). Every tile is one row of buttons across (Flip 7's
-  Start a game and Keep score, ito's Back to / New room), then Records and
+  broke over two lines). Every tile is one row of buttons across (ito's Back
+  to / New room) — except Flip 7's, whose two ways in are stacked rows with
+  a line each (app 1.15.0, see "Two ways in") — then Records and
   Rules — ito's Records is the server's stats page — and the buttons are
   one line each. New game
   and Join: a centred column. Records: two columns. Table: mats capped at
@@ -1014,7 +1047,7 @@ read in full; not in the repo).
 - **Three bundled faces give it its voice**: Bebas Neue (wanted-poster
   capitals — title, card numbers, nameplates), Special Elite (a worn
   typewriter — case tags, notes, stamps, the folder) and Caveat (the
-  Marshal's handwriting). Self-hosted in `static/fonts/` like Baloo 2, latin
+  Marshal's handwriting). Self-hosted in `static/fonts/` like the display face, latin
   subsets only, licences and sources in its README. Body copy stays on the
   system UI face for legibility.
 - **Drawn mugshots when there's no photo.** Each player without one gets a silhouette drawn from a hash of their name (`mugshotSVG()`):
@@ -1252,6 +1285,13 @@ Built exactly the way Fugitive is — read that section first.
   version of the app).
 
 ## Final Approach (added v1.18.0)
+
+**Runbooks:** `docs/final-approach/RUNBOOK.md` and
+`docs/final-vector/RUNBOOK.md`: bugs and ideas live in GitHub Issues
+(labels `final-approach`, `final-vector`, `ios-app`, `bug`, `balance`,
+`idea`, `next`; templates in `.github/ISSUE_TEMPLATE`), the release steps,
+testing and the release log. A PR that fixes an issue says `Fixes #NN`;
+update the runbook's release log in the PR that bumps the version.
 
 A solo air-traffic game: aircraft arrive at the edges, you drag from one to
 draw its route, and it lands if the route ends lined up with the approach
@@ -1671,7 +1711,7 @@ it current when you do (its "Current state" and roadmap especially).
   in is a tile opening `/final-approach/` in the Safari sheet, like Keep
   score (playbook roadmap).
 
-## Picnic Raid (added v1.32.0)
+## Picnic Raid (added v1.34.0)
 
 Our own game, made for the family the way Wildwood was: fill a picnic
 basket, pack it up to bank the points, and hide traps (Ants, Wasp, Seagull,

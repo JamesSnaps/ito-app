@@ -226,20 +226,23 @@ struct HubView: View {
 
     private var flip7Tile: some View {
         GameTile(title: "Flip 7", accent: Theme.gold,
-                 blurb: "Push your luck, bank your cards — first to 200 takes it. The app is the deck: it shuffles, deals and adds it all up. Playing with the real cards? Keep score here instead.") {
+                 blurb: "Push your luck, bank your cards — first to 200 takes it.") {
             Flip7Art()
         } actions: {
-            HStack(spacing: 10) {
+            // Both ways in are "a game", so each is named by what's on the
+            // table and says so in a line — "Start a game" beside "Keep
+            // score" read as the gold one either way.
+            VStack(spacing: 10) {
                 Button { path.append(.newGame) } label: {
-                    Label("Start a game", systemImage: "suit.spade.fill")
+                    ChoiceLabel(title: "Play on the app", line: "No cards needed — the app deals", systemImage: "iphone")
                 }
-                .buttonStyle(FeltButtonStyle(kind: resumable == nil ? .gold : .ghost))
+                .buttonStyle(FeltChoiceStyle(kind: resumable == nil ? .gold : .ghost))
                 // The real deck's score pad is the web's scorekeeper, not
                 // rebuilt here: its scoring and records are the server's pages.
-                Button { open("/flip7/") } label: {
-                    Label("Keep score", systemImage: "list.number")
+                Button { open("/flip7/score") } label: {
+                    ChoiceLabel(title: "Score a real game", line: "Got the box out? We’ll add it up", systemImage: "pencil.and.list.clipboard")
                 }
-                .buttonStyle(FeltButtonStyle(kind: .ghost))
+                .buttonStyle(FeltChoiceStyle(kind: .ghost))
             }
             moreRow(records: { path.append(.records) }, rules: "/flip7/rules")
         }
@@ -556,7 +559,7 @@ private struct ItoArt: View {
     }
 
     private func dot(_ label: String) -> some View {
-        Text(label).font(.system(size: label.count > 1 ? 10 : 13, weight: .heavy, design: .rounded))
+        Text(label).font(Theme.display(label.count > 1 ? 10 : 13, weight: .heavy))
             .foregroundStyle(.white)
             .frame(width: 28, height: 28)
             .background(Color(hex: 0x45474C), in: Circle())

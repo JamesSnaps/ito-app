@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// Flip 7's felt and gold, the same values as static/flip7.css. The display
-/// face is the system rounded design — what the web page's `--font-display`
-/// falls back to (`ui-rounded`) when Baloo 2 isn't there.
+/// face is the web's `--font-display`, Bricolage Grotesque, bundled as five
+/// static weights cut from the same variable file (Fonts/).
 enum Theme {
     static let feltDark = Color(hex: 0x0F2E24)
     static let felt = Color(hex: 0x164A38)
@@ -24,8 +24,22 @@ enum Theme {
             .ignoresSafeArea()
     }
 
+    /// Fixed size, as `.system(size:)` was: the layouts were drawn around
+    /// these sizes, and `.custom(_:size:)` would scale them with Dynamic Type.
     static func display(_ size: CGFloat, weight: Font.Weight = .heavy) -> Font {
-        .system(size: size, weight: weight, design: .rounded)
+        .custom(displayFace(weight), fixedSize: size)
+    }
+
+    /// The bundled weight nearest the one asked for: 400–800 are bundled, so
+    /// lighter falls to Regular and black to ExtraBold.
+    private static func displayFace(_ weight: Font.Weight) -> String {
+        switch weight {
+        case .heavy, .black: "BricolageGrotesque-ExtraBold"
+        case .bold: "BricolageGrotesque-Bold"
+        case .semibold: "BricolageGrotesque-SemiBold"
+        case .medium: "BricolageGrotesque-Medium"
+        default: "BricolageGrotesque-Regular"
+        }
     }
 
     static func mono(_ size: CGFloat, weight: Font.Weight = .bold) -> Font {
@@ -69,6 +83,56 @@ struct FeltButtonStyle: ButtonStyle {
             }
             .opacity(isEnabled ? (configuration.isPressed ? 0.8 : 1) : 0.45)
             .offset(y: configuration.isPressed ? 1 : 0)
+    }
+}
+
+/// A choice that needs a line of explanation: an icon, a title, what it
+/// means, and a chevron — Flip 7's two ways in on the hub. Gold or ghost,
+/// like `FeltButtonStyle`.
+struct FeltChoiceStyle: ButtonStyle {
+    var kind: FeltButtonStyle.Kind = .gold
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .foregroundStyle(kind == .gold ? Theme.ink : Theme.cream)
+            .background {
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(kind == .gold ? AnyShapeStyle(Theme.goldGradient) : AnyShapeStyle(Theme.cream.opacity(0.08)))
+                    .overlay {
+                        if kind == .ghost {
+                            RoundedRectangle(cornerRadius: 14).strokeBorder(Theme.cream.opacity(0.25))
+                        }
+                    }
+            }
+            .opacity(isEnabled ? (configuration.isPressed ? 0.8 : 1) : 0.45)
+            .offset(y: configuration.isPressed ? 1 : 0)
+    }
+}
+
+/// The label for a `FeltChoiceStyle` button.
+struct ChoiceLabel: View {
+    let title: String
+    let line: String
+    let systemImage: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.system(size: 18, weight: .semibold))
+                .frame(width: 40, height: 40)
+                .background(Color.black.opacity(0.15), in: RoundedRectangle(cornerRadius: 10))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(Theme.display(17))
+                Text(line).font(.footnote).opacity(0.8)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.right").font(.footnote.weight(.bold)).opacity(0.6)
+        }
     }
 }
 

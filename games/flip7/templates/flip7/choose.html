@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Flip 7 — {{ app_name }}{% endblock %}
+{% block body_class %}flip7{% endblock %}
+{% block theme_color %}#0f2e24{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ asset('flip7.css') }}">
+<script src="{{ asset('flip7.js') }}"></script>{% endblock %}
+{% block body %}
+{# Flip 7's front door. Both ways in are "a game", so each is named by
+   what's on the table — no cards, or the real box — and says so in a line. #}
+<div class="wrap">
+  <header class="f7-bar">
+    <a class="f7-btn-icon" href="{{ url_for('hub') }}"
+       aria-label="Back to {{ app_name }}" title="Back to {{ app_name }}">←</a>
+    <h1 class="f7-title">Flip <span>7</span></h1>
+    <a class="f7-btn-icon" href="{{ url_for('flip7.stats_view') }}"
+       aria-label="Records" title="Records">★</a>
+    <a class="f7-btn-icon" href="{{ url_for('flip7.rules_view') }}"
+       aria-label="Rules" title="Rules">?</a>
+  </header>
+
+  <h2 class="f7-ask">How are you playing tonight?</h2>
+  <p class="f7-ask-sub">{{ game.tagline }}</p>
+
+  <a class="f7-way f7-way-gold" href="{{ url_for('flip7.play_setup') }}">
+    <span class="f7-way-title">Play on the app <span aria-hidden="true">›</span></span>
+    <span class="f7-way-line">No cards needed. The app shuffles, deals and scores; everyone can join on their own phone.</span>
+    <span class="f7-way-pill">The app is the deck</span>
+  </a>
+  <a class="f7-way" href="{{ url_for('flip7.scorekeeper') }}">
+    <span class="f7-way-title">Score a real game <span aria-hidden="true">›</span></span>
+    <span class="f7-way-line">Playing with the box? Tap in each round’s cards and the app adds them up.</span>
+    <span class="f7-way-pill">Bring your own cards</span>
+  </a>
+
+  <div id="f7-carry-on"></div>
+
+  <div class="version">{{ app_name }} v{{ app_version }}</div>
+</div>
+<script>
+  // A scoring game this browser has under way, offered back so carrying on
+  // stays one tap. Read straight from the scorekeeper's own storage; a
+  // finished game isn't offered — its result is on the scorekeeper's board.
+  (() => {
+    const TARGET_SCORE = {{ target }};
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem('flip7:game')); } catch (e) {}
+    if (!saved || !Array.isArray(saved.players)) return;
+    const players = saved.players.filter(p => p && typeof p.name === 'string' && Array.isArray(p.rounds));
+    const rounds = Math.max(0, ...players.map(p => p.rounds.length));
+    if (!rounds) return;
+    const totals = players.map(p => p.rounds.reduce((sum, r) => sum + (Number(r && r.score) || 0), 0));
+    if (totals.some(t => t >= TARGET_SCORE)) return;
+    document.getElementById('f7-carry-on').appendChild(
+      el('a', {class: 'f7-carry-on', href: '{{ url_for("flip7.scorekeeper") }}'}, [
+        el('span', {}, [
+          el('b', {text: 'Carry on scoring'}),
+          el('span', {text: players.map(p => p.name).join(', ') + ` · round ${rounds + 1}`})
+        ]),
+        el('span', {class: 'f7-carry-on-go', text: 'Resume ›'})
+      ]));
+  })();
+</script>
+{% endblock %}

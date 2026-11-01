@@ -20,7 +20,7 @@ settings:
     SWIFT_APPROACHABLE_CONCURRENCY: YES
     # Must stay above 1.0: the first TestFlight build went out as 1.0 (1)
     # by accident, and a lower version reads as older on testers' phones.
-    MARKETING_VERSION: "1.13.0"
+    MARKETING_VERSION: "1.15.0"
     # The build number: scripts/testflight.sh sets it to the UTC time.
     CURRENT_PROJECT_VERSION: "1"
     # James Collard's paid individual membership, as Dishes, Keepsake and
@@ -81,11 +81,17 @@ targets:
           - _gn-fugitive._udp
           - _gn-wildwood._tcp
           - _gn-wildwood._udp
-        # Fugitive's three faces, the web's own (static/fonts), bundled.
+        # The web's own faces (static/fonts), bundled: Fugitive's three, and
+        # the display face everywhere else as five static weights.
         UIAppFonts:
           - BebasNeue-Regular.ttf
           - SpecialElite-Regular.ttf
           - Caveat-Variable.ttf
+          - BricolageGrotesque-Regular.ttf
+          - BricolageGrotesque-Medium.ttf
+          - BricolageGrotesque-SemiBold.ttf
+          - BricolageGrotesque-Bold.ttf
+          - BricolageGrotesque-ExtraBold.ttf
         # The production server is https. This only lets a dev build talk to
         # a server on the LAN or the Mac running the simulator.
         NSAppTransportSecurity:

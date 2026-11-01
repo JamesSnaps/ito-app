@@ -4,7 +4,8 @@
 concept, not yet a plan: work starts after Final Approach's Disruptions
 part 2. Mockups are drawn to look like the real thing on an
 iPad held sideways; the live mockup is [`img/mockup.html`](img/mockup.html)
-(`?m=scope|dial|voice|lesson`).*
+(`?m=scope|dial|voice|lesson`). Day-to-day work (issues, releasing,
+testing, the release log) is in [the runbook](RUNBOOK.md).*
 
 ## 1. The pitch
 

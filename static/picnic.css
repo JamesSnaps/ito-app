@@ -1,6 +1,6 @@
 /* Picnic Raid: a sunny meadow. Grass under everything, a red gingham
    blanket for each player, cream cards. Scoped under .picnic on <body>,
-   over the shared shell, in the app's own Baloo 2. The card faces are
+   over the shared shell, in the app's own display face. The card faces are
    pictures (static/picnic/cards/); until one arrives its card is a plain
    coloured placeholder with the card's name, styled here. */
 
@@ -91,7 +91,8 @@ button.pr-card { border: 0; cursor: pointer; font: inherit; }
   position: absolute; top: 4%; left: 8%; color: #fff; paint-order: stroke;
   -webkit-text-stroke: calc(var(--w) * 0.03) var(--pr-ink); font-size: calc(var(--w) * 0.36);
 }
-.pr-name { font: 800 calc(var(--w) * 0.15)/1.1 var(--font-display); }
+/* Bricolage runs wider than Baloo did: "Strawberries" must fit a hand card. */
+.pr-name { font: 800 calc(var(--w) * 0.14)/1.1 var(--font-display); letter-spacing: -0.02em; }
 .pr-name-big { font-size: calc(var(--w) * 0.2); }
 .pr-does { font: 600 calc(var(--w) * 0.11)/1.2 var(--font-body, inherit); opacity: 0.85; }
 /* What a card does only fits on the big ones: the springing trap, bursts, the rules. */
