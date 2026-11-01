@@ -700,6 +700,8 @@ registry gains) are played full screen as their web page (app 1.14.0, see
   hosts and other schemes (mailto:) open in the system browser; frames
   inside a page load what they like. A `target=_blank` link follows the
   same rule in the one window.
+  The server's front page (`/`, a game's "Game Night" button) is the
+  exception: it closes the game (`closeToHub`), since the app's hub is home.
 - **Not tried on a device from here**: the screen is UI code written on
   Linux; the model, script and link rules are what the Linux tests cover.
 
