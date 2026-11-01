@@ -9,14 +9,12 @@
 {% block body %}
 <div class="wrap">
   <header class="f7-bar">
-    <a class="f7-btn-icon" href="{{ url_for('hub') }}"
-       aria-label="Back to {{ app_name }}" title="Back to {{ app_name }}">←</a>
+    <a class="f7-btn-icon" href="{{ url_for('flip7.landing') }}"
+       aria-label="Back" title="Back">←</a>
     <h1 class="f7-title">Flip <span>7</span></h1>
-    <a class="f7-btn-icon" href="{{ url_for('flip7.play_setup') }}"
-       aria-label="Play on the app's deck" title="Play on the app's deck">▶</a>
-    <a class="f7-btn-icon" href="{{ url_for('flip7.stats_view') }}"
+    <a class="f7-btn-icon" href="{{ url_for('flip7.stats_view', back=url_for('flip7.scorekeeper')) }}"
        aria-label="Records" title="Records">★</a>
-    <a class="f7-btn-icon" href="{{ url_for('flip7.rules_view') }}"
+    <a class="f7-btn-icon" href="{{ url_for('flip7.rules_view', back=url_for('flip7.scorekeeper')) }}"
        aria-label="Scoring reference" title="Scoring reference">?</a>
   </header>
   <div class="f7-subtitle">Scorekeeper · first to {{ target }} wins</div>
@@ -63,7 +61,6 @@
   const RECORD_URL = '{{ url_for("flip7.api_record_game") }}';
   const ROOMS_URL = '{{ url_for("flip7.create_room") }}';
   const SHARE_KEY = 'flip7:share';
-  const PLAY_URL = '{{ url_for("flip7.play_setup") }}';
 
   // Only the players and their banked rounds are worth keeping. Whether a
   // round is half-entered, or the history is expanded, is not — restoring
@@ -557,16 +554,6 @@
       }
     } else {
       announcedWinner = false;
-    }
-
-    // Nothing banked yet, so nothing to lose by going elsewhere: the one
-    // moment to mention that the app can be the deck, too.
-    if (!state.drafting && !state.players.some(p => p.rounds.length)) {
-      left.appendChild(el('a', {class: 'f7-panel f7-play-promo', href: PLAY_URL}, [
-        el('div', {class: 'f7-panel-title'}, [el('span', {text: 'No deck to hand?'}), icon('next')]),
-        el('div', {class: 'f7-note', text:
-          'Play on the app’s own deck instead — it deals, spots busts and adds it all up.'})
-      ]));
     }
 
     // --- players ---

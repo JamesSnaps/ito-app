@@ -278,6 +278,27 @@ problem.
 - **Bust and Freeze are exclusive** — they're how a turn ended. Bust also
   locks the number/modifier chips so a stray tap can't score a bust.
 
+### Two ways in (v1.33.0, app 1.15.0)
+
+- **`/flip7/` is a start page, not the scorekeeper.** "How are you playing
+  tonight?": **Play on the app** (no cards needed) or **Score a real game**
+  (bring your own cards), each with a line saying what it means. Keeping
+  score with the real cards is starting a game too, so names like "Start a
+  game" / "Keep score" left people guessing; and on the web the hub's "Play
+  or keep score" landed on the scorekeeper with Play behind an unlabelled ▶.
+  Name new ways in by what's on the table.
+- **The scorekeeper is `/flip7/score`** (endpoint `scorekeeper`; `landing`
+  is the start page, so the hub tile and every back link land there). Its
+  ▶ and the "No deck to hand?" panel are gone — that choice is made on the
+  start page — and its back arrow leads there rather than to the hub.
+- **A scoring game under way is offered back** on the start page ("Carry on
+  scoring · names · round N"), read straight from `flip7:game`; a finished
+  one isn't. A Play game is offered back by the Play setup page, as before.
+- **iOS says the same**: the tile's two stacked `FeltChoiceStyle` rows
+  ("Play on the app — No cards needed", "Score a real game — Got the box
+  out?"), the tile's blurb cut to the one line the others have, and the
+  deal screen is titled "Play on the app".
+
 ### Flip 7 spectator rooms (added v1.4.0)
 
 - **The room is a copy of the board, not the board.** The game still lives
@@ -528,9 +549,10 @@ topic display, and player profiles. Rules pages, ito's
 stats, the Flip 7 scorekeeper and a scorekeeper's spectator board open the
 server's own pages in an in-app Safari sheet rather than being rebuilt.
 
-- **Keep score is the web scorekeeper** (app 1.12.0): the Flip 7 tile's
-  second button opens `/flip7/` in the Safari sheet, for nights with the real
-  cards. Its game is in that sheet's localStorage, which is the app's own —
+- **Score a real game is the web scorekeeper** (app 1.12.0; `/flip7/score`
+  since app 1.15.0): the Flip 7 tile's second choice opens it in the Safari
+  sheet, for nights with the real cards. Older builds open `/flip7/`, which
+  is the start page now, one tap from it. Its game is in that sheet's localStorage, which is the app's own —
   not Safari's, not the home-screen web app's — and survives the sheet
   closing or a swipe down, so opening it again carries on. Every web sheet
   keeps the screen awake, as the tables do.
@@ -851,8 +873,9 @@ phones side by side.
   1280pt wide, three across from 1100pt and two-and-one below that, in a
   `Grid` so a row's tiles end level (app 1.8.2: capped at 1000 with three
   across, a tile's two half-width buttons were too narrow and "Records"
-  broke over two lines). Every tile is one row of buttons across (Flip 7's
-  Start a game and Keep score, ito's Back to / New room), then Records and
+  broke over two lines). Every tile is one row of buttons across (ito's Back
+  to / New room) — except Flip 7's, whose two ways in are stacked rows with
+  a line each (app 1.15.0, see "Two ways in") — then Records and
   Rules — ito's Records is the server's stats page — and the buttons are
   one line each. New game
   and Join: a centred column. Records: two columns. Table: mats capped at

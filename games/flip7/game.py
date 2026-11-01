@@ -441,6 +441,15 @@ def record_game(players):
 
 @bp.route("/")
 def landing():
+    """Two ways in, said plainly: play on the app's deck, or score a game
+    played with the real cards. Both are "a game", so each is named by
+    what's on the table."""
+    return render_template("flip7/choose.html", game=GAME, target=TARGET_SCORE)
+
+
+@bp.route("/score")
+def scorekeeper():
+    """The score pad for a game played with the real cards."""
     return render_template(
         "flip7/scorekeeper.html", game=GAME, target=TARGET_SCORE,
         max_players=MAX_PLAYERS, max_name=MAX_NAME,
@@ -488,9 +497,9 @@ def play_view(code):
 
 def back_link():
     """Where a side page's back button goes: the page that linked to it, if
-    that was a Flip 7 page, or the scorekeeper. An installed app has no
+    that was a Flip 7 page, or Flip 7's start page. An installed app has no
     browser back button, so leaving the table for the rules must not strand
-    you at the scorekeeper. Same-game paths only, so this can't be pointed
+    you somewhere else. Same-game paths only, so this can't be pointed
     off-site."""
     back = request.args.get("back", "")
     if back.startswith("/flip7/") and "//" not in back and "\\" not in back:

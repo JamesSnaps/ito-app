@@ -77,14 +77,40 @@ def test_flip7_pages_render_without_a_room():
     c = client()
     assert not FLIP7.starts_rooms
     assert c.get("/flip7/").status_code == 200
+    assert c.get("/flip7/score").status_code == 200
     assert c.get("/flip7/rules").status_code == 200
     assert "Play or keep score" in c.get("/").get_data(as_text=True)
+
+
+def test_flip7_start_page_offers_both_ways_in():
+    """Keeping score with the real cards is starting a game too, so the start
+    page names each way by what's on the table, and the scorekeeper is its
+    own page rather than the front door with Play behind an unlabelled ▶."""
+    c = client()
+    start = c.get("/flip7/").get_data(as_text=True)
+    assert "Play on the app" in start and 'href="/flip7/play"' in start
+    assert "Score a real game" in start and 'href="/flip7/score"' in start
+    assert "calcRoundScore" not in start  # not the scorekeeper
+    # A scoring game under way is offered back from the scorekeeper's storage.
+    assert "localStorage.getItem('flip7:game')" in start
+    assert "http://" not in start and "https://" not in start
+
+    pad = c.get("/flip7/score").get_data(as_text=True)
+    assert "calcRoundScore" in pad
+    assert 'href="/flip7/play"' not in pad  # chosen at the start page now
+    assert 'href="/flip7/"' in pad  # back leads there
+    # Its side pages lead back to the pad, not the start page: a rules check
+    # mid-game mustn't drop the scorer out of it.
+    assert 'href="/flip7/rules?back=/flip7/score"' in pad
+    assert 'href="/flip7/stats?back=/flip7/score"' in pad
+    rules = c.get("/flip7/rules?back=/flip7/score").get_data(as_text=True)
+    assert 'href="/flip7/score"' in rules
 
 
 def test_flip7_does_not_call_out_to_the_internet():
     """The app has to work on a LAN with no internet, and no player's browser
     should be fetching fonts from a third party mid-game."""
-    body = client().get("/flip7/").get_data(as_text=True)
+    body = client().get("/flip7/score").get_data(as_text=True)
     css = (Path(__file__).resolve().parent.parent / "static" / "flip7.css").read_text()
     # The SVG namespace is an XML identifier, not an address — createElementNS
     # never fetches it. Everything else that looks like a URL is a real one.
@@ -96,7 +122,7 @@ def test_flip7_scoring_matches_the_rules_page():
     """The scoring is in the page's JS, so this pins the rules the app claims:
     x2 doubles the numbers only, flat modifiers are added after, seven
     distinct numbers is +15, and a bust is worth nothing at all."""
-    body = client().get("/flip7/").get_data(as_text=True)
+    body = client().get("/flip7/score").get_data(as_text=True)
     assert "if (entry.bust) return 0;" in body
     assert "entry.x2 ? base*2 : base" in body
     assert "entry.numbers.length >= 7 ? 15 : 0" in body
@@ -106,7 +132,7 @@ def test_flip7_scoring_matches_the_rules_page():
 def test_flip7_seventh_number_ends_the_turn():
     """Seven numbers is the end of a turn by rule, not a choice, so the entry
     page has to lock it and the rules page has to say so."""
-    body = client().get("/flip7/").get_data(as_text=True)
+    body = client().get("/flip7/score").get_data(as_text=True)
     rules = client().get("/flip7/rules").get_data(as_text=True)
     assert "d.bust || d.frozen || d.numbers.length >= 7" in body
     assert "turn is over" in rules
@@ -586,7 +612,7 @@ def test_flip7_stats_can_be_cleared_and_do_not_touch_itos():
 def test_flip7_page_posts_the_game_once():
     """The winner banner survives a reload, so the post has to be guarded by
     something that survives with it."""
-    body = client().get("/flip7/").get_data(as_text=True)
+    body = client().get("/flip7/score").get_data(as_text=True)
     assert "if (winners.length && !state.recorded && !recordFailure) recordGame();" in body
     assert "state.recorded = !!saved.recorded;" in body
     # Only a successful post counts, or a server that was down at the final
@@ -708,7 +734,7 @@ def test_flip7_pages_pick_the_winner_the_way_the_records_do():
     """No JS runner here, so pin the rule by its text: the screen must go on
     the top total, like record_game, not the first seat to reach 200."""
     c = client()
-    page = c.get("/flip7/").get_data(as_text=True)
+    page = c.get("/flip7/score").get_data(as_text=True)
     assert "totals.findIndex(t => t >= TARGET_SCORE)" not in page
     assert "if (top < TARGET_SCORE) return [];" in page
     assert "filter(i => totals[i] === top)" in page
@@ -724,7 +750,7 @@ def test_flip7_page_checks_names_the_way_the_records_do():
     mustn't be set up in the first place, and a refusal must be shown."""
     from games.flip7.game import MAX_NAME, MAX_PLAYERS
 
-    page = client().get("/flip7/").get_data(as_text=True)
+    page = client().get("/flip7/score").get_data(as_text=True)
     assert f"const MAX_PLAYERS = {MAX_PLAYERS};" in page
     assert f"const MAX_NAME = {MAX_NAME};" in page
     assert "state.players.length >= MAX_PLAYERS" in page
@@ -937,7 +963,7 @@ def test_the_site_is_installable():
         assert c.get(icon["src"]).status_code == 200, icon["src"]
     assert any(i.get("purpose") == "maskable" for i in manifest["icons"])
 
-    for page in ("/", "/join", "/flip7/", "/flip7/play", "/ito/"):
+    for page in ("/", "/join", "/flip7/", "/flip7/score", "/flip7/play", "/ito/"):
         body = c.get(page).get_data(as_text=True)
         assert 'rel="manifest"' in body and "apple-touch-icon" in body, page
 
