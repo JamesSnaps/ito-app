@@ -4,7 +4,8 @@
 concept, not yet a plan: work starts after Final Approach's Disruptions
 part 2. Mockups are drawn to look like the real thing on an
 iPad held sideways; the live mockup is [`img/mockup.html`](img/mockup.html)
-(`?m=scope|dial|voice|lesson`).*
+(`?m=scope|dial|voice|lesson`). The first prototype was built in
+v1.32.0: what it has, and what's next, is section 15.*
 
 ## 1. The pitch
 
@@ -301,7 +302,104 @@ Heathrow, departures, debrief replays, readback errors.
 
 ## 14. Still open
 
-- The training airport's name and layout.
+- ~~The training airport's name and layout.~~ Ambleford, runway 27, the
+  Dunnock and Linnet stacks (section 15).
 - How much of real Heathrow's procedures to keep (every STAR and the
   stacks' real levels, or a simplified set).
 - Whether departures come into the first full release or later.
+
+## 15. The prototype (v1.32.0)
+
+Built to the scope of section 12, at `/final-vector/` (a preview tile on
+the hub, and a quiet link under Final Approach's arrivals board). How it's
+built is in CLAUDE.md's Final Vector section.
+
+### What it has
+
+- **Ambleford**, the training airport: fictional, one runway (27, landing
+  west, a 3° ILS), two stacks north-east and south-east of it (**Dunnock**
+  and **Linnet**, right-hand holds, arrival routes in from the sector's
+  edge), QNH 1013, wind 260/08 (it changes ground speed, not tracks).
+- **A simulation in real units**: miles, feet, knots, seconds. Seven
+  types with their own performance and wake category: A320, B738, E190,
+  DH8D (medium), B77W and A333 (heavy, turning at 2.5°/s and slowing
+  slower), BE20 (light). Turns at about 3°/s, descents of 1,500–1,900
+  ft/min that level off gently, speeds limited to what the type can do, a
+  pilot's two-and-a-half seconds before anything starts to change.
+- **The ILS as it really works**: cleared, an aircraft captures the
+  localiser only with a cut of 30° or less and from below the glideslope,
+  then flies it down by itself and slows to its approach speed; too steep
+  or too high and it flies straight through, and the log says why.
+  Contact tower once established; by 8 miles is on time.
+- **Separation**: 3 miles or 1,000 feet; the short-term conflict alert
+  about a minute ahead (red rings, red tags, a red edge on the strip, a
+  two-tone and a log line); a loss of separation counted.
+- **The scope** as mocked up: range rings, the centreline with mile ticks
+  and the localiser cone, stacks, routes and the sector's edge, aircraft
+  with a history trail, a one-minute speed vector and a data tag
+  (`SKY412 M` / `060↓040 210`), the selected one in amber. Strips
+  (Inbound, Holding per stack, Tower), the radio log, the top bar.
+- **The command dial**: tap an aircraft (or its strip); drag round the
+  heading ring (the way you drag is the way it turns, past 180° the long
+  way), altitude and speed columns limited to the type, Cleared ILS, Hold
+  at DNK/LNT, Contact tower (only once established), and Send showing the
+  words ("Left 300, 3000, Cleared ILS 27").
+- **The command line**: `SKY412 L270 D40 S210`, `ILS`, `TWR`, `HOLD DNK`;
+  a callsign's first letters are enough, Tab completes, Enter sends, Up
+  recalls, a tap on an aircraft fills its callsign in. One grammar
+  (`command.js`) that also reads spoken phraseology ("Skylark four one two,
+  turn left heading two seven zero, descend four thousand feet"), ready
+  for voice.
+- **Readbacks**, every one, in the log and spoken: two pilot voices
+  (George and Alice, ElevenLabs) recorded 57 pieces each (digits twice,
+  running on and ending, the instruction words, the callsign names, the
+  fixes, greetings), 114 files, about half a megabyte. The game strings
+  them together and Final Approach's radio filter smooths the joins.
+  "Unable" when an instruction is beyond the type. New arrivals check in
+  ("Ambleford Approach, good afternoon, Swift four, flight level one one
+  zero, inbound Linnet"); established aircraft report it.
+- **The Academy, lessons 1–5**, each a scenario at Ambleford with a task
+  list that ticks itself off, Ann's coaching as text, hints on the scope
+  (a pulsing ring, a dashed heading line) and a three-question check.
+  Progress per device, and on the family records for a signed-in profile.
+- **A shift** once lesson 5 is passed: eight arrivals over about twelve
+  minutes, then a debrief (landed, losses, alerts, handoffs on time, late
+  and missed, through the localiser, average delay, time at ×2). ×2 drops
+  back to ×1 by itself on any alert.
+
+### Decided while building it
+
+- The lesson panel sits in the left column above the strips (wider during
+  a lesson) rather than over the scope, as in the mockup: over the scope
+  it covered the airport and the final approach, which is where every
+  lesson happens.
+- The bottom right, where push to talk will go, holds the command line for
+  now.
+- The controller's own words are shown, not spoken; only pilots speak.
+- New arrivals join the top of their stack, as the previous sector would
+  clear them; nobody is cleared down through aircraft already holding.
+- A handoff before the aircraft is established is refused rather than
+  allowed and scored: it keeps "contact tower" meaning what it means.
+
+### Rough edges
+
+- Holds are a simplified racetrack (no entry procedures), and the drawn
+  pattern is only roughly where they fly.
+- Data tags avoid each other only crudely (four places to try); they
+  can't be dragged.
+- Readbacks are pieces said one at a time: clear through the radio
+  filter, but not as fluent as a real pilot. Live text-to-speech for
+  whole lines is the obvious upgrade.
+- The scope doesn't zoom or pan; on a laptop it doesn't use the full width.
+- A shift is a fixed eight arrivals with no wake-turbulence spacing rule
+  yet (wake categories are shown but not enforced), and no scoring beyond
+  the debrief's counts.
+- Phones get a "needs a bigger screen" card.
+
+### Next
+
+Voice control (the grammar is ready; it needs the browser's speech
+recognition and the "say again" loop), lessons 6–12 (speed, sequencing,
+the stacks, wake turbulence, phraseology, departures, when it goes wrong),
+Heathrow, departures, debrief replays, readback errors, and pause/resume
+across app restarts.

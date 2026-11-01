@@ -15,13 +15,15 @@ clear which it is:
 - **Games of our own** — designed here, not copies of published games:
   their own names, rules and art (*Wildwood*, *Final Approach*).
 
-It holds five: *ito* (cooperative, secret-number ordering game),
+It holds six: *ito* (cooperative, secret-number ordering game),
 *Flip 7* (push-your-luck card game), *Fugitive* (two-player
 hidden-movement card game, played entirely on the app, against a person or
 the computer — see its section), *Wildwood* (our own Crazy Eights-style
 card game for the family, two to four, also played entirely on the app)
-and *Final Approach* (our own solo air-traffic game, all client-side; its
-playbook is `docs/final-approach/PLAYBOOK.md`). `/` is the menu — it used
+*Final Approach* (our own solo air-traffic game, all client-side; its
+playbook is `docs/final-approach/PLAYBOOK.md`) and *Final Vector* (its
+grown-up sibling, radar approach control; a prototype since v1.32.0, see
+its section). `/` is the menu — it used
 to redirect straight to ito when ito was the only game.
 
 The ito app itself: The owner has the German edition, whose
@@ -1668,6 +1670,98 @@ it current when you do (its "Current state" and roadmap especially).
 - **Not in the iOS app.** The native hub's tiles are its own; the cheap way
   in is a tile opening `/final-approach/` in the Safari sheet, like Keep
   score (playbook roadmap).
+
+## Final Vector (added v1.32.0, a prototype)
+
+Radar approach control for grown-ups, Final Approach's sibling. **Read
+`docs/final-vector/CONCEPT.md` first**: the design, the decisions (section
+13) and what the prototype built and what's next (section 15). Grown-up in
+difficulty, never in content: kids see the hub.
+
+- **All client-side, one page** (`games/final_vector/game.py` serves
+  `/final-vector/` and the records API). Scripts in `static/final-vector/`,
+  plain globals under `window.FV`, loaded in this order:
+  `command.js` (the grammar and phrases), `sim.js` (the airport, types and
+  simulation), `radio.js` (readback audio), `scope.js` (the canvas),
+  `lessons.js` (the Academy), `game.js` (everything on the page). Its own
+  stylesheet; Oswald and Barlow are Final Approach's, by URL
+  (`../final-approach/fonts/`), not copied.
+- **Real units.** `sim.js`: nautical miles, feet, knots, seconds; x east
+  and y north of runway 27's threshold at (0, 0). Ambleford (`FV.World`)
+  is fictional: one runway (27, localiser course 270, a 3° glideslope =
+  318 ft/nm), two stacks (DNK Dunnock and LNT Linnet, right-hand holds),
+  arrival routes into them, a sector edge, QNH and wind. Types (`FV.TYPES`:
+  A320, B738, E190, DH8D, B77W, A333, BE20; wake L/M/H) each have a turn
+  rate (3°/s, 2.5 for heavies), climb/descent rates, an assignable speed
+  range and an approach speed. Pilots start to comply 2.5 s after an
+  instruction (`RESPOND`); the tag's cleared level changes at once, as a
+  controller writes it down.
+- **The ILS rule** (`intercept`): cleared ILS, an aircraft captures the
+  localiser only when it reaches the turn-on point with a cut of 30° or
+  less **and** no more than 150 ft above the glideslope; otherwise it flies
+  straight through (`through` event, once per pass). Established, it tracks
+  the centreline, captures the glideslope from below, slows to its
+  approach speed inside 6 nm and lands at the threshold. Contact tower is
+  only accepted once established; by 7.5 nm is on time, later is late, and
+  still yours inside 4 nm is a missed handoff (the tower takes it).
+  Any heading cancels the approach.
+- **Separation** (`check`): every airborne pair, 3 nm or 1,000 ft (25 ft
+  slack for levelling). The short-term conflict alert predicts 60 s ahead
+  in 5 s steps, straight on and toward the cleared level, and fires once
+  per episode (`stca`); a loss is `los` (counted once per episode); `clear`
+  when a pair is apart again. Pairs on the tower's frequency still count.
+  Numbers shown are rounded *down* (2.97 nm never reads 3.0).
+- **One command grammar** (`command.js`, pure, runs under node): `parse(text,
+  ctx)` reads typed codes and spoken phraseology alike (number words become
+  numbers: "four thousand", "three zero zero", "two hundred and ten",
+  "one one eight decimal five"; telephony names become designators). Voice
+  control will hand it a transcript. Nothing is acted on unless all of it
+  parsed. Grammar: callsign (or a unique prefix, or "Skylark 412"), then any
+  of `L270`/`R270`/`H270` (H = the shorter way), `D40`/`C50`/`A40` (hundreds
+  of feet below 1,000; feet above), `FL110`, `S210`, `ILS`, `TWR`,
+  `HOLD DNK`, or the words. The same file builds every line said: the
+  controller's (`controllerKeys`), the readback (`readbackKeys`), check-ins,
+  "established", "unable", as lists of clip keys; `text()` makes the log
+  line and `clips()` the recordings (a number's last digit takes the falling
+  variant, `e4` not `d4`).
+- **Voices** (`tools/final_vector_voice.py`): two pilots (George, Alice;
+  ElevenLabs `eleven_multilingual_v2`, mp3 22 kHz 32 kbps, with
+  `previous_text`/`next_text` so a piece is said as it sits in a readback).
+  The script reads `CLIPS` from command.js, so a new word means adding it
+  there and running the script. 57 pieces each, 114 files, about 0.5 MB.
+  `radio.js` trims each piece's silence on decode and schedules them back to
+  back through Final Approach's radio filter (band-pass and soft clip, a
+  squelch either side), one transmission at a time. The controller's line
+  is text only. Muted or missing pieces: the line still shows on the same
+  beat.
+- **Lessons** (`lessons.js`): `setup(g)` spawns the scenario; each task has
+  `done(g, ev)` (asked on every event and each frame), Ann's `coach` line,
+  optional `praise` and a `hint` drawn on the scope; `fail(g, ev)` ends a
+  lesson (flying out of the sector, a loss in lesson 4, a missed handoff in
+  lesson 5) but never once the check has started. Events: sim events plus
+  `select`, `strip`, `type`, `dial`, `instruction` (with `source` dial or
+  line). The panel lives in the left column above the strips, not on the
+  scope.
+- **The shift** (`SHIFT` in game.js): 8 arrivals alternating Dunnock and
+  Linnet, 75–105 s apart, each joining the top of its stack's levels;
+  ends when the last is down (or at 25 min). The debrief's delay is time
+  flown less an unhindered track at 210 kt.
+- **Records**: `POST /final-vector/api/lessons` (`{lesson}`, a profile token,
+  in order: lesson n needs 1..n-1 on the record) and `POST
+  /final-vector/api/shifts` (whole numbers checked against each other, an
+  id counted once, only after all five lessons); `GET /api/stats`. The page
+  queues posts in an outbox in `final-vector:save` and merges lessons from
+  the server on load, so progress follows the profile. Guests keep progress
+  on the device only.
+- **`window.__finalVector`** for browser checks: `step(seconds)` advances
+  the sim and handles its events (lessons see them), `command(text)` is the
+  command line, `openDial(cs)`, `setDial({turn, alt, spd, ils, twr, hold})`,
+  `sendDial()`, `startLesson(n)`, `answer(i)`, `startShift()`,
+  `endShift()`, `setSpeed()`, `sim`, `log`, `radio` (loaded, spoken, said),
+  `save`. Python tests run the parser and the sim through node when node is
+  installed (`tests/test_final_vector.py`).
+- **Final Approach links to it** in one quiet line under the arrivals board
+  (`.board-tail`).
 
 ## Player profiles (added v1.8.0)
 
