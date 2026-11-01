@@ -114,6 +114,7 @@ Open issues for this game:
 | 1.29.0 | 1 Nov | Holding (Holding Pattern) and disruptions part 1 |
 | 1.30.0 | 1 Nov | Disruptions part 2: balloons, the Kestrels, the cyber attack / gremlin; real fix codes (BNN, WILLO, TIMBA) |
 | 1.31.0 | 1 Nov | Arrivals seen flying in beyond the control zone; check-in calls |
-| 1.32.0 | 1 Nov | Hub-wide: Bricolage Grotesque display face |
-| 1.32.1 | 1 Nov | `/api/games` for the iOS app (web games full screen, app 1.14.0) |
-| 1.33.0 | 1 Nov | Final Vector prototype; Final Approach links to it |
+| 1.32.0 | 1 Nov | Hub-wide: Bricolage Grotesque display face (app 1.14.0) |
+| 1.33.0 | 1 Nov | Hub-wide: Flip 7's two ways in (app 1.15.0) |
+| 1.33.1 | 1 Nov | `/api/games` for the iOS app: web games full screen, signed in (app 1.16.0) |
+| 1.34.0 | 1 Nov | Final Vector prototype; Final Approach links to it |

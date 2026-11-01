@@ -8,7 +8,7 @@ different here.
 
 ## 1. Where it stands
 
-**A first playable prototype** (Game Night v1.33.0): the Ambleford training
+**A first playable prototype** (Game Night v1.34.0): the Ambleford training
 airport, arrivals only; the scope, strips and radio log; the command dial
 and the typed command line (one parser, ready for voice); spoken readbacks
 assembled from recorded clips for two voices; Academy lessons 1–5 and a
@@ -73,4 +73,4 @@ log), tests, PR, Bugbot clean, merge when James says, deploy with
 
 | Version | Date | What shipped |
 |---|---|---|
-| 1.33.0 | 1 Nov 2026 | First playable prototype (preview) |
+| 1.34.0 | 1 Nov 2026 | First playable prototype (preview) |
