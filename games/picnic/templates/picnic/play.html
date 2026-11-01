@@ -1,0 +1,804 @@
+{% extends "base.html" %}
+{% block title %}Picnic Raid — {% if code %}game {{ code }}{% else %}new game{% endif %} — {{ app_name }}{% endblock %}
+{% block body_class %}picnic{% endblock %}
+{% block theme_color %}#1f3a1c{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ asset('picnic.css') }}">
+<script src="{{ asset('profiles.js') }}"></script>
+<script>window.PICNIC_ART = {{ art|tojson }};</script>
+<script src="{{ asset('picnic.js') }}"></script>
+<script src="{{ asset('share.js') }}"></script>{% endblock %}
+{% block body %}
+<div class="wrap">
+  <header class="pr-bar">
+    {% if code %}
+    <a class="pr-icon-btn" href="{{ url_for('picnic.landing') }}"
+       aria-label="Leave the table" title="Leave the table — the game keeps">←</a>
+    {% else %}
+    <a class="pr-icon-btn" href="/" aria-label="Back to the games" title="Back to the games">←</a>
+    {% endif %}
+    <h1 class="pr-title">Picnic <span>Raid</span></h1>
+    {% if code %}<span class="pr-code" title="Room code — /join with it">{{ code }}</span>{% endif %}
+    <button class="pr-icon-btn" id="sound-btn" type="button" aria-label="Sound"></button>
+    {% set here = request.path %}
+    <a class="pr-icon-btn" href="{{ url_for('picnic.stats_view', back=here) }}"
+       aria-label="Records" title="Records">★</a>
+    <a class="pr-icon-btn" href="{{ url_for('picnic.rules_view', back=here) }}"
+       aria-label="Rules" title="Rules">?</a>
+  </header>
+
+  <div id="app"></div>
+
+  {% if not code %}<div class="version">{{ app_name }} v{{ app_version }}</div>{% endif %}
+</div>
+
+<div class="pr-toast" id="toast" role="status" hidden></div>
+
+<script>
+  const CODE = {{ code|tojson }};
+  const MAX_NAME = {{ max_name }};
+  const MAX_PLAYERS = {{ max_players }};
+  const LAY = {{ engine.LAY }};
+  const CREATE_URL = '{{ url_for("picnic.api_create") }}';
+  const TABLE_URL = '{{ url_for("picnic.play_view", code="CODE") }}';
+  const LANDING_URL = '{{ url_for("picnic.landing") }}';
+  const API = code => `/picnic/api/play/${code}`;
+  const LEVEL_NAMES = {easy: 'Easy', hard: 'Hard'};
+  // Last table's names, and how it was set up, so a family isn't typed in
+  // every evening.
+  const NAMES_KEY = 'picnic:names';
+  const SETUP_KEY = 'picnic:setup';
+  // What this device holds in a game: {host, seats: {seat: token}, pass, at}.
+  // Pass-and-play is a device holding more than one seat.
+  const GAME_PREFIX = 'picnic:game:';
+  // How many missed log entries a table plays out when it catches up.
+  const PLAY_OUT = 14;
+
+  function readJSON(key){
+    try { return JSON.parse(localStorage.getItem(key)); } catch (e) { return null; }
+  }
+  function writeJSON(key, value){
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {}
+  }
+  function forget(key){
+    try { localStorage.removeItem(key); } catch (e) {}
+  }
+  function tableUrl(code){ return TABLE_URL.replace('CODE', code); }
+
+  let toastTimer;
+  function showToast(text){
+    const node = document.getElementById('toast');
+    node.textContent = text;
+    node.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { node.hidden = true; }, 3500);
+  }
+
+  // Never throws: a dropped connection comes back as a failed answer.
+  async function post(url, body, token){
+    const headers = {'Content-Type': 'application/json'};
+    if (token) headers['X-Picnic-Token'] = token;
+    let res;
+    try {
+      res = await fetch(url, {method: 'POST', headers, body: JSON.stringify(body || {})});
+    } catch (e) {
+      return {ok: false, status: 0, data: {error: 'Can’t reach the table — try again.'}};
+    }
+    let data = null;
+    try { data = await res.json(); } catch (e) {}
+    return {ok: res.ok, status: res.status, data: data || {}};
+  }
+
+  const soundBtn = document.getElementById('sound-btn');
+  function drawSoundBtn(){
+    soundBtn.innerHTML = icon(Sound.on ? 'soundOn' : 'soundOff');
+    soundBtn.title = Sound.on ? 'Sound on — tap to mute' : 'Sound off — tap to turn on';
+  }
+  soundBtn.addEventListener('click', () => { Sound.on = !Sound.on; Sound.unlock(); drawSoundBtn(); Sound.play('flick'); });
+  drawSoundBtn();
+
+  const app = document.getElementById('app');
+
+  // ---------------------------------------------------------------- setup
+
+  if (!CODE) {
+    const saved = readJSON(SETUP_KEY) || {};
+    const names = readJSON(NAMES_KEY);
+    const form = {
+      names: Array.isArray(names) && names.length ? names.slice(0, MAX_PLAYERS) : [''],
+      computers: Number.isInteger(saved.computers) ? saved.computers : 2,
+      level: LEVEL_NAMES[saved.level] ? saved.level : 'easy',
+      mode: saved.mode === 'phones' ? 'phones' : 'pass',
+      error: null
+    };
+    let busy = false;
+    const fit = () => { form.computers = Math.max(0, Math.min(form.computers, MAX_PLAYERS - form.names.length)); };
+    fit();
+
+    async function deal(){
+      if (busy) return;
+      const people = form.names.map(n => n.trim());
+      if (people.some(n => !n)) { form.error = 'Every player needs a name.'; return renderSetup(); }
+      if (people.length + form.computers < 2) { form.error = 'Two players at least — add someone, or the computer.'; return renderSetup(); }
+      busy = true;
+      Sound.play('riffle');
+      const made = await post(CREATE_URL, {players: people, computers: form.computers, level: form.level});
+      if (!made.ok) { busy = false; form.error = made.data.error || 'Couldn’t deal — try again.'; return renderSetup(); }
+      writeJSON(NAMES_KEY, people);
+      writeJSON(SETUP_KEY, {computers: form.computers, level: form.level, mode: form.mode});
+      const code = made.data.code;
+      const device = {host: made.data.host_token, seats: {}, pass: false, at: Date.now()};
+      // One person (against the computer) or one device passed round: this
+      // device sits in every seat a person has.
+      if (people.length === 1 || form.mode === 'pass') {
+        device.pass = people.length > 1;
+        for (let seat = 0; seat < people.length; seat++) {
+          const sat = await post(`${API(code)}/seats/${seat}/claim`);
+          if (sat.ok) device.seats[seat] = sat.data.seat_token;
+        }
+      }
+      writeJSON(GAME_PREFIX + code, device);
+      location.href = tableUrl(code);
+    }
+
+    function nameRow(i){
+      const input = el('input', {
+        type: 'text', maxlength: MAX_NAME, value: form.names[i], placeholder: i === 0 ? 'Your name' : 'Name',
+        autocomplete: 'off', 'aria-label': `Player ${i + 1}'s name`,
+        oninput: e => { form.names[i] = e.target.value; },
+        onkeydown: e => { if (e.key === 'Enter') deal(); }
+      });
+      const remove = form.names.length > 1
+        ? el('button', {class: 'pr-row-remove', type: 'button', 'aria-label': `Remove player ${i + 1}`, text: '×',
+                        onclick: () => { form.names.splice(i, 1); fit(); renderSetup(); }})
+        : null;
+      return el('div', {class: 'pr-name-row'}, [el('span', {class: 'pr-seat-no', text: String(i + 1)}), input, remove]);
+    }
+
+    function segment(label, options, value, onPick){
+      return el('div', {class: 'pr-seg', role: 'radiogroup', 'aria-label': label},
+        options.map(([v, text]) => el('button', {type: 'button', role: 'radio', text,
+          'aria-checked': v === value ? 'true' : 'false', onclick: () => { onPick(v); renderSetup(); }})));
+    }
+
+    function choice(value, title, detail){
+      return el('label', {}, [
+        el('input', {type: 'radio', name: 'mode', value, checked: form.mode === value,
+                     onchange: () => { form.mode = value; renderSetup(); }}),
+        el('span', {}, [el('strong', {text: title}), el('span', {class: 'pr-muted', text: detail})])
+      ]);
+    }
+
+    function renderSetup(){
+      const hero = el('div', {class: 'pr-hero'}, [
+        cardEl('s3', {style: {'--tilt': '-14deg', '--drop': '10px'}}),
+        cardEl('ants', {style: {'--tilt': '-5deg'}}),
+        cardEl('c2', {style: {'--tilt': '5deg'}}),
+        cardEl('shoo', {style: {'--tilt': '14deg', '--drop': '10px'}})
+      ]);
+      const room = MAX_PLAYERS - form.names.length;
+      const counts = [];
+      for (let n = 0; n <= room; n++) counts.push([n, String(n)]);
+      const picker = GN.picker(name => {
+        const blank = form.names.findIndex(n => !n.trim());
+        if (blank >= 0) form.names[blank] = name;
+        else if (form.names.length + form.computers < MAX_PLAYERS) form.names.push(name);
+        else form.names[form.names.length - 1] = name;
+        fit();
+        renderSetup();
+      }, form.names, 'Regulars — tap to add');
+
+      app.replaceChildren(el('div', {class: 'pr-setup'}, [
+        hero,
+        el('p', {class: 'pr-lede', text: 'Fill your basket with snacks and pack it up to bank the points — but first every mystery card hidden under your blanket springs. Hide your own traps under everyone else’s. First to 20, with the round played out.'}),
+        el('div', {id: 'resume'}),
+        el('div', {class: 'pr-panel'}, [
+          el('h2', {text: 'Who’s playing?'}),
+          picker,
+          ...form.names.map((_, i) => nameRow(i)),
+          form.names.length + form.computers < MAX_PLAYERS
+            ? el('button', {class: 'pr-btn pr-btn-quiet pr-btn-small', type: 'button', text: '+ Add a player',
+                            onclick: () => { form.names.push(''); fit(); renderSetup(); }})
+            : null,
+          el('div', {class: 'pr-stepper'}, [
+            el('strong', {text: 'Computer players'}),
+            segment('How many computer players', counts, form.computers, n => { form.computers = n; })
+          ]),
+          form.computers ? el('p', {class: 'pr-muted', text: `Playing: ${computerNames(form.names, form.computers).join(', ')}`}) : null,
+          form.computers ? el('div', {class: 'pr-stepper'}, [
+            el('strong', {text: 'They play'}),
+            segment('How the computer plays', [['easy', 'Easy'], ['hard', 'Hard']], form.level, v => { form.level = v; })
+          ]) : null,
+          form.names.length > 1 ? el('div', {class: 'pr-choice'}, [
+            choice('pass', 'Pass this device round', 'Hands and traps are hidden while it changes hands.'),
+            choice('phones', 'On our own phones', 'This screen is the picnic. Scan its code on each phone and sit down.')
+          ]) : el('p', {class: 'pr-muted', text: form.computers ? 'Just you and the computer, on this device.' : 'Add another player, or a computer player.'}),
+          el('button', {class: 'pr-btn pr-btn-go pr-btn-wide', type: 'button', text: 'Deal', onclick: deal}),
+          form.error ? el('div', {class: 'pr-error', text: form.error}) : null
+        ])
+      ]));
+      offerResume();
+    }
+
+    // The computer's names, skipping any a person at the table is called —
+    // the same choice game.py makes.
+    function computerNames(people, count){
+      const taken = new Set(people.map(n => GN.fold(n)));
+      return {{ computer_names|tojson }}.filter(n => !taken.has(GN.fold(n))).slice(0, count);
+    }
+
+    // Games this device was in that are still going, checked before being
+    // offered: a dead code offered up is worse than no offer.
+    async function offerResume(){
+      const keys = [];
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith(GAME_PREFIX)) keys.push(key);
+        }
+      } catch (e) { return; }
+      const entries = keys.map(k => ({key: k, code: k.slice(GAME_PREFIX.length), device: readJSON(k) || {}}))
+        .sort((a, b) => (b.device.at || 0) - (a.device.at || 0));
+      const live = [];
+      for (const entry of entries.slice(0, 5)) {
+        try {
+          const res = await fetch(API(entry.code));
+          if (res.status === 404) { forget(entry.key); continue; }
+          const payload = await res.json();
+          if (payload.game.phase !== 'game_over') live.push({...entry, payload});
+        } catch (e) {}
+      }
+      const slot = document.getElementById('resume');
+      if (!slot || !live.length) return;
+      slot.replaceChildren(el('div', {class: 'pr-panel'}, [
+        el('h2', {text: 'Carry on'}),
+        ...live.slice(0, 3).map(g => el('a', {class: 'pr-btn pr-btn-quiet pr-btn-wide', href: tableUrl(g.code),
+          text: `${g.payload.players.join(', ')} · ${g.code}`}))
+      ]));
+    }
+
+    renderSetup();
+    GN.profiles.load().then(renderSetup);
+    // Back from a table, the browser can restore this page exactly as it was
+    // left — mid-deal, with `busy` still set — and Deal would do nothing.
+    window.addEventListener('pageshow', e => {
+      if (e.persisted) { busy = false; form.error = null; renderSetup(); }
+    });
+  }
+
+  // ---------------------------------------------------------------- table
+
+  if (CODE) {
+    const KEY = GAME_PREFIX + CODE;
+    let device = readJSON(KEY) || {seats: {}};
+    device.seats = device.seats || {};
+    let data = null;
+    let shownAs = null;        // pass-and-play: whose hand the screen is showing
+    let picked = [];           // indexes into the hand: snacks to lay, or cards to throw away
+    let trapCard = null;       // a trap picked up, waiting for a blanket to go under
+    let pickedSeq = null;
+    let drawn = null;          // the payload last put on screen, as JSON
+    let busy = false;
+    let invite = null;
+    let seenEvent = null;      // the last log entry that's been played out
+    let animating = false;
+    let waiting = null;        // a payload that arrived mid-animation
+    let wasMine = false;
+    const baseTitle = document.title;
+
+    function save(){ device.at = Date.now(); writeJSON(KEY, device); }
+    function held(){ return Object.keys(device.seats).map(Number).filter(s => device.seats[s]).sort((a, b) => a - b); }
+    function passAndPlay(){ return held().length > 1; }
+    function computers(){ return (data && data.computer && data.computer.seats) || []; }
+    function isComputer(seat){ return computers().includes(seat); }
+    function nameOf(seat){ return data.players[seat]; }
+    function viewer(){ const v = data && data.game.viewer; return typeof v === 'number' ? v : null; }
+    function who(seat){ return seat === viewer() ? 'You' : nameOf(seat); }
+    // `who` starts a sentence ("You"); `them` goes in the middle of one ("you").
+    function them(seat){ return seat === viewer() ? 'you' : nameOf(seat); }
+    function whose(seat){ return seat === viewer() ? 'your' : `${nameOf(seat)}’s`; }
+
+    // Which token to ask with. A device with several seats only shows a hand
+    // once it's been handed over and the curtain tapped away. `turn` is
+    // whoever has to decide — mid-pack, that can be someone sending a Shoo! back.
+    function askingAs(){
+      const seats = held();
+      if (seats.length === 1) return device.seats[seats[0]];
+      if (seats.length > 1 && data && data.game.turn != null && shownAs === data.game.turn && seats.includes(shownAs)) {
+        return device.seats[shownAs];
+      }
+      return device.host || (seats.length ? device.seats[seats[0]] : '');
+    }
+
+    function curtainSeat(){
+      if (!passAndPlay() || !data || data.game.turn == null) return null;
+      const turn = data.game.turn;
+      if (!held().includes(turn)) return null;
+      return shownAs === turn ? null : turn;
+    }
+
+    function take(payload, askedWith){
+      if (!payload || !payload.game) return;
+      if (data && payload.code === data.code && payload.game.seq < data.game.seq) return;
+      // A seat freed by the dealing device: this token no longer sits anywhere.
+      for (const seat of held()) {
+        if (askedWith === device.seats[seat] && payload.you.seat !== seat) {
+          delete device.seats[seat];
+          save();
+          showToast('You’re no longer sitting at this table.');
+        }
+      }
+      if (payload.next && (device.host || held().length)) return follow(payload.next);
+      if (animating) { waiting = payload; return; }
+      show(payload);
+    }
+
+    async function show(payload){
+      if (payload.game.seq !== pickedSeq || payload.game.viewer !== (data && data.game.viewer)) {
+        picked = []; trapCard = null; pickedSeq = payload.game.seq;
+      }
+      const json = JSON.stringify(payload);
+      const first = data === null;
+      data = payload;
+      if (json === drawn && !first) return;
+      drawn = json;
+
+      const log = payload.game.log;
+      const lastId = log.length ? log[log.length - 1].id : 0;
+      // Only the last few: a phone that slept through ten turns shouldn't
+      // spend a minute replaying them.
+      const events = first ? [] : log.filter(e => seenEvent === null || e.id > seenEvent).slice(-PLAY_OUT);
+      seenEvent = lastId;
+
+      // The table keeps showing how things stood until what just happened
+      // has played out — a trap turns over before anyone sees the basket it
+      // emptied — and the pass-and-play curtain waits for it too.
+      if (events.length && !first) {
+        animating = true;
+        app.classList.add('pr-playing');
+        try {
+          for (const event of events) await perform(event);
+        } finally {
+          animating = false;
+          app.classList.remove('pr-playing');
+        }
+      }
+      render();
+      const mine = data.game.turn != null && data.game.turn === viewer();
+      if (mine && !wasMine && !first) {
+        Sound.play('turn');
+        try { navigator.vibrate && navigator.vibrate(60); } catch (e) {}
+      }
+      document.title = mine ? `● Your move — ${baseTitle}` : baseTitle;
+      wasMine = mine;
+      if (waiting) { const next = waiting; waiting = null; show(next); }
+    }
+
+    // A rematch keeps every seat, so every token carries straight over.
+    function follow(code){
+      writeJSON(GAME_PREFIX + code, {host: device.host, seats: device.seats, pass: device.pass, at: Date.now()});
+      location.href = tableUrl(code);
+    }
+
+    let pollTimer;
+    async function poll(){
+      clearTimeout(pollTimer);
+      const token = askingAs();
+      try {
+        const res = await fetch(API(CODE), {headers: {'X-Picnic-Token': token}});
+        if (res.status === 404) {
+          app.replaceChildren(el('div', {class: 'pr-panel'}, [
+            el('p', {text: 'This game has ended or expired.'}),
+            el('a', {class: 'pr-btn pr-btn-go', href: LANDING_URL, text: 'New game'})
+          ]));
+          forget(KEY);
+          return;
+        }
+        take(await res.json(), token);
+      } catch (e) {
+        showToast('Can’t reach the table — trying again.');
+      }
+      const live = data && data.game.phase !== 'game_over';
+      pollTimer = setTimeout(poll, live ? 1000 : 2500);
+    }
+
+    async function send(move){
+      const me = viewer();
+      if (busy || !data || me == null) return;
+      const token = device.seats[me];
+      if (!token) return;
+      busy = true;
+      const res = await post(`${API(CODE)}/move`, {...move, seq: data.game.seq}, token);
+      busy = false;
+      if (!res.ok) {
+        showToast(res.data.error || 'That didn’t work — try again.');
+        Motion.shake(document.querySelector('.pr-hand'));
+      }
+      take(res.data, token);
+    }
+
+    async function sitAt(seat){
+      const res = await post(`${API(CODE)}/seats/${seat}/claim`);
+      if (!res.ok) { showToast(res.data.error || 'Couldn’t sit down.'); return poll(); }
+      device.seats[seat] = res.data.seat_token;
+      save();
+      if (passAndPlay()) shownAs = null;
+      drawn = null;
+      poll();
+    }
+
+    async function freeSeat(seat){
+      if (!confirm(`Free ${nameOf(seat)}’s seat? Whoever’s in it goes back to watching.`)) return;
+      const res = await post(`${API(CODE)}/seats/${seat}/release`, {}, device.host);
+      // Only forget this device's token once the seat really is free: after a
+      // failed release the server still has it taken, and the token is the
+      // only way back into it.
+      if (!res.ok) {
+        showToast(res.data.error || 'Couldn’t free the seat.');
+        return poll();
+      }
+      if (device.seats[seat]) { delete device.seats[seat]; save(); }
+      poll();
+    }
+
+    async function rematch(){
+      const res = await post(`${API(CODE)}/rematch`, {}, device.host);
+      if (!res.ok) return showToast(res.data.error || 'Couldn’t start a rematch.');
+      follow(res.data.code);
+    }
+
+    async function loadInvite(){
+      if (invite || !device.host) return;
+      try {
+        invite = await (await fetch(`${API(CODE)}/invite`)).json();
+        if (!animating) render();
+      } catch (e) {}
+    }
+
+    // ------------------------------------------------------------ choosing
+
+    function myMove(){ const g = data.game; return viewer() != null && g.turn === viewer() && g.phase !== 'game_over'; }
+
+    function tapCard(index){
+      const g = data.game;
+      if (!myMove() || busy) return;
+      const card = g.hand[index];
+      if (g.stage === 'discard') {
+        picked = picked.includes(index) ? picked.filter(i => i !== index)
+          : picked.length < g.must_discard ? [...picked, index] : picked;
+        return render();
+      }
+      if (g.stage !== 'act') return;
+      if (PR.isTrap(card)) {
+        if (trapCard === index) { trapCard = null; return render(); }
+        if (g.hidden) return showToast('One trap a turn — you’ve hidden yours.');
+        if (g.round === 1) return showToast('No traps in the first round — everyone lays a picnic first.');
+        if (!g.hide_targets.length) return showToast('Every blanket is full, or already has one of yours.');
+        trapCard = index; picked = [];
+        Sound.play('flick');
+        return render();
+      }
+      if (PR.isFood(card)) {
+        trapCard = null;
+        const room = Math.min(LAY, g.basket_room);
+        if (picked.includes(index)) picked = picked.filter(i => i !== index);
+        else if (!room) return showToast('Your basket holds five — pack it up.');
+        else picked = [...picked, index].slice(-room);
+        return render();
+      }
+      showToast(`${PR.NAMES[card]} is for when a trap springs on you.`);
+    }
+
+    function hideUnder(target){
+      const card = data.game.hand[trapCard];
+      trapCard = null;
+      send({type: 'hide', card, target});
+    }
+
+    // ------------------------------------------------------------ motion
+
+    function spotEl(seat){ return document.querySelector(`.pr-spot[data-seat="${seat}"]`); }
+
+    function landWords(e){
+      const n = e.cards.length;
+      const what = e.cards.map(PR.label).join(' and ');
+      const on = e.seat === viewer() ? 'your' : `${nameOf(e.seat)}’s`;
+      if (!n) return `${PR.NAMES[e.card]} found nothing in ${on} basket`;
+      if (e.card === 'ants') return `The ants carry ${what} to ${whose(e.to)} basket`;
+      if (e.card === 'gull') return `The seagull snatches ${what} for ${them(e.to)}`;
+      if (e.card === 'wasp') return `The wasp chases off ${what}`;
+      return `The dog gobbles ${what}`;
+    }
+
+    async function perform(e){
+      if (e.kind === 'hide') {
+        Sound.play('flick');
+        Motion.pop(document.querySelector(`.pr-spot[data-seat="${e.target}"] .pr-blanket`));
+        await Motion.wait(250);
+      } else if (e.kind === 'lay') {
+        Sound.play('land');
+        await Motion.wait(200);
+      } else if (e.kind === 'pack') {
+        await Motion.burst([`${who(e.seat)} ${e.seat === viewer() ? 'pack' : 'packs'} up!`,
+          el('small', {text: e.traps ? `${e.traps} mystery card${e.traps === 1 ? '' : 's'} under the blanket…` : 'Nothing under the blanket'})], 'plain', 550);
+      } else if (e.kind === 'spring') {
+        Sound.play('spring');
+        Motion.shake(spotEl(e.seat));
+        await Motion.burst([cardEl(e.card), `${PR.NAMES[e.card]}!`, el('small', {text: `under ${whose(e.seat)} blanket — hidden by ${them(e.by)}`})], 'trap', 1100);
+      } else if (e.kind === 'umbrella') {
+        Sound.play('umbrella');
+        await Motion.burst([cardEl('umbrella'), 'Umbrella!'], 'shoo', 800);
+      } else if (e.kind === 'shoo') {
+        Sound.play('shoo');
+        await Motion.burst([cardEl('shoo'), `${who(e.seat)}: Shoo!`, el('small', {text: `Back to ${them(e.at)}!`})], 'shoo', 1000);
+      } else if (e.kind === 'land') {
+        if (e.cards.length) Sound.play('ouch');
+        await Motion.burst([landWords(e)], 'plain', 900);
+      } else if (e.kind === 'bank') {
+        Sound.play('bank');
+        Motion.pop(spotEl(e.seat));
+        await Motion.burst([`+${e.points}`, el('small', {text: `${who(e.seat)} ${e.seat === viewer() ? 'have' : 'has'} ${e.total}`})], 'bank', 650);
+      } else if (e.kind === 'last_round') {
+        await Motion.burst(['Last round!', el('small', {text: `${who(e.seat)} reached ${data.game.target}`})], 'plain', 1200);
+      } else if (e.kind === 'reshuffle') {
+        Sound.play('riffle');
+        await Motion.wait(300);
+      } else if (e.kind === 'game_over') {
+        Sound.play('win');
+        await Motion.burst(winnerWords(e.winners), 'win', 1400);
+      }
+    }
+
+    function winnerWords(winners){
+      if (winners.includes(viewer()) && winners.length === 1) return 'You win!';
+      const names = winners.map(who);
+      return names.length === 1 ? `${names[0]} wins!` : `${names.join(' & ')} share the win!`;
+    }
+
+    // ------------------------------------------------------------ drawing
+
+    function face(seat, size){ return GN.avatar(nameOf(seat), size); }
+
+    function statusLine(){
+      const g = data.game;
+      const me = viewer();
+      if (g.phase === 'game_over') return [winnerWords(g.winners), null];
+      const last = g.ending != null ? `Last round — ${who(g.ending)} reached ${g.target}` : null;
+      if (g.stage === 'spring') {
+        const sp = g.springing;
+        if (g.turn === me) {
+          const can = g.defences.map(d => d === 'shoo' ? 'Shoo! it back' : 'put up your umbrella');
+          const how = can.length ? `${can.join(', ')}, or let it happen` : 'Nothing to stop it';
+          return [sp.sends ? `${PR.NAMES[sp.card]} sent back at you!` : `${PR.NAMES[sp.card]} under your blanket!`,
+                  how.charAt(0).toUpperCase() + how.slice(1)];
+        }
+        return [`${who(sp.on)} ${sp.on === me ? 'are' : 'is'} deciding…`, isComputer(sp.on) ? 'Thinking…' : null];
+      }
+      if (g.stage === 'discard') {
+        return g.turn === me ? [`Too many cards — throw away ${g.must_discard}`, `Tap ${g.must_discard === 1 ? 'one' : g.must_discard}, then Throw away`]
+                             : [`${nameOf(g.turn)} is tidying their hand`, null];
+      }
+      if (g.turn === me) {
+        if (trapCard != null) return [`Tap a blanket to hide the ${PR.NAMES[g.hand[trapCard]]}`, 'Nobody else will see what it is'];
+        const canHide = !g.hidden && g.hide_targets.length && g.hand.some(PR.isTrap);
+        if (g.round === 1) return ['Your turn — lay your picnic', last || 'No traps in the first round'];
+        return [canHide ? 'Hide a trap if you like, then lay or pack up' : 'Lay up to two snacks, or pack up', last];
+      }
+      return [`${nameOf(g.turn)}’s turn`, isComputer(g.turn) ? 'Thinking…' : last];
+    }
+
+    function spot(seat){
+      const g = data.game;
+      const me = viewer();
+      const basket = g.baskets[seat];
+      const blanket = g.blankets[seat];
+      const targetable = trapCard != null && g.hide_targets.includes(seat);
+      const slots = [];
+      blanket.forEach(t => slots.push(cardEl(t.card, {class: t.mine ? 'pr-mine-trap' : '',
+        title: t.mine ? `Your ${PR.NAMES[t.card]}` : 'A mystery card'})));
+      for (let i = blanket.length; i < 2; i++) slots.push(el('span', {class: 'pr-slot'}));
+      const now = g.phase !== 'game_over' && (g.turn === seat || (g.stage !== 'spring' && g.current === seat));
+      return el('div', {class: `pr-spot ${seat === me ? 'pr-spot-me' : ''} ${now ? 'pr-spot-now' : ''} ${targetable ? 'pr-spot-target' : ''}`, 'data-seat': seat,
+                        role: targetable ? 'button' : null, tabindex: targetable ? '0' : null,
+                        'aria-label': targetable ? `Hide it under ${nameOf(seat)}’s blanket` : null,
+                        onclick: targetable ? () => hideUnder(seat) : null}, [
+        el('div', {class: 'pr-spot-head'}, [
+          face(seat, 34),
+          el('span', {class: 'pr-spot-name', text: seat === me ? `${nameOf(seat)} (you)` : nameOf(seat)}),
+          el('span', {class: 'pr-score'}, [String(g.scores[seat]), el('small', {text: ` / ${g.target}`})])
+        ]),
+        el('div', {class: 'pr-row'}, [
+          el('span', {class: 'pr-row-label', text: 'Basket'}),
+          el('div', {class: 'pr-basket'}, basket.length
+            ? [...basket.map(c => cardEl(c)), el('span', {class: 'pr-basket-total', text: `= ${PR.total(basket)}`})]
+            : [el('span', {class: 'pr-empty', text: 'empty'})])
+        ]),
+        el('div', {class: 'pr-row'}, [
+          el('span', {class: 'pr-row-label', text: 'Blanket'}),
+          el('div', {class: 'pr-blanket'}, slots),
+          targetable ? el('span', {class: 'pr-btn pr-btn-go pr-btn-small', text: 'Hide it here'}) : null
+        ]),
+        seat !== me ? el('span', {class: 'pr-hand-count', text: `${g.hand_counts[seat]} cards in hand`}) : null
+      ]);
+    }
+
+    function springing(){
+      const g = data.game;
+      const sp = g.springing;
+      if (!sp || g.stage !== 'spring') return null;
+      const sent = sp.sends ? ` — sent back ${sp.sends === 1 ? 'once' : `${sp.sends} times`}` : '';
+      return el('div', {class: 'pr-springing'}, [
+        cardEl(sp.card),
+        el('p', {text: `${PR.NAMES[sp.card]} ${PR.DOES[sp.card].replace('your', whose(sp.on))}. Hidden by ${them(sp.by)}${sent}.`})
+      ]);
+    }
+
+    function actions(){
+      const g = data.game;
+      const out = [];
+      if (!myMove()) return out;
+      if (g.stage === 'spring') {
+        for (const d of g.defences) {
+          out.push(el('button', {class: `pr-btn ${d === 'shoo' ? 'pr-btn-gold' : ''}`, type: 'button', text: PR.NAMES[d],
+                                 onclick: () => send({type: 'defend', card: d})}));
+        }
+        out.push(el('button', {class: 'pr-btn pr-btn-quiet', type: 'button', text: 'Let it happen',
+                               onclick: () => send({type: 'defend', card: null})}));
+        return out;
+      }
+      if (g.stage === 'discard') {
+        out.push(el('button', {class: 'pr-btn pr-btn-go', type: 'button', text: 'Throw away',
+                               disabled: picked.length !== g.must_discard,
+                               onclick: () => send({type: 'discard', cards: picked.map(i => g.hand[i])})}));
+        return out;
+      }
+      if (trapCard != null) {
+        out.push(el('button', {class: 'pr-btn pr-btn-quiet', type: 'button', text: 'Keep the trap', onclick: () => { trapCard = null; render(); }}));
+        return out;
+      }
+      const me = viewer();
+      if (picked.length) {
+        out.push(el('button', {class: 'pr-btn pr-btn-go', type: 'button',
+          text: `Lay ${picked.map(i => PR.label(g.hand[i])).join(' + ')}`,
+          onclick: () => send({type: 'lay', cards: picked.map(i => g.hand[i])})}));
+      }
+      const basket = g.baskets[me];
+      const under = g.blankets[me].length;
+      if (basket.length || under) {
+        out.push(el('button', {class: `pr-btn ${picked.length ? '' : 'pr-btn-gold'}`, type: 'button',
+          text: basket.length ? `Pack up ${PR.total(basket)}${under ? ` · ${under} under the blanket` : ''}`
+                              : `Clear the blanket · ${under} under it`,
+          onclick: () => send({type: 'pack'})}));
+      }
+      out.push(el('button', {class: 'pr-btn pr-btn-quiet', type: 'button', text: 'Pass', onclick: () => send({type: 'pass'})}));
+      return out;
+    }
+
+    function myHand(){
+      const g = data.game;
+      const me = viewer();
+      if (me == null || !g.hand) return null;
+      const live = myMove();
+      const hand = el('div', {class: 'pr-hand'});
+      g.hand.forEach((card, i) => {
+        const chosen = picked.includes(i) || trapCard === i;
+        let usable = false;
+        if (live && g.stage === 'discard') usable = true;
+        else if (live && g.stage === 'act') usable = PR.isFood(card) ? g.basket_room > 0 : PR.isTrap(card) && !g.hidden && g.hide_targets.length > 0;
+        hand.appendChild(cardEl(card, {tag: 'button', type: 'button',
+          class: `${chosen ? 'pr-pick' : ''} ${live && !usable ? 'pr-dim' : ''}`,
+          'aria-pressed': chosen ? 'true' : 'false', onclick: () => tapCard(i)}));
+      });
+      return el('div', {class: 'pr-mine'}, [hand]);
+    }
+
+    function logLine(e){
+      switch (e.kind) {
+        case 'deal': return `Dealt — ${who(e.first)} first`;
+        // Only the hider is told who hid it (and what): everyone else just sees a card appear.
+        case 'hide': return e.card ? `${who(e.seat)} hid ${PR.NAMES[e.card]} under ${whose(e.target)} blanket`
+                                   : `A mystery card appeared under ${whose(e.target)} blanket`;
+        case 'lay': return `${who(e.seat)} laid ${e.cards.map(PR.label).join(', ')}`;
+        case 'pass': return `${who(e.seat)} passed`;
+        case 'pack': return `${who(e.seat)} packed up ${e.points}${e.traps ? ` over ${e.traps} mystery card${e.traps === 1 ? '' : 's'}` : ''}`;
+        case 'spring': return `${PR.NAMES[e.card]} under ${whose(e.seat)} blanket — hidden by ${them(e.by)}`;
+        case 'umbrella': return `${who(e.seat)} put up an umbrella`;
+        case 'shoo': return `${who(e.seat)}: Shoo! — back to ${them(e.at)}`;
+        case 'land': return landWords(e);
+        case 'bank': return `${who(e.seat)} banked ${e.points} (now ${e.total})`;
+        case 'last_round': return `${who(e.seat)} reached ${data.game.target} — last round`;
+        case 'discard': return `${who(e.seat)} threw away ${e.count}`;
+        case 'reshuffle': return 'The pile was shuffled';
+        case 'game_over': return winnerWords(e.winners);
+      }
+      return null;
+    }
+
+    function side(){
+      const g = data.game;
+      const rows = data.players.map((name, seat) => {
+        const taken = data.seats[seat].taken;
+        const mine = !!device.seats[seat];
+        let right;
+        if (isComputer(seat)) right = el('span', {class: 'pr-muted', text: `Computer · ${LEVEL_NAMES[data.computer.level]}`});
+        else if (taken && device.host && g.phase !== 'game_over') {
+          right = el('button', {class: 'pr-btn pr-btn-quiet pr-btn-small', type: 'button', text: mine ? 'Leave' : 'Free seat', onclick: () => freeSeat(seat)});
+        } else if (taken) right = el('span', {class: 'pr-muted', text: mine ? 'This device' : 'Seated'});
+        else {
+          const me = GN.me.get();
+          const isMe = me && GN.fold(me.name) === GN.fold(name);
+          right = el('button', {class: 'pr-btn pr-btn-go pr-btn-small', type: 'button', text: isMe ? 'That’s me — sit' : 'Sit here', onclick: () => sitAt(seat)});
+        }
+        return el('div', {class: 'pr-seat-row'}, [face(seat, 32), el('span', {class: 'pr-who', text: name}), right]);
+      });
+      const children = [el('h2', {text: 'At the picnic'}), ...rows];
+      const open = data.seats.some((s, i) => !s.taken && !isComputer(i));
+      if (device.host && open && g.phase !== 'game_over') {
+        loadInvite();
+        if (invite) {
+          const qr = el('div', {class: 'pr-qr'});
+          qr.innerHTML = invite.qr_svg;   // our own server's SVG, not user input
+          children.push(qr,
+            Invite.button({path: invite.url, text: `Play Picnic Raid with me on Game Night — code ${CODE}`,
+                           className: 'pr-btn pr-btn-quiet pr-btn-wide'}),
+            el('p', {class: 'pr-muted pr-center', text: `Scan to sit down, send the link, or enter ${CODE} at /join.`}));
+        }
+      }
+      const lines = g.log.slice(-12).reverse().map(logLine).filter(Boolean);
+      return el('div', {class: 'pr-side'}, [
+        el('div', {class: 'pr-panel'}, children),
+        el('div', {class: 'pr-panel'}, [el('h2', {text: 'What happened'}),
+          el('ul', {class: 'pr-log'}, lines.map(text => el('li', {text})))])
+      ]);
+    }
+
+    function gameOver(){
+      const g = data.game;
+      const order = data.players.map((_, s) => s).sort((a, b) => g.scores[b] - g.scores[a]);
+      return el('div', {class: 'pr-banner'}, [
+        el('h2', {text: winnerWords(g.winners)}),
+        el('div', {class: 'pr-final'}, order.map(s => el('div', {class: 'pr-seat-row'}, [
+          face(s, 28), el('span', {class: 'pr-who', text: nameOf(s)}), el('strong', {text: String(g.scores[s])})]))),
+        device.host
+          ? el('button', {class: 'pr-btn pr-btn-go', type: 'button', text: 'Play again', onclick: rematch})
+          : el('p', {class: 'pr-muted', text: 'The device that dealt can start another game.'}),
+        el('a', {class: 'pr-btn pr-btn-quiet pr-btn-small', href: LANDING_URL, text: 'New table'})
+      ]);
+    }
+
+    function curtain(seat){
+      const g = data.game;
+      const sentBack = g.stage === 'spring' && g.springing && g.springing.sends;
+      return el('div', {class: 'pr-curtain'}, [el('div', {class: 'pr-curtain-card'}, [
+        face(seat, 96),
+        el('h2', {text: `Pass to ${nameOf(seat)}`}),
+        el('p', {class: 'pr-muted', text: sentBack ? `${nameOf(seat)}, a ${PR.NAMES[g.springing.card]} has been shooed back at you!`
+                                                   : 'Everyone else, look away.'}),
+        el('button', {class: 'pr-btn pr-btn-go pr-btn-wide', type: 'button', text: `I’m ${nameOf(seat)} — show my cards`,
+          onclick: () => { shownAs = seat; drawn = null; poll(); }})
+      ])]);
+    }
+
+    function render(){
+      if (!data) return;
+      const g = data.game;
+      const [status, detail] = statusLine();
+      const meadow = el('div', {class: 'pr-meadow'}, [
+        el('div', {class: 'pr-spots'}, data.players.map((_, seat) => spot(seat))),
+        el('div', {class: 'pr-status', 'aria-live': 'polite'}, [status, detail ? el('small', {text: detail}) : null]),
+        springing(),
+        el('div', {class: 'pr-actions'}, actions()),
+        myHand()
+      ]);
+      const main = el('div', {}, [g.phase === 'game_over' ? gameOver() : null, meadow]);
+      const nodes = [el('div', {class: 'pr-table'}, [main, side()])];
+      const folder = curtainSeat();
+      if (folder != null && !animating) nodes.push(curtain(folder));
+      app.replaceChildren(...nodes);
+    }
+
+    window.addEventListener('resize', () => { if (!animating) render(); });
+    GN.profiles.load().then(() => { if (!animating) render(); });
+    poll();
+  }
+</script>
+{% endblock %}

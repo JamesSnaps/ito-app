@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Picnic Raid — rules — {{ app_name }}{% endblock %}
+{% block body_class %}picnic{% endblock %}
+{% block theme_color %}#1f3a1c{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ asset('picnic.css') }}">
+<script>window.PICNIC_ART = {{ art|tojson }};</script>
+<script src="{{ asset('picnic.js') }}"></script>{% endblock %}
+{% block body %}
+{# The rules as engine.py plays them; every number on this page comes from
+   there, so the page and the game can't disagree. #}
+<div class="wrap pr-page">
+  <header class="pr-bar">
+    <a class="pr-icon-btn" href="{{ back }}" aria-label="Back" title="Back">←</a>
+    <h1 class="pr-title">How to play</h1>
+  </header>
+
+  <p>{{ engine.MIN_PLAYERS }} to {{ engine.MAX_PLAYERS }} players. Fill your picnic basket with snacks
+    and pack it up to bank the points — but every trap hidden under your blanket springs first.
+    The first to {{ engine.TARGET }} points ends the game, once the round is played out.</p>
+
+  <h2>The cards</h2>
+  <p><strong>Food</strong> scores what's on it: 1, 2 or 3. There are five kinds — sandwiches,
+    strawberries, cupcakes, lemonade and cheese.</p>
+  <div class="pr-gallery" data-cards="s1 b2 c3 l2 h1"></div>
+  <p><strong>Traps</strong> go face down under someone else's blanket:</p>
+  <div class="pr-gallery" data-cards="ants wasp gull dog"></div>
+  <ul>
+    <li><strong>Ants</strong> carry off your two smallest snacks — into the basket of whoever hid them.</li>
+    <li><strong>Wasp</strong> chases off your biggest snack.</li>
+    <li><strong>Seagull</strong> snatches your biggest snack for whoever hid it.</li>
+    <li><strong>Dog</strong> gobbles half your basket, biggest first.</li>
+  </ul>
+  <p><strong>Defences</strong> are played when a trap springs on you:</p>
+  <div class="pr-gallery" data-cards="shoo umbrella"></div>
+  <ul>
+    <li><strong>Shoo!</strong> sends the trap back: it springs on whoever hid it instead — their Ants bring
+      <em>their</em> snacks to you. They can Shoo! it straight back, and so on, until someone has no Shoo! left.</li>
+    <li><strong>Umbrella</strong> stops a trap altogether.</li>
+  </ul>
+  <p>{{ engine.full_deck()|length }} cards in all.</p>
+
+  <h2>Your turn</h2>
+  <p>Everyone starts with {{ engine.HAND_SIZE }} cards. At the start of your turn you pick up {{ engine.DRAW }}.</p>
+  <ol>
+    <li><strong>Hide a trap</strong>, if you like — it doesn't use up your turn. Tap it, then tap a blanket.
+      Not in the first round, only one of yours under any blanket, and a blanket has room for {{ engine.BLANKET }}.</li>
+    <li>Then <strong>lay</strong> up to {{ engine.LAY }} snacks in your basket (it holds {{ engine.BASKET }}),
+      or <strong>pack up</strong>.</li>
+  </ol>
+  <p>Holding more than {{ engine.HAND_LIMIT }} at the end of your turn? Throw some away.</p>
+
+  <h2>Packing up</h2>
+  <p>Every mystery card under your blanket turns over, one at a time. For each one, play a defence or let it
+    happen. Whatever's left in your basket is banked — safe for good. Snacks the Ants or a Seagull bring you
+    always fit, however full your basket is.</p>
+  <p><strong>Tip:</strong> nobody's hidden anything under your blanket yet? That's a good time to pack up.</p>
+
+  <h2>Winning</h2>
+  <p>When someone's banked {{ engine.TARGET }}, everyone else gets their turn to finish the round.
+    Then the highest banked score wins — food still in a basket doesn't count. A tie is shared.</p>
+
+  <h2>Playing on the app</h2>
+  <p>Pass one device round (hands and traps are hidden while it changes hands), play on your own phones
+    (the dealing screen shows a code to scan), or fill seats with the computer — Easy or Hard.
+    Games against the computer are kept in their own records.</p>
+</div>
+<script>
+  for (const slot of document.querySelectorAll('.pr-gallery')) {
+    for (const card of slot.dataset.cards.split(' ')) slot.appendChild(cardEl(card, {role: 'img'}));
+  }
+</script>
+{% endblock %}
