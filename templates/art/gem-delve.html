@@ -1,0 +1,36 @@
+{# A slice through the cave in square blocks, like the game's tiles: a
+   tunnel dug down from the surface, a ladder, two blocks of ore and a gem
+   glinting at the bottom of the shaft. #}
+<svg class="game-art" viewBox="0 0 240 140" aria-hidden="true">
+  <rect class="art-plate" x="14" y="8" width="212" height="124" rx="10"/>
+  <g fill="var(--muted)" opacity="0.32">
+    <rect x="26" y="20" width="22" height="22" rx="3"/><rect x="50" y="20" width="22" height="22" rx="3"/>
+    <rect x="122" y="20" width="22" height="22" rx="3"/><rect x="146" y="20" width="22" height="22" rx="3"/>
+    <rect x="170" y="20" width="22" height="22" rx="3"/><rect x="194" y="20" width="22" height="22" rx="3"/>
+    <rect x="26" y="44" width="22" height="22" rx="3"/><rect x="146" y="44" width="22" height="22" rx="3"/>
+    <rect x="194" y="44" width="22" height="22" rx="3"/>
+    <rect x="26" y="68" width="22" height="22" rx="3"/><rect x="50" y="68" width="22" height="22" rx="3"/>
+    <rect x="74" y="68" width="22" height="22" rx="3"/><rect x="170" y="68" width="22" height="22" rx="3"/>
+    <rect x="194" y="68" width="22" height="22" rx="3"/>
+    <rect x="26" y="92" width="22" height="22" rx="3"/><rect x="50" y="92" width="22" height="22" rx="3"/>
+    <rect x="74" y="92" width="22" height="22" rx="3"/><rect x="98" y="92" width="22" height="22" rx="3"/>
+    <rect x="170" y="92" width="22" height="22" rx="3"/><rect x="194" y="92" width="22" height="22" rx="3"/>
+  </g>
+  <g fill="var(--muted-2)" opacity="0.5">
+    <rect x="74" y="20" width="22" height="22" rx="3"/><rect x="98" y="20" width="22" height="22" rx="3"/>
+  </g>
+  {# Ore: dirt blocks with the accent's chips in them. #}
+  <g fill="var(--muted)" opacity="0.32">
+    <rect x="50" y="44" width="22" height="22" rx="3"/><rect x="170" y="44" width="22" height="22" rx="3"/>
+  </g>
+  <g fill="var(--game-accent, var(--accent))">
+    <path d="M57 51l3 -3 3 3 -3 3z"/><path d="M64 58l2 -2 2 2 -2 2z"/>
+    <path d="M177 52l3 -3 3 3 -3 3z"/><path d="M184 58l2 -2 2 2 -2 2z"/>
+  </g>
+  <path class="art-stroke" d="M126 44v46M140 44v46M126 54h14M126 68h14M126 82h14"
+        style="stroke: var(--muted-2); stroke-width: 2.4"/>
+  <path d="M146 104l9 -9 9 9 -9 9z" fill="var(--game-accent, var(--accent))"/>
+  <path d="M151 104l4 -4" stroke="#fff" stroke-width="2" stroke-linecap="round" opacity="0.8"/>
+  <path class="art-stroke" d="M160 92l4 -4M165 98h4"
+        style="stroke: var(--game-accent, var(--accent)); stroke-width: 1.6"/>
+</svg>

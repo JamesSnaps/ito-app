@@ -1,0 +1,162 @@
+/* Gem Delve: one screen. The HUD strip, the 16:9 cave view as big as fits,
+   touch controls under it (over it on a phone held sideways). One dark look:
+   it's a cave. The display face is the hub's own Bricolage, by URL, so
+   nothing is fetched from anywhere else. */
+@font-face {
+  font-family: "Bricolage Grotesque";
+  src: url("../fonts/bricolage-grotesque-latin-wght.woff2") format("woff2-variations");
+  font-weight: 200 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --bg: #14101c;
+  --panel: #241c2e;
+  --line: #3a3048;
+  --ink: #f3ece0;
+  --soft: #b6a9bf;
+  --lamp: #ffcf5a;
+  --danger: #ff6f8a;
+  --display: "Bricolage Grotesque", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --body: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --hud-h: 44px;
+  --ctl-h: 0px;
+  color-scheme: dark;
+}
+*, *::before, *::after { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 16px;
+  overflow: hidden; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+}
+body.touch { --ctl-h: 168px; }
+#app {
+  height: 100%; display: flex; flex-direction: column; align-items: center;
+  padding-left: max(12px, env(safe-area-inset-left, 0px));
+  padding-right: max(12px, env(safe-area-inset-right, 0px));
+  padding-block: 0;
+}
+.hud {
+  height: var(--hud-h); width: 100%; max-width: calc((100dvh - var(--hud-h) - var(--ctl-h)) * 16 / 9);
+  min-width: min(100%, 320px);
+  display: flex; align-items: center; gap: 14px; font-family: var(--display); font-weight: 700; font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+.hud img { image-rendering: pixelated; width: 18px; height: 16px; display: block; }
+.home {
+  color: var(--soft); text-decoration: none; font-size: 26px; line-height: 1; padding: 0 4px 3px 0;
+}
+.home:focus-visible, .panel a:focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; border-radius: 4px; }
+.panel a.back { color: var(--soft); font-size: 14px; justify-self: start; }
+#hearts { display: flex; gap: 3px; }
+.bag { display: flex; align-items: center; gap: 6px; }
+.bag img { width: 16px; height: 16px; }
+#time { margin-left: auto; min-width: 3.2em; text-align: right; }
+#time.low { color: var(--danger); }
+.cave-code { color: var(--soft); font-size: 14px; letter-spacing: .08em; }
+#mute {
+  font: 600 12px var(--body); color: var(--soft); background: none; border: 1px solid var(--line);
+  border-radius: 6px; padding: 4px 8px; cursor: pointer;
+}
+#stage {
+  position: relative; width: 100%; max-width: calc((100dvh - var(--hud-h) - var(--ctl-h)) * 16 / 9);
+  aspect-ratio: 16 / 9; touch-action: none; outline: none; border-radius: 6px; overflow: hidden;
+  box-shadow: 0 0 0 1px var(--line);
+}
+#stage:focus-visible { box-shadow: 0 0 0 2px var(--lamp); }
+#view { width: 100%; height: 100%; display: block; image-rendering: pixelated; image-rendering: crisp-edges; }
+#prompt {
+  position: absolute; left: 50%; top: 12%; transform: translateX(-50%);
+  background: rgba(20, 16, 28, .85); border: 1px solid var(--lamp); color: var(--lamp);
+  font: 700 15px var(--display); padding: 6px 12px; border-radius: 6px; white-space: nowrap;
+}
+#prompt .t { display: none; }
+body.touch #prompt .k { display: none; }
+body.touch #prompt .t { display: inline; }
+
+#overlay {
+  position: fixed; inset: 0; z-index: 5; display: grid; place-items: center;
+  background: rgba(10, 8, 16, .72);
+  padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  overflow-y: auto; user-select: text; -webkit-user-select: text;
+}
+.panel {
+  width: min(100%, 460px); background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  padding: 22px 22px 20px; display: grid; gap: 12px; box-shadow: 0 20px 60px rgba(0, 0, 0, .5);
+}
+.panel h1, .panel h2 { font-family: var(--display); font-weight: 700; margin: 0; line-height: 1.1; text-wrap: balance; }
+.panel h1 { font-size: 40px; color: var(--lamp); }
+.panel h2 { font-size: 26px; }
+.panel p { margin: 0; line-height: 1.5; }
+.eyebrow { font: 700 12px var(--body); letter-spacing: .14em; text-transform: uppercase; color: var(--soft); }
+.small { color: var(--soft); font-size: 14px; }
+.how { margin: 0; padding-left: 1.1em; display: grid; gap: 4px; color: var(--soft); line-height: 1.45; }
+.how b { color: var(--ink); }
+.keys { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--soft); }
+body.touch .keys { display: none; }
+kbd {
+  font: 700 11px var(--body); color: var(--ink); background: var(--bg); border: 1px solid var(--line);
+  border-bottom-width: 2px; border-radius: 4px; padding: 1px 5px; margin-right: 2px;
+}
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; background: var(--bg); border-radius: 99px; padding: 3px 10px 3px 6px; font-variant-numeric: tabular-nums; }
+.chip img { width: 16px; height: 16px; image-rendering: pixelated; }
+.buttons { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px; }
+.panel button {
+  font: 700 16px var(--body); color: var(--ink); background: var(--bg); border: 1px solid var(--line);
+  border-radius: 8px; padding: 10px 16px; cursor: pointer;
+}
+.panel button.primary { background: var(--lamp); color: #2a1a10; border-color: var(--lamp); }
+.panel button:focus-visible, .panel input:focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
+.code-form { display: grid; gap: 6px; border-top: 1px solid var(--line); padding-top: 12px; margin-top: 4px; }
+.code-form label { font-size: 13px; color: var(--soft); }
+.code-form .row { display: flex; gap: 8px; }
+.code-form input {
+  width: 7em; font: 700 18px var(--display); letter-spacing: .18em; text-transform: uppercase;
+  background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;
+}
+.code-form input.bad { border-color: var(--danger); }
+
+.controls {
+  display: none; width: 100%; max-width: 900px; height: var(--ctl-h);
+  justify-content: space-between; align-items: center; padding-bottom: env(safe-area-inset-bottom, 0px);
+  touch-action: none; margin-top: auto; margin-bottom: auto;
+}
+body.touch .controls { display: flex; }
+#dpad {
+  position: relative; width: 140px; height: 140px; border-radius: 50%;
+  background: var(--panel); border: 1px solid var(--line); touch-action: none;
+}
+#dpad span {
+  position: absolute; width: 0; height: 0; border: 12px solid transparent; opacity: .55;
+}
+#dpad .u { left: 58px; top: 10px; border-bottom: 16px solid var(--ink); border-top: 0; }
+#dpad .d { left: 58px; bottom: 10px; border-top: 16px solid var(--ink); border-bottom: 0; }
+#dpad .l { top: 58px; left: 10px; border-right: 16px solid var(--ink); border-left: 0; }
+#dpad .r { top: 58px; right: 10px; border-left: 16px solid var(--ink); border-right: 0; }
+#dpad[data-dir~="up"] .u, #dpad[data-dir~="down"] .d, #dpad[data-dir~="left"] .l, #dpad[data-dir~="right"] .r { opacity: 1; }
+#dpad[data-dir~="up"] .u { border-bottom-color: var(--lamp); }
+#dpad[data-dir~="down"] .d { border-top-color: var(--lamp); }
+#dpad[data-dir~="left"] .l { border-right-color: var(--lamp); }
+#dpad[data-dir~="right"] .r { border-left-color: var(--lamp); }
+.actions { display: flex; gap: 16px; align-items: flex-end; }
+.actions button {
+  width: 76px; height: 76px; border-radius: 50%; border: 1px solid var(--line); background: var(--panel);
+  color: var(--ink); font: 700 16px var(--display); touch-action: none;
+}
+.actions button[data-act="jump"] { width: 88px; height: 88px; margin-bottom: 28px; }
+.actions button.down { background: var(--lamp); color: #2a1a10; }
+
+/* A landscape phone has no room under the view: put the controls over it. */
+@media (orientation: landscape) and (max-height: 520px) {
+  body.touch { --ctl-h: 0px; }
+  body.touch .controls {
+    position: fixed; left: 0; right: 0; bottom: 0; height: auto; max-width: none; z-index: 2; pointer-events: none;
+    padding: 0 max(16px, env(safe-area-inset-right, 0px)) max(12px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  }
+  body.touch .controls > * { pointer-events: auto; opacity: .75; }
+  #dpad { width: 120px; height: 120px; }
+  #dpad .u { left: 48px; } #dpad .d { left: 48px; } #dpad .l { top: 48px; } #dpad .r { top: 48px; }
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }

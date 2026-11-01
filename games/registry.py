@@ -53,11 +53,12 @@ def all_games():
     from games.final_vector.game import GAME as FINAL_VECTOR
     from games.flip7.game import GAME as FLIP7
     from games.fugitive.game import GAME as FUGITIVE
+    from games.gem_delve.game import GAME as GEM_DELVE
     from games.ito.game import GAME as ITO
     from games.picnic.game import GAME as PICNIC
     from games.wildwood.game import GAME as WILDWOOD
 
-    return [ITO, FLIP7, FUGITIVE, WILDWOOD, FINAL_APPROACH, PICNIC, FINAL_VECTOR]
+    return [ITO, FLIP7, FUGITIVE, WILDWOOD, FINAL_APPROACH, PICNIC, FINAL_VECTOR, GEM_DELVE]
 
 
 def playable_games():
