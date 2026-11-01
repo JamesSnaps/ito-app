@@ -6,12 +6,18 @@
 #   gh workflow run testflight.yml -R JamesSnaps/ito-app                     # main, uploaded
 #   gh workflow run testflight.yml -R JamesSnaps/ito-app -f upload=false     # archive only
 #
-# Started by hand only: nothing from a pull request runs on the Mac. Setting up the
-# runner: news-hub's ios/RUNBOOK.md, "TestFlight from GitHub".
+# Also runs on every merge to main that changes ios/ (not just its Markdown).
+# Nothing from a pull request runs on the Mac: never add a pull_request trigger.
+# Setting up the runner: news-hub's ios/RUNBOOK.md, "TestFlight from GitHub".
 
 name: TestFlight
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'ios/**'
+      - '!ios/**/*.md'
   workflow_dispatch:
     inputs:
       upload:
@@ -32,5 +38,6 @@ jobs:
 
       - name: Archive and upload
         env:
-          UPLOAD: ${{ inputs.upload && '1' || '0' }}
+          # A merge always uploads; by hand, the upload input decides.
+          UPLOAD: ${{ (github.event_name == 'push' || inputs.upload) && '1' || '0' }}
         run: ios/scripts/testflight.sh
