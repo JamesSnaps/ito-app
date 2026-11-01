@@ -1,0 +1,36 @@
+# Archives the iOS app and uploads it to TestFlight on James's Mac: a GitHub Actions
+# self-hosted runner labelled `testflight`, registered to this repo. It runs
+# ios/scripts/testflight.sh as you would by hand, with the Mac's own Xcode, signing and
+# App Store Connect key (~/.appstoreconnect/gamenight.env), so no secrets live in GitHub.
+#
+#   gh workflow run testflight.yml -R JamesSnaps/ito-app                     # main, uploaded
+#   gh workflow run testflight.yml -R JamesSnaps/ito-app -f upload=false     # archive only
+#
+# Started by hand only: nothing from a pull request runs on the Mac. Setting up the
+# runner: news-hub's ios/RUNBOOK.md, "TestFlight from GitHub".
+
+name: TestFlight
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload:
+        description: Upload to App Store Connect (false archives and exports an .ipa only)
+        type: boolean
+        default: true
+
+concurrency:
+  group: testflight
+  cancel-in-progress: false
+
+jobs:
+  testflight:
+    runs-on: [self-hosted, macOS, testflight]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Archive and upload
+        env:
+          UPLOAD: ${{ inputs.upload && '1' || '0' }}
+        run: ios/scripts/testflight.sh
