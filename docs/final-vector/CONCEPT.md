@@ -1,7 +1,8 @@
-# Radar Contact: concept
+# Final Vector: concept
 
-*Working title. Written 1 November 2026. A concept to decide on, not a
-plan to build yet. Mockups are drawn to look like the real thing on an
+*Written 1 November 2026; decisions added the same day (section 12). A
+concept, not yet a plan: work starts after Final Approach's Disruptions
+part 2. Mockups are drawn to look like the real thing on an
 iPad held sideways; the live mockup is [`img/mockup.html`](img/mockup.html)
 (`?m=scope|dial|voice|lesson`).*
 
@@ -18,12 +19,16 @@ air-traffic control is hard, so the Academy teaches it one idea at a
 time, with an instructor in your ear, until you're ready for a real
 shift.
 
+**The name.** The *final vector* is the last heading a controller gives
+to line an aircraft up on the approach: the moment the job is all about.
+It pairs with *Final Approach*.
+
 **How it relates to Final Approach.** Final Approach stays the family
-game: one finger, a painted landscape, five-minute shifts. Radar Contact
+game: one finger, a painted landscape, five-minute shifts. Final Vector
 is its grown-up sibling in the Game Night hub. They share the hub, the
 profiles and records, the radio voices and the airports' data, but not
 the way you play. Final Approach can keep borrowing realism that fits
-its style (real fix names, real airports in World Tour); Radar Contact is
+its style (real fix names, real airports in World Tour); Final Vector is
 where the real procedures live.
 
 ## 2. Pillars
@@ -99,6 +104,11 @@ is established on the final approach.
 
 ## 5. Giving instructions
 
+**Three ways to give an instruction, all complete:** the command dial
+(the default), voice, and on a laptop the keyboard. The dial is how
+everyone starts; voice is switched on in Settings, and the Academy offers
+it at lesson 10 (*Speaking like a controller*).
+
 ### The command dial
 
 ![The command dial on Skylark 412: heading ring, altitude and speed, actions](img/2-command-dial.jpg)
@@ -142,6 +152,22 @@ panel shows what was heard, and below it the instruction as understood
   descend four thousand"). It's one of the most real things about the
   job.
 
+### The keyboard (laptop)
+
+On a laptop, commands can be typed the way real systems take them, into
+a command line under the scope:
+
+- `SKY412 L270 D40 S210`: Skylark 412, left heading 270, descend 4,000
+  ft, speed 210 knots. `R` turns right, `H` takes the shorter way, `C`
+  climbs, `FL110` is a flight level.
+- `SKY412 ILS27L`, `SKY412 HOLD BIG`, `SKY412 DCT LAM` (direct to a
+  fix), `SKY412 TWR` (contact tower).
+- Typing a callsign's first letters selects it (Tab completes), and
+  clicking an aircraft fills its callsign in. Enter sends; the pilot reads
+  back exactly as for the dial or voice. Up recalls the last command.
+- The scope still works with the mouse (click for the dial); the keyboard
+  is simply faster for keen players at a desk.
+
 ### Pilot voices
 
 Readbacks have to say any callsign, heading, altitude and frequency, so
@@ -184,7 +210,21 @@ ends with a short check before the next opens.
 through, a timeline of what happened, each loss of separation with the
 moment it became unavoidable and what would have fixed it, plus scores.
 
-## 7. Scoring and records
+## 7. Pace and shifts
+
+- **Real time,** with a **×2** button for quiet stretches (an aircraft
+  crossing an empty sector). It drops back to real time by itself the
+  moment a conflict alert fires, an aircraft calls, or anything needs you.
+  The debrief notes how much of the shift ran at ×2; it doesn't affect the
+  score.
+- **A shift lasts about 20–30 minutes** at the chosen traffic level, and
+  ends when the last scheduled arrival is handed to the tower.
+- **Pause and resume:** a shift can be paused at any moment and picked up
+  later on the same device, even after closing the app (the whole state
+  is saved locally after every change). Academy lessons are short enough
+  not to need it, but resume the same way.
+
+## 8. Scoring and records
 
 - **Safety** above everything: losses of separation, close calls, busted
   altitudes, aircraft through the localiser.
@@ -195,7 +235,7 @@ moment it became unavoidable and what would have fixed it, plus scores.
   progress, your ratings per airport and traffic level, best shifts. The
   owner's Activity page covers it too.
 
-## 8. Airports
+## 9. Airports
 
 1. **A training airport** (fictional), simple airspace: one runway, two
    stacks, light traffic. The whole Academy happens here.
@@ -209,28 +249,28 @@ from the published charts of each country's aeronautical information
 (the stacks, routes and approaches), simplified where the detail doesn't
 change the game. Traffic is invented; callsigns are never real airlines'.
 
-## 9. The look
+## 10. The look
 
 Dark slate, not black; calm cyan and white for traffic, amber for what's
 yours, red only for conflicts. Oswald for tags and labels (shared with
 Final Approach), Barlow for text. Strips on cream card like real paper
 strips, the one warm thing on the screen. Everything sized for an iPad
-held sideways first, a laptop second; phones are a stretch (the scope
-needs room).
+held sideways first, a laptop second (with full keyboard control);
+phones are a stretch (the scope needs room).
 
-## 10. How it's built
+## 11. How it's built
 
-- **A new game in the Game Night hub** (`games/radar_contact/`), plain JS
+- **A new game in the Game Night hub** (`games/final_vector/`), plain JS
   on a canvas like Final Approach, no build step.
 - **Shared with Final Approach and the hub:** profiles, records, the
   Activity page, the audio pipeline (ElevenLabs, the radio filter, the
   queue), the OpenStreetMap importer, and the arrival-safety ideas.
 - **Its own:** a simulation in real units (nautical miles, feet, knots)
   with per-type performance; the scope renderer; the dial; the speech
-  parser; the Academy's scripted lessons; the replay recorder for
+  parser and the keyboard command line (sharing one command grammar); the Academy's scripted lessons; the replay recorder for
   debriefs.
 
-## 11. The first prototype
+## 12. The first prototype
 
 Small enough to tell whether it's fun before building the rest:
 
@@ -248,14 +288,20 @@ again.
 Then: voice control, the rest of the Academy, stacks and sequencing,
 Heathrow, departures, debrief replays, readback errors.
 
-## 12. Open questions
+## 13. Decisions (1 November 2026)
 
-- **The name.** *Radar Contact* (what a controller says on first seeing
-  an aircraft), *Approach*, *Vector*, *Final Vector*?
-- **Pace.** Real time only, or a ×2 speed for the quiet bits?
-- **Session length.** 20–30 minutes feels right for a shift; should it be
-  pausable and resumable later?
-- **Voice by default?** Or the dial by default with voice as the upgrade?
-- **Laptop support.** Keyboard shortcuts for commands, as some real
-  systems have?
-- **When to start.** After Final Approach's next phase, or alongside it?
+| Question | Decision |
+|---|---|
+| Name | **Final Vector** |
+| Pace | Real time, with ×2 for quiet stretches that drops back by itself when anything needs you |
+| Default controls | The command dial; voice is optional (Settings, or from Academy lesson 10) |
+| Laptops | Full keyboard control: a typed command line (`SKY412 L270 D40`) alongside the mouse and voice |
+| Shift length | About 20–30 minutes, pausable and resumable later on the same device |
+| When | After Final Approach's Disruptions part 2 (balloons, the air display, the cyber attack) |
+
+## 14. Still open
+
+- The training airport's name and layout.
+- How much of real Heathrow's procedures to keep (every STAR and the
+  stacks' real levels, or a simplified set).
+- Whether departures come into the first full release or later.
