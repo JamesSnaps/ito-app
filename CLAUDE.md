@@ -1637,9 +1637,9 @@ it current when you do (its "Current state" and roadmap especially).
     or Space/Enter); letting go resets it. `endCyber` clears the radar and
     flips the note to "Systems restored" / "Gremlin gone, bye bye!".
     `finish()` and `loadLevel` hide it at once.
-  - **Audio names the code uses** (recorded later; until then `say()` deals
-    nothing and `playSound()` returns false, and the effects fall back to
-    small synth stand-ins in `sfx`): tower lines `tower_balloons`,
+  - **Audio** (recorded with ElevenLabs in `tools/final_approach_sounds.py`;
+    if a file is missing `say()` deals nothing and `playSound()` returns
+    false, and the effects fall back to small synth stand-ins in `sfx`): tower lines `tower_balloons`,
     `tower_balloons_gone`, `tower_display`, `tower_display_clear`,
     `tower_cyber`, `tower_cyber_restored`, `tower_gremlin`,
     `tower_gremlin_gone` (each recorded as `<prefix>_1`, `_2`); effects

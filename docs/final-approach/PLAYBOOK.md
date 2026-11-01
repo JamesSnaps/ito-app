@@ -1111,15 +1111,13 @@ differently, and stamps show on the pass, the board, the Passport and the record
 obstruction, drone and diversion wave; free play's Disruptions toggle.
 **Part 2, built (v1.30.0):** hot-air balloons, the air display (the
 Kestrels) and the cyber attack / system gremlin (section 3 has the rules);
-free play's toggle brings all six. The tower's lines and the new sounds are
-called by name and need recording (`tower_balloons`, `tower_balloons_gone`,
-`tower_display`, `tower_display_clear`, `tower_cyber`,
-`tower_cyber_restored`, `tower_gremlin`, `tower_gremlin_gone`;
-`balloon_burner`, `display_flypast`, `cyber_glitch`, `gremlin_giggle`,
-`restore_ok`); until then they're silent or a small synth stand-in.
+free play's toggle brings all six. Each has the tower's lines (the gremlin's
+playful: "Oh no, a gremlin has got into the computer!") and its sounds: a
+balloon's burner, the Kestrels' fly-past, the system glitching (or the
+gremlin giggling) and coming back.
 **Left for later:** Endless's Off / Some / Lots for disruptions (with its
 own boards, like emergencies), runway lights failing (night only), seasonal
-arrivals (Santa's sleigh), spoken lines for the fixes, and what becomes of
+arrivals (Santa's sleigh), and what becomes of
 the career's Hold tool. Balance by hand: how often each turns up, the
 balloons' speed and the display's corridor width are first guesses.
 
