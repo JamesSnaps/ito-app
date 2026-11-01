@@ -283,6 +283,14 @@ def ios_fixtures(c):
     made = c.post("/api/profiles", json={"name": "Ana"}).get_json()
     out["profile_created"] = made
     out["profile_link"] = c.post("/api/profiles/me/link", headers={"X-Profile-Token": made["token"]}).get_json()
+    # Pairing: another device asks to be Ana, Ana's phone sees it and says yes.
+    asked = c.post("/api/profiles/pair", json={"profile": made["profile"]["id"]}).get_json()
+    out["profile_pair_ask"] = asked
+    ana = {"X-Profile-Token": made["token"]}
+    out["profile_pair_requests"] = c.get("/api/profiles/me/pairs", headers=ana).get_json()
+    c.post(f"/api/profiles/me/pairs/{asked['code']}", json={"approve": True}, headers=ana)
+    out["profile_pair_approved"] = c.get(f"/api/profiles/pair/{asked['code']}",
+                                         headers={"X-Pair-Secret": asked["secret"]}).get_json()
     out["profiles"] = c.get("/api/profiles").get_json()
     # ito, hosted from the app: the room it starts, and a card dealt in it.
     room = c.post("/ito/api/rooms").get_json()

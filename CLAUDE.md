@@ -667,7 +667,8 @@ registry gains) are played full screen as their web page (app 1.16.0, see
   server deals with hints on — the app holds offline computer games back until the server's
   stats carry `computer_leaderboard`; v1.17.0+ for app 1.11.0's Wildwood;
   v1.33.1+ for app 1.16.0's web games — an older server 404s `/api/games`
-  and the hub simply shows no web tiles) before a build goes out.
+  and the hub simply shows no web tiles; v1.36.0+ for app 1.17.0's
+  pairing) before a build goes out.
 - **`.dockerignore` keeps `ios/` out of the server image.**
 - **QR codes are scanned in the app** (`ScanSheet`, VisionKit's
   `DataScannerViewController`, QR only), from the hub's toolbar and the Join
@@ -1959,9 +1960,13 @@ one thing besides the games that `app.py` registers), `templates/me.html`
   once, so the code is safe on screen. Tapping a face never signs anyone in
   by itself. In memory, five minutes, at most two waiting per profile, and
   ten asks per device per ten minutes (every ask counts, not only failures).
-  **The iOS app doesn't answer requests yet**, and `/me/pair` isn't in the
-  AASA file: someone whose only signed-in device is the app can't approve
-  one until it does (claim the path only once a build handles it).
+  **iOS (app 1.17.0)** does both halves (`App/Pairing.swift`): `PairWatcher`
+  polls while the hub or You is on screen in the foreground (never over a
+  game) and shows `PairApprovalSheet`; the in-app scanner and links route
+  `/me/pair/<code>` (`Joining.pairCode`) to the same sheet; and You's
+  "Already have a profile?" faces open `PairAskSheet` (code, QR, polling).
+  The server names the app's requests "The Game Night app" (its URLSession
+  user agent has `CFNetwork/`).
 - **Photos are redrawn, never stored as sent.** The page crops a square on
   a canvas first (which already drops the file's metadata); the server then
   decodes with Pillow (`MAX_IMAGE_PIXELS` as a bomb guard), applies EXIF

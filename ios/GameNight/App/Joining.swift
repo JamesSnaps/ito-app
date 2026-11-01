@@ -14,6 +14,8 @@ enum JoinDestination: Equatable {
     case ito(code: String)
     /// A one-time code for signing this device in as someone's profile.
     case profileLink(String)
+    /// Another device asking to be this device's profile: its QR, scanned here.
+    case pairRequest(String)
     /// Something the app doesn't show itself — a Flip 7 scorekeeper's
     /// board — so it opens in the browser.
     case web(URL)
@@ -58,13 +60,14 @@ enum Joining {
     /// A link from outside or a scanned QR: a profile link, or a room.
     static func destination(for url: URL) async throws -> JoinDestination? {
         if let link = profileLink(in: url) { return .profileLink(link) }
+        if let pair = pairCode(in: url) { return .pairRequest(pair) }
         guard let code = code(in: url) else { return nil }
         return try await resolve(code: code)
     }
 
     /// Is this a link the app knows what to do with?
     static func isOurs(_ url: URL) -> Bool {
-        profileLink(in: url) != nil || code(in: url) != nil
+        profileLink(in: url) != nil || pairCode(in: url) != nil || code(in: url) != nil
     }
 
     /// The code from a "sign another device in" link: `/me/link/<code>`.
@@ -73,6 +76,20 @@ enum Joining {
         if url.scheme == "gamenight", url.host() == "me", parts.count == 2, parts[0] == "link" { return parts[1] }
         guard parts.count == 3, parts[0] == "me", parts[1] == "link", !parts[2].isEmpty else { return nil }
         return parts[2]
+    }
+
+    /// The code from a new device's sign-in QR: `/me/pair/<code>` (six
+    /// characters from the room alphabet).
+    static func pairCode(in url: URL) -> String? {
+        let parts = url.pathComponents.filter { $0 != "/" }
+        let candidate: String?
+        if url.scheme == "gamenight" {
+            candidate = url.host() == "me" && parts.count == 2 && parts[0] == "pair" ? parts[1] : nil
+        } else {
+            candidate = parts.count == 3 && parts[0] == "me" && parts[1] == "pair" ? parts[2] : nil
+        }
+        guard let code = candidate?.uppercased(), code.count == 6, code.allSatisfy({ alphabet.contains($0) }) else { return nil }
+        return code
     }
 
     /// A room code out of a link: the web pages players are sent to

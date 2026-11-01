@@ -406,6 +406,7 @@ def test_devices_are_named_for_the_person_saying_yes():
                         "(KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1") == "Safari on an iPhone"
     assert device_label("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
                         "Chrome/130.0 Safari/537.36 Edg/130.0") == "Edge on a Windows PC"
+    assert device_label("GameNight/202611012146 CFNetwork/3826.400.120 Darwin/25.0.0") == "The Game Night app"
     assert device_label("") == "A web browser"
 
 
