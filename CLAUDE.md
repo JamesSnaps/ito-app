@@ -696,7 +696,7 @@ registry gains) are played full screen as their web page (app 1.14.0, see
   isn't logged or sent anywhere else. (`HeldMe`/`Me` moved from Faces.swift
   to Profiles.swift so this builds without SwiftUI.)
 - **Links** (`WebGameLinks`): anything on the server's origin stays in the
-  screen — records, the hub, Final Approach's link to another game; other
+  screen — records, Final Approach's link to another game; other
   hosts and other schemes (mailto:) open in the system browser; frames
   inside a page load what they like. A `target=_blank` link follows the
   same rule in the one window.
