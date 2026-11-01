@@ -1043,7 +1043,12 @@ const Art = (() => {
     'river', 'riverEdge', 'concrete', 'taxi', 'asphalt', 'roof'];
   function snowTheme(th, snow) {
     const out = Object.assign({}, th);
-    for (const k of SNOW_KEYS) if (snow[k] != null) out[k] = snow[k];
+    // `river` is both the river's colour and the switch that paints one, so a
+    // landscape without a river must not be given the snow theme's.
+    for (const k of SNOW_KEYS) {
+      if ((k === 'river' || k === 'riverEdge') && !th.river) continue;
+      if (snow[k] != null) out[k] = snow[k];
+    }
     if (th.sand) out.sand = '#e4e9ec';
     return Object.assign(out, { snowfall: true, treeSnow: true });
   }
