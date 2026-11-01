@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{# Gem Delve: the test cave. The page is the whole game: a HUD strip, the
+   cave (a canvas drawn at 320x180 and scaled up, pixelated), touch controls
+   on touch screens, and the title and end screens as a sheet over it. It
+   brings its own look, so it swaps the shell's stylesheet for its own. The
+   sprites are pxl's PNGs, listed by game.py's art(). #}
+{% block title %}Gem Delve · {{ app_name }}{% endblock %}
+{% block theme_color %}#14101c{% endblock %}
+{% block shell_css %}<link rel="stylesheet" href="{{ asset('gem-delve/style.css') }}">{% endblock %}
+{% block body %}
+<div id="app">
+  <header class="hud">
+    <a class="home" href="/" aria-label="Back to Game Night">‹</a>
+    <div id="hearts" role="img" aria-label="3 hearts left"></div>
+    <div class="bag" title="Value of the gems you're carrying"><img id="bag-icon" alt=""><span id="bag">0</span></div>
+    <span class="cave-code">Cave <span id="code-label">----</span></span>
+    <span id="time">3:00</span>
+    <button type="button" id="mute" aria-pressed="true">Sound on</button>
+  </header>
+  <div id="stage" tabindex="0" aria-label="Cave">
+    <canvas id="view"></canvas>
+    <div id="prompt" hidden><span class="k">Press ↑ to climb out</span><span class="t">Push ▲ to climb out</span></div>
+  </div>
+  <div class="controls" aria-hidden="true">
+    <div id="dpad"><span class="u"></span><span class="d"></span><span class="l"></span><span class="r"></span></div>
+    <div class="actions">
+      <button type="button" data-act="dig" tabindex="-1">Dig</button>
+      <button type="button" data-act="jump" tabindex="-1">Jump</button>
+    </div>
+  </div>
+</div>
+<div id="overlay" hidden><div id="panel" class="panel"></div></div>
+
+<script>window.DELVE_ART = {{ art|tojson }};</script>
+<script src="{{ asset('gem-delve/game.js') }}"></script>
+{% endblock %}

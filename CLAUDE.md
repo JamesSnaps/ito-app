@@ -14,9 +14,9 @@ clear which it is:
   for nights without the box (Flip 7's Play mode, Fugitive).
 - **Games of our own** — designed here, not copies of published games:
   their own names, rules and art (*Wildwood*, *Final Approach*,
-  *Picnic Raid*, *Final Vector*).
+  *Picnic Raid*, *Final Vector*, *Gem Delve*).
 
-It holds seven: *ito* (cooperative, secret-number ordering game),
+It holds eight: *ito* (cooperative, secret-number ordering game),
 *Flip 7* (push-your-luck card game), *Fugitive* (two-player
 hidden-movement card game, played entirely on the app, against a person or
 the computer — see its section), *Wildwood* (our own Crazy Eights-style
@@ -25,7 +25,9 @@ card game for the family, two to four, also played entirely on the app),
 playbook is `docs/final-approach/PLAYBOOK.md`), *Picnic Raid* (our own
 set-a-trap card game, two to four, a web game in the app too) and *Final
 Vector* (Final Approach's grown-up sibling, radar approach control; a
-prototype since v1.34.0, see its section). `/` is the menu — it used to
+prototype since v1.34.0, see its section) and *Gem Delve* (Louis's mining
+game, a run-and-dig cave in pixel art; a test cave since v1.36.0). `/` is
+the menu — it used to
 redirect straight to ito when ito was the only game.
 
 The ito app itself: The owner has the German edition, whose
@@ -1923,6 +1925,64 @@ app shows it as a web game (see "Web games in the app").
   meanwhile. A pack-up is ~3s of bursts plus 1.5s per computer decision.
 - **Records**: wins, games and best score per player; a shared win counts
   for each. Games with a computer go in `record["computer"]`, as Wildwood's.
+
+## Gem Delve (added v1.36.0, a test cave)
+
+Louis's mining game: a side-on cave you run, jump, climb and dig through,
+a new one every game, gems in the walls, things that bite, and a mine shaft
+out at the bottom. **Our own game in a genre** (the cave-diving platformer):
+its own name, rules, creatures and pixel art; "a new cave every game" is the
+only idea borrowed. This is the first playable slice, to try on Louis's iPad
+before deciding how players compete.
+
+- **All client-side, one page**, like Final Vector: `games/gem_delve/game.py`
+  serves `/gem-delve/`; the game is `static/gem-delve/game.js` (one IIFE:
+  cave generator, fixed-step physics at 60 Hz, drawing, input, screens) with
+  its own `style.css`. The display face is the hub's Bricolage, by URL.
+  No records yet: the best score per cave is in the browser
+  (`delve:best`, and `delve:muted`).
+- **One cave per four-letter code** (the room-code alphabet, no I/O/0/1),
+  through FNV-1a into mulberry32, so everyone given the same code plays the
+  same cave: the idea is a family race through one cave. `#ABCD` on the URL
+  offers that cave on the title screen.
+- **The cave** (`generate`): 32×44 tiles of 16px; noise smoothed four times
+  into caverns, a start room near the top and the shaft near the bottom.
+  **Only bedrock and small boulders (≤3×2, placed only into dirt) are
+  undiggable**, so a cave can always be finished with the pickaxe. Ore sits
+  mostly on cave walls (some buried), better deeper down: emerald 1,
+  sapphire 2, ruby 3, gold 5. Ore takes two hits. Ladders only go where
+  there's a ledge to step off at the top. Spikes and bats keep clear of the
+  start; nothing sits on the shaft.
+- **The rules**: three minutes; gems count only once you climb out (↑ at
+  the shaft). A hit costs a heart and drops a third of your gems, which
+  scatter and can be picked up again; no hearts or no time loses everything
+  you carry. Bats wake when you're near and below; stomp them or hit them
+  with the pick. Spikes hurt only falling or walking onto the points. No
+  fall damage, for now.
+- **Controls**: keyboard (arrows/WASD, Space/Z jump, X/J/Shift dig, hold
+  ↓/↑ to dig down/up), any gamepad, and on touch screens a d-pad (one pad,
+  read from where the finger is, so a thumb can slide between directions)
+  with Dig and Jump. Below the view on an iPad or an upright phone; over it,
+  translucent, on a phone held sideways. The view is 320×180 game pixels,
+  scaled up pixelated.
+- **The art is pxl's**: `games/gem_delve/art.px.js` is the source, built to
+  `static/gem-delve/art/*.png` and committed (see "Pixel art"). game.py's
+  `art()` lists the PNGs into the page as `window.DELVE_ART`. To change one:
+  `node .claude/skills/pxl-pixel-art/bin/pxl.js build games/gem_delve/art.px.js
+  --out /tmp/delve-art`, then copy `/tmp/delve-art/sprites/*.png` over
+  `static/gem-delve/art/`. The `contact` scene there is every sprite on one
+  sheet, for checking. A test checks every sprite name in game.js is a PNG.
+- **Testing it**: `window.DELVE_DEBUG = {}` before the script (a test copy
+  of the page, never the live one) gives `DELVE_DEBUG.api`: `start(code)`,
+  `run(seconds, {left, right, up, down, jump, dig})`, `tap(action)`,
+  `peek()`, `around()` (the tiles round the miner as text), `cave()`,
+  `player()`. A hidden tab gets no animation frames, so this is how the
+  slice was checked.
+- **Next, once Louis has played it**: tune the jump and the difficulty;
+  races against the family's best run as a see-through ghost (record the
+  inputs: the physics is already fixed-step); a cave of the day with records
+  against profiles, like Final Approach's. Seeing each other live in one
+  cave would need more than the 2 s poll and isn't planned.
 
 ## Player profiles (added v1.8.0)
 
