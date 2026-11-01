@@ -302,7 +302,8 @@ Game Night.
 - [x] The landscape fills any screen: painted past the airspace (which
   stays 960 × 600 and paints exactly as before), weather over all of it,
   and the edge of the control zone marked with a dashed amber line and the
-  airport's name; arrivals seen flying in from beyond it (v1.28.0)
+  airport's code ("THD CONTROL ZONE"); arrivals seen flying in from beyond it
+  (v1.28.0)
 - [x] Conditions: Dusk, Night, Snow, Storm and Fog on any cleared airport,
   each with its own rule; stamps and the Passport (v1.27.0)
 - [x] Who's playing: a browser without a profile is asked once; guests'
