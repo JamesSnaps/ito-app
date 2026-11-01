@@ -2,48 +2,142 @@
 {% block title %}{{ app_name }}{% endblock %}
 {% block head %}<script src="{{ asset('profiles.js') }}"></script>{% endblock %}
 {% block body %}
+{# One column on a phone. From 1100px wide, a side panel (who you are,
+   joining a room, the footer) beside the games: the pieces are placed by
+   grid areas, so the markup is the same at every width. #}
 <div class="wrap hub">
   <div class="hub-top">
     <div class="eyebrow">{{ app_name }}</div>
-    {# Who this device is. Filled in by profiles.js; a stranger sees "Add yourself". #}
+    {# Who this device is. Filled in by the script below; a stranger sees "Add yourself". #}
     <a class="hub-me" id="hub-me" href="{{ url_for('profiles.me_page') }}">Add yourself</a>
   </div>
-  <h1>Pick a game</h1>
-  <div class="sub">Help for the board games on the shelf, and games of our own.</div>
 
-  <div class="game-list">
-    {% for game in games %}
-    <a class="game-card" href="{{ url_for(game.id ~ '.landing') }}"
-       style="--game-accent: {{ game.accent }};">
-      <div class="game-art-frame">{% include "art/" ~ game.id ~ ".html" %}</div>
-      <div class="game-copy">
-        <div class="name">{{ game.name }}</div>
-        <div class="tagline">{{ game.tagline }}</div>
-        <div class="game-go">
-          {% if game.starts_rooms %}Start a room{% else %}{{ game.hub_action }}{% endif %}
-          <span aria-hidden="true">→</span>
-        </div>
+  {# "Who's playing tonight?" for a device with no profile: tap your face to
+     sign in here (a device that's already you says yes), or make one. #}
+  <section class="hub-intro" id="hub-intro" hidden aria-labelledby="hub-intro-title"></section>
+
+  {# The side panel's "you", on wide screens only. #}
+  <a class="hub-panel hub-you" id="hub-you" href="{{ url_for('profiles.me_page') }}" hidden></a>
+
+  <div class="hub-main">
+    <h1>Pick a game</h1>
+    <div class="sub">Help for the board games on the shelf, and games of our own.</div>
+
+    <div class="hub-games">
+      <div class="game-list">
+        {% for game in games|sort(attribute='preview') %}
+        <a class="game-card{% if game.preview %} is-preview{% endif %}" href="{{ url_for(game.id ~ '.landing') }}"
+           style="--game-accent: {{ game.accent }};">
+          <div class="game-art-frame">{% include "art/" ~ game.id ~ ".html" %}</div>
+          <div class="game-copy">
+            <div class="name">{{ game.name }}</div>
+            <div class="tagline">{{ game.tagline }}</div>
+            <div class="game-go">
+              {% if game.starts_rooms %}Start a room{% else %}{{ game.hub_action }}{% endif %}
+              <span aria-hidden="true">→</span>
+            </div>
+          </div>
+        </a>
+        {% endfor %}
       </div>
-    </a>
-    {% endfor %}
+    </div>
   </div>
 
-  <div class="section">
+  <div class="section hub-join">
     <h2>Joining a game?</h2>
-    <a class="btn btn-secondary" href="{{ url_for('join') }}" style="width:100%;">Enter a room code</a>
+    <form class="hub-join-form" action="{{ url_for('join') }}" method="get">
+      <input class="code-input" id="hub-code" name="code" maxlength="4" placeholder="ABCD" autocomplete="off"
+             autocapitalize="characters" spellcheck="false" aria-label="Room code">
+      <button class="btn btn-secondary" type="submit">Join</button>
+    </form>
   </div>
 
-  <div class="version">v{{ app_version }} · <a href="{{ url_for('profiles.family_page') }}">Family</a></div>
+  <div class="version hub-foot">v{{ app_version }} · <a href="{{ url_for('profiles.family_page') }}">Family</a></div>
 </div>
 <script>
-  (async () => {
-    const mine = GN.me.get();
-    if (!mine) return;
-    await GN.profiles.load();
+  (() => {
+    // "Just looking" hides the intro on this device for a week.
+    const SKIP_KEY = 'gamenight:intro-skipped';
+    const WEEK = 7 * 24 * 3600 * 1000;
     const chip = document.getElementById('hub-me');
-    chip.textContent = '';
-    chip.appendChild(GN.avatar(mine.name, 30));
-    chip.appendChild(document.createTextNode(mine.name));
+    const intro = document.getElementById('hub-intro');
+    const you = document.getElementById('hub-you');
+
+    function skipped(){
+      try { return Date.now() - Number(localStorage.getItem(SKIP_KEY) || 0) < WEEK; } catch (e) { return false; }
+    }
+    function skip(){
+      try { localStorage.setItem(SKIP_KEY, String(Date.now())); } catch (e) {}
+      render();
+    }
+
+    function el(tag, cls, text){
+      const n = document.createElement(tag);
+      if (cls) n.className = cls;
+      if (text != null) n.textContent = text;
+      return n;
+    }
+
+    function renderIntro(){
+      const people = GN.profiles.list.slice().sort((a, b) => a.name.localeCompare(b.name));
+      const title = el('h2', null, people.length ? 'Who’s playing tonight?' : 'Put your face in the games');
+      title.id = 'hub-intro-title';
+      const faces = el('div', 'hub-faces');
+      for (const p of people) {
+        const face = el('button', 'hub-face');
+        face.type = 'button';
+        face.append(GN.avatar(p.name, 52), el('span', 'hub-face-name', p.name));
+        face.addEventListener('click', () => GN.pairing.ask(p, render));
+        faces.appendChild(face);
+      }
+      const add = el('a', 'hub-face hub-face-new');
+      add.href = chip.getAttribute('href');
+      const plus = el('span', 'gn-avatar hub-face-plus', '+');
+      plus.style.setProperty('--size', '52px');
+      add.append(plus, el('span', 'hub-face-name', people.length ? 'New' : 'Make one'));
+      faces.appendChild(add);
+
+      const skipButton = el('button', 'hub-skip', 'Just looking');
+      skipButton.type = 'button';
+      skipButton.addEventListener('click', skip);
+      const foot = el('div', 'hub-intro-foot');
+      foot.append(el('span', null, 'Not playing? You can look around without one.'), skipButton);
+
+      intro.replaceChildren(
+        title,
+        el('p', null, people.length
+          ? 'Tap your face to be you here. Your name and photo follow you into every game.'
+          : 'Make a profile and your name and photo follow you into every game.'),
+        faces, foot);
+    }
+
+    function render(){
+      const mine = GN.me.get();
+      chip.textContent = '';
+      you.textContent = '';
+      if (mine) {
+        chip.append(GN.avatar(mine.name, 30), document.createTextNode(mine.name));
+        const who = el('div', 'hub-you-who');
+        who.append(el('div', 'hub-you-name', mine.name), el('div', 'hub-you-more', 'Your photo and devices'));
+        you.append(GN.avatar(mine.name, 52), who);
+        GN.pairing.watch();
+      } else {
+        chip.textContent = 'Add yourself';
+        const who = el('div', 'hub-you-who');
+        who.append(el('div', 'hub-you-name', 'Add yourself'),
+                   el('div', 'hub-you-more', 'Your name and photo, in every game'));
+        const plus = el('span', 'gn-avatar hub-face-plus', '+');
+        plus.style.setProperty('--size', '52px');
+        you.append(plus, who);
+      }
+      const asking = !mine && !skipped();
+      if (asking) renderIntro();
+      intro.hidden = !asking;
+      you.hidden = asking;
+      document.body.classList.toggle('hub-asking', asking);
+    }
+
+    GN.profiles.load().then(render);
   })();
 </script>
 {% endblock %}

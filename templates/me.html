@@ -25,6 +25,7 @@
 <script>
   const MAX_NAME = {{ max_name }};
   const LINK_CODE = {{ (link_code or none)|tojson }};
+  const PAIR_CODE = {{ (pair_code or none)|tojson }};
   const params = new URLSearchParams(location.search);
   const app = document.getElementById('me-app');
   let profile = null;      // the server's copy of this device's profile
@@ -196,9 +197,19 @@
         n('h2', {text: 'Make your profile'}),
         n('p', {class: 'hint', text: 'Use the name you play under — the records already know it, so your past games come with it.'}),
         input,
-        n('button', {class: 'btn btn-primary me-wide', type: 'button', text: 'Make my profile', onclick: () => create(input.value)}),
-        n('p', {class: 'hint', text: 'Already made one on another phone? Open “You” there and tap “Add another device”.'})
+        n('button', {class: 'btn btn-primary me-wide', type: 'button', text: 'Make my profile', onclick: () => create(input.value)})
       ]));
+      // Someone with a profile on another device signs in here instead.
+      const people = GN.profiles.list.slice().sort((a, b) => a.name.localeCompare(b.name));
+      if (people.length) {
+        app.appendChild(n('div', {class: 'card me-card'}, [
+          n('h2', {text: 'Already have a profile?'}),
+          n('p', {class: 'hint', text: 'Tap your face, then say yes on a phone or iPad that’s already you.'}),
+          n('div', {class: 'hub-faces'}, people.map(p => n('button', {class: 'hub-face', type: 'button',
+            onclick: () => GN.pairing.ask(p, done => { remember(done); message = ''; render(); })},
+            [GN.avatar(p.name, 52), n('span', {class: 'hub-face-name', text: p.name})])))
+        ]));
+      }
     } else {
       const photoButtons = preview
         ? [n('button', {class: 'btn btn-primary', type: 'button', disabled: busy, text: busy ? 'Saving…' : 'Use this photo', onclick: savePhoto}),
@@ -216,7 +227,7 @@
 
       const devices = n('div', {class: 'card me-card'}, [
         n('h2', {text: 'Your other devices'}),
-        n('p', {class: 'hint', text: 'Scan this on your iPad or another phone to sign it in as you too. It works once, for ten minutes.'})
+        n('p', {class: 'hint', text: 'On the new device, open Game Night and tap your face: this one will ask you to say yes. Or scan this code with it. It works once, for ten minutes.'})
       ]);
       if (invite) {
         const qr = n('div', {class: 'qr me-qr'});
@@ -252,6 +263,16 @@
       if (res.ok) remember(res.data.profile);
       else if (res.status === 403) GN.me.clear();
     }
+    // A new device's sign-in QR, scanned here.
+    if (PAIR_CODE) {
+      history.replaceState(null, '', '/me');
+      if (!profile) {
+        message = 'This browser isn’t signed in as anyone, so it can’t say yes. Open Game Night where you usually play: the request will be waiting there.';
+      } else if (!await GN.pairing.reviewCode(PAIR_CODE)) {
+        message = `No sign-in request with that code is waiting for ${profile.name}. It may have run out, or be for someone else.`;
+      }
+    }
+    if (profile) GN.pairing.watch();
     // The list may predate a change made just now.
     GN.profiles.loading = null;
     await GN.profiles.load();

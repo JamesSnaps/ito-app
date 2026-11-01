@@ -1946,6 +1946,22 @@ one thing besides the games that `app.py` registers), `templates/me.html`
   first (`/me/link/<code>`, ten minutes, in memory, redeemed by a POST from
   the page so a link preview can't spend it; wrong codes count against the
   room-code throttle). Up to `MAX_DEVICES` tokens per profile.
+- **Pairing runs the other way** (v1.36.0), because a laptop can't scan the
+  link QR. The new device taps a face (the hub's "Who's playing tonight?"
+  card, or the You page's "Already have a profile?") and `POST
+  /api/profiles/pair` answers a six-character code (room alphabet), a
+  `secret` and a QR of `/me/pair/<code>`. Devices that are that profile see
+  the request (`GET /api/profiles/me/pairs`, polled every 4s by
+  `GN.pairing.watch()` on the hub and the You page only: never mid-game) with
+  the device ("Chrome on a Mac", `device_label`) and home or away, or scan
+  the QR, and answer (`POST /api/profiles/me/pairs/<code>`). The asking
+  device polls with `X-Pair-Secret`; only the secret collects the token,
+  once, so the code is safe on screen. Tapping a face never signs anyone in
+  by itself. In memory, five minutes, at most two waiting per profile, and
+  ten asks per device per ten minutes (every ask counts, not only failures).
+  **The iOS app doesn't answer requests yet**, and `/me/pair` isn't in the
+  AASA file: someone whose only signed-in device is the app can't approve
+  one until it does (claim the path only once a build handles it).
 - **Photos are redrawn, never stored as sent.** The page crops a square on
   a canvas first (which already drops the file's metadata); the server then
   decodes with Pillow (`MAX_IMAGE_PIXELS` as a bomb guard), applies EXIF
@@ -2008,6 +2024,20 @@ one thing besides the games that `app.py` registers), `templates/me.html`
   photo is cropped to a square on the phone and the server redraws it as
   always. `/me/link/*` is claimed by the AASA file, so a sign-in QR scanned
   with the Camera opens the app.
+
+## The hub's layout (v1.36.0)
+
+- **One markup, placed by grid areas** (`templates/hub.html`): a column on
+  a phone; from 1100px a 300px side panel (the intro or "you", the room-code
+  box, the footer) beside the games, up to 1320px. The game grid's columns
+  come from a container query on `.hub-games` (two from 620px, three from
+  860px of its own width), not the screen, since the panel takes some.
+- **A device with no profile is asked who's playing** (the intro card,
+  every profile's face plus New); "Just looking" hides it for a week
+  (`gamenight:intro-skipped`).
+- **`GameSpec.preview`** (Final Vector) puts a game last, as a strip across
+  the grid once there are two columns, so a finished game never shares a
+  row with it.
 
 ## Hub artwork
 

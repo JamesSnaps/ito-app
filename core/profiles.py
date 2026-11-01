@@ -10,8 +10,10 @@ accounts here (guests can't use Authelia). So a profile is held by devices:
 making one hands this device a secret token, kept in the browser (or the
 iOS app), and only a device holding one of the profile's tokens can change
 its photo or delete it. Another device joins by scanning a QR the first one
-shows — a one-time link code — and gets its own token. Tokens are stored
-hashed; the server can check one but never hand it back.
+shows — a one-time link code — or the other way round: the new device picks
+the face, and one of the profile's devices says yes (pairing, below). Either
+way it gets its own token. Tokens are stored hashed; the server can check one
+but never hand it back.
 
 Photos are re-drawn by the server (Pillow) as a 320px square JPEG before
 they're kept. That proves it's an image, sizes it once for every screen,
@@ -39,6 +41,7 @@ from flask import Blueprint, abort, jsonify, render_template, request, send_from
 from core import jsonfile, paths
 from core.jsonfile import DataUnavailable
 from core.qr import svg as qr_svg
+from core.ratelimit import GuessThrottle
 
 MAX_NAME = 20
 MAX_PROFILES = 200
@@ -53,6 +56,9 @@ _lock = threading.Lock()
 # One-time codes for adding a device: code -> (profile id, expiry). In
 # memory on purpose: a restart costs a code nobody has used in ten minutes.
 _links = {}
+# Sign-in requests from a new device, by their on-screen code (see pairing).
+# In memory for the same reason: they last five minutes.
+_pairs = {}
 
 bp = Blueprint("profiles", __name__)
 
@@ -345,6 +351,141 @@ def redeem_link(code):
         return None
 
 
+# --- pairing: the new device asks, a device that's you says yes -------------
+#
+# The link above starts on a device that's already you: it shows a QR and the
+# new one scans it. A laptop can't scan, so pairing runs the other way. The
+# new device taps a face and gets a six-character code, which it shows with a
+# QR of the page that answers it. The profile's devices see the request on
+# the hub or the You page (or scan that QR) and say yes or no. Tapping a face
+# never signs anyone in by itself.
+#
+# The code is shown on screen, so it isn't what collects the token: the new
+# device also holds a secret for its request, and only that does. A device
+# that's you can only answer requests for you.
+
+PAIR_TTL = 5 * 60
+PAIR_LENGTH = 6
+# Room codes' alphabet: no I/O/0/1, since the code is compared by eye.
+PAIR_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+# Enough for a second try while the first is still showing; a stranger
+# can't fill someone's phone with requests.
+MAX_PAIRS_WAITING = 2
+SECRET_HEADER = "X-Pair-Secret"
+
+
+def device_label(agent):
+    """"Chrome on a Mac" from a User-Agent, for the person saying yes."""
+    agent = agent or ""
+    browsers = (("Edg/", "Edge"), ("Firefox/", "Firefox"), ("FxiOS", "Firefox"), ("CriOS", "Chrome"),
+                ("Chrome/", "Chrome"), ("Safari/", "Safari"))
+    places = (("iPhone", "an iPhone"), ("iPad", "an iPad"), ("Android", "an Android phone"),
+              ("Macintosh", "a Mac"), ("Windows", "a Windows PC"), ("CrOS", "a Chromebook"),
+              ("Linux", "a Linux computer"))
+    browser = next((name for key, name in browsers if key in agent), None)
+    place = next((name for key, name in places if key in agent), None)
+    if browser and place:
+        return f"{browser} on {place}"
+    return browser or (place[0].upper() + place[1:] if place else "A web browser")
+
+
+def _sweep_pairs(now):
+    """Drop requests past their time. Called under the lock."""
+    for code in [c for c, pair in _pairs.items() if pair["expires"] < now]:
+        del _pairs[code]
+
+
+def request_pair(pid, device, place):
+    """A new device asks to be profile `pid`. Returns (code, secret)."""
+    if pid not in _all():
+        raise LookupError("That profile has gone.")
+    now = time.time()
+    with _lock:
+        _sweep_pairs(now)
+        waiting = [p for p in _pairs.values() if p["pid"] == pid and p["status"] == "waiting"]
+        if len(waiting) >= MAX_PAIRS_WAITING:
+            raise ValueError("There's already a sign-in request waiting for that profile. "
+                             "Answer it, or try again in a few minutes.")
+        code = "".join(secrets.choice(PAIR_ALPHABET) for _ in range(PAIR_LENGTH))
+        while code in _pairs:
+            code = "".join(secrets.choice(PAIR_ALPHABET) for _ in range(PAIR_LENGTH))
+        secret = secrets.token_urlsafe(18)
+        _pairs[code] = {"pid": pid, "secret": _hash(secret), "device": device, "where": place,
+                        "expires": now + PAIR_TTL, "status": "waiting", "token": None}
+    return code, secret
+
+
+def _held_pair(code, secret):
+    """The request, if `secret` is the one its device holds. Under the lock."""
+    pair = _pairs.get(code)
+    if pair is None or not secrets.compare_digest(pair["secret"], _hash(secret or "")):
+        return None
+    return pair
+
+
+def pair_status(code, secret):
+    """What the asking device sees: None for no such request (or the wrong
+    secret), else {"status": ...}. An approved request hands its token over
+    once and is gone."""
+    with _lock:
+        _sweep_pairs(time.time())
+        pair = _held_pair(code, secret)
+        if pair is None:
+            return None
+        if pair["status"] == "waiting":
+            return {"status": "waiting"}
+        del _pairs[code]
+        if pair["status"] == "refused":
+            return {"status": "refused"}
+        pid, token = pair["pid"], pair["token"]
+    profile = _all().get(pid)
+    if profile is None:
+        return None
+    return {"status": "approved", "profile": profile, "token": token}
+
+
+def cancel_pair(code, secret):
+    with _lock:
+        if _held_pair(code, secret) is not None:
+            del _pairs[code]
+
+
+def pairs_for(pid):
+    """Requests waiting for profile `pid`, oldest first."""
+    now = time.time()
+    with _lock:
+        _sweep_pairs(now)
+        waiting = [(code, p) for code, p in _pairs.items() if p["pid"] == pid and p["status"] == "waiting"]
+    waiting.sort(key=lambda item: item[1]["expires"])
+    return [{"code": code, "device": p["device"], "where": p["where"],
+             "expires_in": max(0, int(p["expires"] - now))} for code, p in waiting]
+
+
+def answer_pair(pid, code, approve):
+    """A device that's `pid` says yes or no. LookupError if there's no such
+    request waiting for this profile."""
+    with _lock:
+        _sweep_pairs(time.time())
+        pair = _pairs.get(code)
+        if pair is None or pair["pid"] != pid or pair["status"] != "waiting":
+            raise LookupError("That request has gone. It may have run out, or been answered.")
+        if not approve:
+            pair["status"] = "refused"
+            return
+    token = secrets.token_urlsafe(18)
+
+    def change(data, profile):
+        profile["tokens"] = (profile.get("tokens", []) + [_hash(token)])[-MAX_DEVICES:]
+
+    _change(pid, change)
+    with _lock:
+        # Cancelled or run out while the token was being saved: forget it.
+        pair = _pairs.get(code)
+        if pair is None:
+            raise LookupError("That request has gone. It may have run out, or been answered.")
+        pair["status"], pair["token"] = "approved", token
+
+
 # --- routes ---------------------------------------------------------------
 
 def _me_or_403():
@@ -463,6 +604,13 @@ def me_link_page(code):
     return render_template("me.html", max_name=MAX_NAME, back="/", link_code=code)
 
 
+@bp.route("/me/pair/<code>")
+def me_pair_page(code):
+    """Where a new device's sign-in QR lands, on a device that's already
+    you. Saying yes is a POST from the page, so a link preview can't."""
+    return render_template("me.html", max_name=MAX_NAME, back="/", pair_code=code.upper())
+
+
 def _back_link():
     back = request.args.get("back", "")
     if back.startswith("/") and "//" not in back and "\\" not in back:
@@ -566,3 +714,64 @@ def api_redeem_link(code):
     ratelimit.code_guesses.clear(client)
     profile, token = found
     return jsonify({"profile": public(profile), "token": token})
+
+
+# Asking to be someone: every request counts, not only wrong ones, so one
+# device can't keep a family's phones busy. Generous next to real use.
+pair_requests = GuessThrottle(limit=10, window=600)
+
+
+@bp.route("/api/profiles/pair", methods=["POST"])
+def api_request_pair():
+    """A new device asks to be a profile. Answers the code to show, the
+    secret only it keeps, and a QR of the page that says yes."""
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict) or not isinstance(body.get("profile"), str):
+        return jsonify({"error": "expected {profile}"}), 400
+    if pair_requests.record_failure(request.remote_addr or "unknown"):
+        return jsonify({"error": "Too many sign-in requests from this device. Wait a few minutes."}), 429
+    try:
+        code, secret = request_pair(body["profile"], device_label(request.user_agent.string), where())
+    except LookupError as err:
+        return jsonify({"error": str(err)}), 404
+    except ValueError as err:
+        return jsonify({"error": str(err)}), 429
+    url = request.host_url.rstrip("/") + url_for("profiles.me_pair_page", code=code)
+    return jsonify({"code": code, "secret": secret, "url": url, "qr_svg": qr_svg(url).decode("utf-8"),
+                    "expires_in": PAIR_TTL})
+
+
+@bp.route("/api/profiles/pair/<code>")
+def api_pair_status(code):
+    """Polled by the asking device: waiting, refused, or approved with its token."""
+    found = pair_status(code, request.headers.get(SECRET_HEADER, ""))
+    if found is None:
+        return jsonify({"status": "gone", "error": "That request has run out."}), 404
+    if found["status"] != "approved":
+        return jsonify(found)
+    return jsonify({"status": "approved", "profile": public(found["profile"]), "token": found["token"]})
+
+
+@bp.route("/api/profiles/pair/<code>", methods=["DELETE"])
+def api_cancel_pair(code):
+    cancel_pair(code, request.headers.get(SECRET_HEADER, ""))
+    return jsonify({"cancelled": True})
+
+
+@bp.route("/api/profiles/me/pairs")
+def api_my_pairs():
+    """Sign-in requests waiting for this device's profile."""
+    return jsonify({"requests": pairs_for(_me_or_403()["id"])})
+
+
+@bp.route("/api/profiles/me/pairs/<code>", methods=["POST"])
+def api_answer_pair(code):
+    profile = _me_or_403()
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict) or not isinstance(body.get("approve"), bool):
+        return jsonify({"error": "approve is yes or no"}), 400
+    try:
+        answer_pair(profile["id"], code.upper(), body["approve"])
+    except LookupError as err:
+        return jsonify({"error": str(err)}), 404
+    return jsonify({"answered": True})
