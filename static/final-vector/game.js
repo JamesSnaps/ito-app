@@ -10,6 +10,8 @@
   const $ = id => document.getElementById(id);
   const pad2 = n => String(n).padStart(2, '0');
   const pad3 = n => String(Math.round(n)).padStart(3, '0');
+  // A heading as controllers say it: 001 to 360, never 000.
+  const hdg3 = h => { const n = ((Math.round(h) % 360) + 360) % 360; return pad3(n === 0 ? 360 : n); };
   // Rounded down, so a pair 2.97 nm apart never reads as 3.0 (the minimum).
   const miles = h => (Math.floor(h * 10) / 10).toFixed(1);
   const feet = v => (Math.floor(v / 100) * 100).toLocaleString('en-GB');
@@ -120,7 +122,8 @@
         logLine('alert', `Missed handoff: ${ev.cs} is inside 4 miles on your frequency. The tower has taken it.`);
         break;
       case 'landed': {
-        const late = ev.delay > 30 ? ` (${Math.floor(ev.delay / 60)}:${pad2(Math.round(ev.delay % 60))} late)` : '';
+        const d = Math.round(ev.delay);
+        const late = d > 30 ? ` (${Math.floor(d / 60)}:${pad2(d % 60)} late)` : '';
         logLine('ok', `${ev.cs} landed${S.mode === 'shift' ? late : ''}.`);
         break;
       }
@@ -391,7 +394,7 @@
       dial.arc.setAttribute('d', `M${ax} ${ay} A${RING} ${RING} 0 ${large} ${sweep} ${kx} ${ky}`);
     } else dial.arc.setAttribute('d', '');
     dial.dirText.textContent = dial.hold ? 'HOLD' : turning ? (dial.turn < 0 ? 'LEFT' : 'RIGHT') : 'HDG';
-    dial.hdgText.textContent = dial.hold ? dial.hold : turning ? pad3(shown) : pad3(ac.hdg) ;
+    dial.hdgText.textContent = dial.hold ? dial.hold : turning ? hdg3(shown) : hdg3(ac.hdg);
     dial.hdgText.classList.toggle('same', !turning && !dial.hold);
     for (const k of ['alt', 'spd']) {
       const list = dial[k + 'List'], cur = k === 'alt' ? ac.cfl : ac.spd;
@@ -504,7 +507,7 @@
     const from = ac.entry && ac.mode !== 'route' && ac.mode !== 'hold' ? `${ac.entry} → ` : '';
     const where = ac.freq === 'tower' ? 'Tower' : ac.loc ? `LOC ${World.runway}` : ac.ils ? `ILS ${World.runway}`
       : ac.mode === 'hold' ? `${ac.hold.fix} hold` : ac.mode === 'route' ? `${ac.entry} arrival`
-      : `HDG ${pad3(ac.thdg != null ? ac.thdg : ac.hdg) === '000' ? '360' : pad3(ac.thdg != null ? ac.thdg : ac.hdg)}`;
+      : `HDG ${hdg3(ac.shownHdg != null ? ac.shownHdg : ac.thdg != null ? ac.thdg : ac.hdg)}`;
     const arrow = ac.cfl < ac.alt - 50 ? '↓' : ac.cfl > ac.alt + 50 ? '↑' : ' ';
     return `${from}${where} · ${pad3(ac.alt / 100)}${arrow}${pad3(ac.cfl / 100)} · ${ac.spd}`;
   }
@@ -744,7 +747,10 @@
   // A new arrival joins the top of its stack, as the sector before ours
   // would clear it: never down through aircraft already holding there.
   function stackLevel(fix) {
-    const there = sim.aircraft.filter(a => a.state === 'air' && a.entry === fix && (a.mode === 'route' || a.mode === 'hold'));
+    // Who's in this stack: holding at it (wherever they arrived from), or
+    // still on the arrival route that ends there.
+    const there = sim.aircraft.filter(a => a.state === 'air' &&
+      ((a.mode === 'hold' && a.hold && a.hold.fix === fix) || (a.mode === 'route' && a.entry === fix)));
     return there.length ? Math.max(...there.map(a => a.cfl)) + 1000 : World.stackBase;
   }
   function shiftTick() {
