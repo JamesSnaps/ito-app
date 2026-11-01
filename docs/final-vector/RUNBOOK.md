@@ -74,3 +74,4 @@ log), tests, PR, Bugbot clean, merge when James says, deploy with
 | Version | Date | What shipped |
 |---|---|---|
 | 1.34.0 | 1 Nov 2026 | First playable prototype (preview) |
+| 1.34.1 | 1 Nov 2026 | An aircraft already lined up captures the ILS (it flew through) |
