@@ -215,4 +215,5 @@ GAME = GameSpec(
     blueprint=bp,
     accent="#f2b33d",
     hub_action="Play the preview",
+    preview=True,
 )

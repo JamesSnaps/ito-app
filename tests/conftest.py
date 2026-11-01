@@ -43,4 +43,9 @@ def isolated_data(tmp_path, monkeypatch):
     monkeypatch.setattr("app.code_guesses", fresh)
     # The games look the throttle up through core.ratelimit at call time
     # (core.rooms.require_room), so patching the module above covers them.
+
+    # Sign-in requests and their throttle are module-level too.
+    from core import profiles
+    monkeypatch.setattr(profiles, "_pairs", {})
+    monkeypatch.setattr(profiles, "pair_requests", GuessThrottle(limit=10, window=600))
     yield

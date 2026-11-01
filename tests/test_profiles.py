@@ -288,3 +288,136 @@ def test_a_child_cant_mark_themself_a_grown_up_with_their_own_token(family_on):
 
 def test_the_hub_links_to_the_family_page():
     assert 'href="/family"' in client().get("/").get_data(as_text=True)
+
+
+# --- pairing: a new device asks, a device that's you says yes (v1.36.0) -------
+
+LAPTOP = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+                        "(KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"}
+
+
+def ask(c, profile_id, headers=LAPTOP):
+    res = c.post("/api/profiles/pair", json={"profile": profile_id}, headers=headers)
+    return res, res.get_json()
+
+
+def status(c, pair):
+    return c.get(f"/api/profiles/pair/{pair['code']}", headers={"X-Pair-Secret": pair["secret"]})
+
+
+def test_a_new_device_asks_and_a_device_thats_you_says_yes():
+    c = client()
+    profile, phone = make(c, "Mia")
+    laptop = client()
+    res, pair = ask(laptop, profile["id"])
+    assert res.status_code == 200
+    assert len(pair["code"]) == 6 and not set(pair["code"]) & set("IO01")
+    assert pair["url"].endswith(f"/me/pair/{pair['code']}") and "<svg" in pair["qr_svg"]
+    assert status(laptop, pair).get_json() == {"status": "waiting"}
+
+    waiting = c.get("/api/profiles/me/pairs", headers=phone).get_json()["requests"]
+    assert [(r["code"], r["device"]) for r in waiting] == [(pair["code"], "Chrome on a Mac")]
+    assert "secret" not in json.dumps(waiting)
+
+    assert c.post(f"/api/profiles/me/pairs/{pair['code']}", json={"approve": True}, headers=phone).status_code == 200
+    done = status(laptop, pair).get_json()
+    assert done["status"] == "approved" and done["profile"] == profile
+    mine = {"X-Profile-Token": done["token"]}
+    assert laptop.get("/api/profiles/me", headers=mine).get_json()["profile"]["id"] == profile["id"]
+    # The token is handed over once, and the request is gone from the phone.
+    assert status(laptop, pair).status_code == 404
+    assert c.get("/api/profiles/me/pairs", headers=phone).get_json()["requests"] == []
+
+
+def test_only_the_asking_device_collects_and_only_that_profile_answers():
+    c = client()
+    mia, mia_phone = make(c, "Mia")
+    _, sam_phone = make(c, "Sam")
+    _, pair = ask(client(), mia["id"])
+    # The code is on screen for anyone to read; it isn't what collects the token.
+    for secret in ("", "wrong"):
+        res = c.get(f"/api/profiles/pair/{pair['code']}", headers={"X-Pair-Secret": secret})
+        assert res.status_code == 404
+    # Sam can't see or answer Mia's request; nobody signed out can either.
+    assert c.get("/api/profiles/me/pairs", headers=sam_phone).get_json()["requests"] == []
+    assert c.post(f"/api/profiles/me/pairs/{pair['code']}", json={"approve": True}, headers=sam_phone).status_code == 404
+    assert c.post(f"/api/profiles/me/pairs/{pair['code']}", json={"approve": True}).status_code == 403
+    assert c.post(f"/api/profiles/me/pairs/{pair['code']}", json={"approve": "yes"}, headers=mia_phone).status_code == 400
+    assert status(c, pair).get_json() == {"status": "waiting"}
+
+
+def test_saying_no_or_cancelling_signs_nothing_in():
+    c = client()
+    profile, phone = make(c, "Mia")
+    laptop = client()
+    _, pair = ask(laptop, profile["id"])
+    assert c.post(f"/api/profiles/me/pairs/{pair['code']}", json={"approve": False}, headers=phone).status_code == 200
+    assert status(laptop, pair).get_json() == {"status": "refused"}
+    assert status(laptop, pair).status_code == 404
+
+    _, pair = ask(laptop, profile["id"])
+    assert laptop.delete(f"/api/profiles/pair/{pair['code']}", headers={"X-Pair-Secret": pair["secret"]}).status_code == 200
+    assert c.get("/api/profiles/me/pairs", headers=phone).get_json()["requests"] == []
+    assert c.post(f"/api/profiles/me/pairs/{pair['code']}", json={"approve": True}, headers=phone).status_code == 404
+
+
+def test_requests_run_out_and_cant_pile_up(monkeypatch):
+    from core import profiles
+
+    c = client()
+    profile, phone = make(c, "Mia")
+    first = ask(c, profile["id"])[1]
+    ask(c, profile["id"])
+    res, _ = ask(c, profile["id"])
+    assert res.status_code == 429 and "already" in res.get_json()["error"]
+
+    later = profiles.time.time() + profiles.PAIR_TTL + 1
+    monkeypatch.setattr(profiles.time, "time", lambda: later)
+    assert status(c, first).status_code == 404
+    assert c.get("/api/profiles/me/pairs", headers=phone).get_json()["requests"] == []
+    assert c.post(f"/api/profiles/me/pairs/{first['code']}", json={"approve": True}, headers=phone).status_code == 404
+    assert ask(c, profile["id"])[0].status_code == 200
+
+
+def test_asking_is_throttled_per_device_and_needs_a_real_profile():
+    c = client()
+    assert ask(c, "nobody")[0].status_code == 404
+    for body in ({}, {"profile": 7}, ["x"]):
+        assert c.post("/api/profiles/pair", json=body).status_code == 400
+    names = [make(c, f"P{i}")[0]["id"] for i in range(10)]
+    codes = [ask(c, pid)[0].status_code for pid in names]
+    assert codes[:9] == [200] * 9 and codes[-1] == 429
+
+
+def test_the_pair_qr_page_renders_without_answering():
+    c = client()
+    profile, phone = make(c, "Mia")
+    _, pair = ask(client(), profile["id"])
+    body = c.get(f"/me/pair/{pair['code'].lower()}").get_data(as_text=True)
+    assert f'"{pair["code"]}"' in body
+    assert c.get("/api/profiles/me/pairs", headers=phone).get_json()["requests"][0]["code"] == pair["code"]
+
+
+def test_devices_are_named_for_the_person_saying_yes():
+    from core.profiles import device_label
+
+    assert device_label(LAPTOP["User-Agent"]) == "Chrome on a Mac"
+    assert device_label("Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 "
+                        "(KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1") == "Safari on an iPhone"
+    assert device_label("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/130.0 Safari/537.36 Edg/130.0") == "Edge on a Windows PC"
+    assert device_label("") == "A web browser"
+
+
+def test_the_hub_asks_who_you_are_and_puts_previews_last():
+    from games.registry import playable_games
+
+    body = client().get("/").get_data(as_text=True)
+    assert 'id="hub-intro"' in body and "GN.pairing.ask" in body
+    assert 'action="/join"' in body and 'name="code"' in body
+    previews = [g for g in playable_games() if g.preview]
+    assert previews, "Final Vector is a preview"
+    last = max(body.index(f'href="/{g.id}/"') for g in playable_games() if not g.preview)
+    for game in previews:
+        tile = body.index(f'href="/{game.id}/"')
+        assert tile > last and "is-preview" in body[body.rindex("<a", 0, tile):tile]

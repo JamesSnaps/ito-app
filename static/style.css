@@ -248,8 +248,25 @@ input, select {
 }
 .game-go span { margin-left: 4px; }
 
-@media (min-width: 720px) {
+/* Columns follow the space the games actually get, not the screen: beside
+   the side panel they have less of it. A preview spans the row as a strip,
+   so a finished game never sits beside one. */
+.hub-games { container-type: inline-size; }
+@container (min-width: 620px) {
   .game-list { grid-template-columns: 1fr 1fr; }
+  .game-card.is-preview {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: minmax(200px, 34%) 1fr;
+    align-items: center;
+    border-style: dashed;
+  }
+  .game-card.is-preview .game-art-frame { padding: 14px 18px; height: 100%; display: grid; align-items: center; }
+  .game-card.is-preview .game-art { max-height: 120px; }
+  .game-card.is-preview .game-copy { padding: 18px 24px 18px 8px; }
+}
+@container (min-width: 860px) {
+  .game-list { grid-template-columns: repeat(3, 1fr); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1055,6 +1072,182 @@ dialog.modal { position: fixed; }
   min-height: 38px;
 }
 .hub-me:not(:has(.gn-avatar)) { padding-left: 12px; }
+
+/* The hub's pieces, placed by grid areas: one column on a phone, a side
+   panel beside the games from 1100px. Grid margins don't collapse, so the
+   gaps between pieces are set here rather than by the pieces' own margins. */
+.hub {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "top" "intro" "main" "join" "foot";
+  align-content: start;
+}
+.hub-top { grid-area: top; }
+.hub-intro { grid-area: intro; }
+.hub-you { grid-area: you; }
+.hub-main { grid-area: main; min-width: 0; }
+.hub-join { grid-area: join; }
+.hub-foot { grid-area: foot; }
+.hub .game-list { margin-bottom: 0; }
+.hub-you:not([hidden]) { display: none; }
+.hub-asking .hub-me { visibility: hidden; }
+
+.hub-join-form { display: flex; gap: 8px; }
+.hub-join-form .code-input { flex: 1; min-width: 0; margin: 0; padding: 8px 10px; }
+.hub-join-form .btn { flex: none; padding-inline: 22px; }
+
+/* "Who's playing tonight?" */
+.hub-intro {
+  margin: 18px 0 6px;
+  padding: 18px 18px 12px;
+  border-radius: 18px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--surface-2));
+  background: linear-gradient(160deg, color-mix(in srgb, var(--accent) 16%, var(--surface)) 0%, var(--surface) 60%);
+}
+.hub-intro h2 {
+  font: 800 1.35rem/1.15 var(--font-display);
+  color: var(--text);
+  margin: 0 0 4px;
+}
+.hub-intro p { color: var(--muted-2); font-size: 0.9rem; margin: 0 0 14px; }
+.hub-faces { display: flex; flex-wrap: wrap; gap: 10px 8px; }
+.hub-face {
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+  width: 60px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted-2);
+  font: inherit;
+  font-size: 0.78rem;
+  text-decoration: none;
+  cursor: pointer;
+}
+.hub-face-name { max-width: 60px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hub-face:hover .gn-avatar, .hub-face:focus-visible .gn-avatar { box-shadow: 0 0 0 3px var(--bg), 0 0 0 5px var(--accent); }
+.hub-face:focus-visible { outline: none; color: var(--text); }
+.hub-face:active .gn-avatar { transform: scale(0.94); }
+.hub-face-plus {
+  background: transparent;
+  border: 2px dashed var(--muted);
+  color: var(--muted-2);
+  font: 600 calc(var(--size) * 0.5) / 1 var(--font-display);
+}
+.hub-intro-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 12px;
+  margin-top: 14px;
+  padding-top: 8px;
+  border-top: 1px solid var(--surface-2);
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.hub-skip {
+  padding: 6px 0;
+  border: 0;
+  background: none;
+  color: var(--muted-2);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* The side panel. */
+@media (min-width: 1100px) {
+  .wrap.hub {
+    max-width: 1320px;
+    grid-template-columns: 300px minmax(0, 1fr);
+    grid-template-rows: auto auto auto auto 1fr;
+    grid-template-areas:
+      "top main"
+      "intro main"
+      "you main"
+      "join main"
+      "foot main";
+    column-gap: 40px;
+    row-gap: 16px;
+  }
+  .hub-top { min-height: 40px; }
+  .hub-me { display: none; }
+  .hub-intro { margin: 0; }
+  .hub-faces { gap: 12px 6px; }
+  .hub-main h1 { font-size: 2rem; margin-top: 4px; }
+  .hub-panel {
+    background: var(--surface);
+    border: 1px solid var(--surface-2);
+    border-radius: 18px;
+    padding: 16px;
+  }
+  .hub-you:not([hidden]) {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: var(--text);
+    text-decoration: none;
+  }
+  .hub-you:hover, .hub-you:focus-visible { border-color: var(--accent); }
+  .hub-you-name { font: 800 1.15rem var(--font-display); }
+  .hub-you-more { color: var(--muted); font-size: 0.82rem; }
+  .hub-join {
+    margin: 0;
+    padding: 16px;
+    border: 1px solid var(--surface-2);
+    border-radius: 18px;
+    background: var(--surface);
+  }
+  .hub-join h2 { margin: 0 0 10px; color: var(--text); font: 800 1.05rem var(--font-display); }
+  .hub-foot { margin-top: 4px; text-align: left; padding-left: 4px; }
+}
+
+/* Signing in from a new device: the asking sheet and the approving one
+   (GN.pairing in profiles.js). */
+.gn-sheet {
+  width: min(380px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  padding: 22px 20px 18px;
+  border: 1px solid var(--surface-2);
+  border-radius: 18px;
+  background: var(--surface);
+  color: var(--text);
+  text-align: center;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5);
+}
+.gn-sheet::backdrop { background: rgba(8, 9, 12, 0.72); }
+.gn-sheet h2 { font: 800 1.3rem/1.2 var(--font-display); color: var(--text); margin: 10px 0 6px; text-wrap: balance; }
+.gn-sheet .eyebrow { margin-top: 8px; }
+.gn-sheet-face { margin: 0 auto; }
+.gn-sheet-text { color: var(--muted-2); font-size: 0.9rem; margin: 0 0 12px; }
+.gn-sheet-hint { color: var(--muted); font-size: 0.8rem; margin: 0 0 10px; }
+.gn-pair-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 1.9rem;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-indent: 0.22em;
+  color: var(--accent);
+  padding: 10px 0;
+  border-radius: 10px;
+  background: var(--bg);
+}
+.qr.gn-sheet-qr { width: 136px; height: 136px; margin: 12px auto 6px; padding: 8px; }
+.gn-sheet-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; }
+.gn-sheet-buttons.gn-sheet-one { grid-template-columns: 1fr; }
+.gn-sheet-link { display: inline-block; margin-top: 12px; color: var(--muted-2); font-size: 0.85rem; }
+.gn-waiting { display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--muted-2); font-size: 0.88rem; }
+.gn-dots { display: inline-flex; gap: 4px; }
+.gn-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); opacity: 0.35; animation: gn-blink 1.2s infinite; }
+.gn-dots i:nth-child(2) { animation-delay: 0.2s; }
+.gn-dots i:nth-child(3) { animation-delay: 0.4s; }
+@keyframes gn-blink { 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .gn-dots i { animation: none; opacity: 0.8; }
+}
 
 .me-bar { display: flex; align-items: center; gap: 10px; }
 .me-back { width: 40px; min-height: 40px; padding: 0; }

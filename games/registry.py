@@ -36,6 +36,9 @@ class GameSpec:
     # web page full screen (app 1.16.0) — so a new web game reaches the app
     # with no app update.
     native_app: bool = False
+    # Still being tried out: the hub puts it last, as a strip across the
+    # grid rather than a tile, so a finished game never shares a row with it.
+    preview: bool = False
 
     @property
     def has_rooms(self):
