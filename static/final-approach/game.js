@@ -1715,76 +1715,34 @@
   }
 
   // ---------- the edge of the control zone ----------
-  // Outside the airspace the landscape carries on, a little dimmer, behind
-  // a boundary line. Three looks while we choose (?edge=zone|radar|chart).
-  const EDGE_STYLE = new URLSearchParams(location.search).get('edge') || 'zone';
+  // Outside the airspace the landscape carries on, a little dimmer, behind a
+  // dashed amber line named after the airport, like a real control zone
+  // ("Thunderheads CTR"). Only drawn where the screen shows past the airspace.
   function drawBoundary(Bd, t) {
     if (Bd.x0 >= 0 && Bd.y0 >= 0 && Bd.x1 <= W && Bd.y1 <= H) return;
-    const outside = () => {
-      ctx.beginPath();
-      ctx.rect(Bd.x0, Bd.y0, Bd.x1 - Bd.x0, Bd.y1 - Bd.y0);
-      ctx.rect(0, 0, W, H);
-    };
-    const code = S.level.code;
     ctx.save();
-    ctx.font = `600 9px Oswald, "Arial Narrow", sans-serif`; ctx.letterSpacing = "2px";
-    ctx.textBaseline = 'middle';
-    if (EDGE_STYLE === 'radar') {
-      // A radar scope's limit: darker beyond, a glowing teal edge, corner brackets.
-      outside(); ctx.fillStyle = 'rgba(6,14,18,0.5)'; ctx.fill('evenodd');
-      ctx.strokeStyle = 'rgba(159,211,199,0.85)'; ctx.lineWidth = 1.4;
-      ctx.shadowColor = 'rgba(159,211,199,0.7)'; ctx.shadowBlur = 6;
-      ctx.strokeRect(0, 0, W, H);
-      ctx.shadowBlur = 0;
-      ctx.lineWidth = 3;
-      for (const [x, y, dx, dy] of [[0, 0, 1, 1], [W, 0, -1, 1], [0, H, 1, -1], [W, H, -1, -1]]) {
-        ctx.beginPath(); ctx.moveTo(x + dx * 26, y); ctx.lineTo(x, y); ctx.lineTo(x, y + dy * 26); ctx.stroke();
-      }
-      ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(159,211,199,0.55)';
-      for (let x = 40; x < W; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, -5); ctx.moveTo(x, H); ctx.lineTo(x, H + 5); ctx.stroke(); }
-      for (let y = 40; y < H; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(-5, y); ctx.moveTo(W, y); ctx.lineTo(W + 5, y); ctx.stroke(); }
-      ctx.fillStyle = 'rgba(159,211,199,0.9)';
-      ctx.textAlign = 'right'; ctx.fillText(`${code} RADAR · LIMIT OF CONTROL`, -10, H - 12);
-      ctx.textAlign = 'left'; ctx.fillText('LIMIT OF CONTROL', W + 10, 14);
-    } else if (EDGE_STYLE === 'chart') {
-      // An aeronautical chart's control zone: a blue band, hatched inside, and
-      // a label box. No dimming: the map just carries on.
-      ctx.strokeStyle = 'rgba(46,92,160,0.55)'; ctx.lineWidth = 7;
-      ctx.strokeRect(-3.5, -3.5, W + 7, H + 7);
-      ctx.save();
-      ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.rect(9, 9, W - 18, H - 18); ctx.clip('evenodd');
-      ctx.strokeStyle = 'rgba(46,92,160,0.45)'; ctx.lineWidth = 1.2;
-      ctx.beginPath();
-      for (let k = -H; k < W + H; k += 7) { ctx.moveTo(k, 0); ctx.lineTo(k + H, H); }
-      ctx.stroke();
-      ctx.restore();
-      const box = (x, y, lines, align) => {
-        const w = 92, h = 12 * lines.length + 8;
-        const bx = align === 'right' ? x - w : x;
-        ctx.fillStyle = 'rgba(245,240,226,0.92)'; ctx.fillRect(bx, y, w, h);
-        ctx.strokeStyle = 'rgba(46,92,160,0.9)'; ctx.lineWidth = 1.2; ctx.strokeRect(bx, y, w, h);
-        ctx.fillStyle = '#2e5ca0'; ctx.textAlign = 'center';
-        lines.forEach((l, i) => ctx.fillText(l, bx + w / 2, y + 10 + i * 12));
-      };
-      box(-14, H - 70, [`${code} CTR`, 'CLASS D', 'SFC – 2500 FT'], 'right');
-      box(W + 14, 30, [`${code} CTR`, 'CLASS D', 'SFC – 2500 FT'], 'left');
-    } else {
-      // The control zone: dimmer beyond, a dashed amber line with ticks, and
-      // the zone's name along it.
-      outside(); ctx.fillStyle = 'rgba(10,14,18,0.34)'; ctx.fill('evenodd');
-      ctx.strokeStyle = 'rgba(242,179,61,0.9)'; ctx.lineWidth = 1.6;
-      ctx.setLineDash([10, 6]); ctx.lineDashOffset = -t * 4;
-      ctx.strokeRect(0, 0, W, H);
-      ctx.setLineDash([]);
-      ctx.fillStyle = 'rgba(242,179,61,0.95)';
-      const label = `${code} CONTROL ZONE`;
-      ctx.textAlign = 'right';
-      ctx.save(); ctx.translate(-9, H / 2); ctx.rotate(-Math.PI / 2); ctx.textAlign = 'center'; ctx.fillText(label, 0, 0); ctx.restore();
-      ctx.save(); ctx.translate(W + 9, H / 2); ctx.rotate(Math.PI / 2); ctx.textAlign = 'center'; ctx.fillText(label, 0, 0); ctx.restore();
-      if (Bd.y0 < -14) { ctx.textAlign = 'center'; ctx.fillText(label, W / 2, -9); ctx.fillText(label, W / 2, H + 9); }
+    ctx.beginPath();
+    ctx.rect(Bd.x0, Bd.y0, Bd.x1 - Bd.x0, Bd.y1 - Bd.y0);
+    ctx.rect(0, 0, W, H);
+    ctx.fillStyle = 'rgba(10,14,18,0.34)';
+    ctx.fill('evenodd');
+    ctx.strokeStyle = 'rgba(242,179,61,0.9)'; ctx.lineWidth = 1.6;
+    ctx.setLineDash([10, 6]); ctx.lineDashOffset = -t * 4;
+    ctx.strokeRect(0, 0, W, H);
+    ctx.setLineDash([]);
+    ctx.font = '600 9px Oswald, "Arial Narrow", sans-serif';
+    ctx.letterSpacing = '2px';
+    ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(242,179,61,0.95)';
+    const label = `${(S.level.base || S.level).name.toUpperCase()} CONTROL ZONE`;
+    if (Bd.x0 < -14) {
+      ctx.save(); ctx.translate(-9, H / 2); ctx.rotate(-Math.PI / 2); ctx.fillText(label, 0, 0); ctx.restore();
+      ctx.save(); ctx.translate(W + 9, H / 2); ctx.rotate(Math.PI / 2); ctx.fillText(label, 0, 0); ctx.restore();
     }
+    if (Bd.y0 < -14) { ctx.fillText(label, W / 2, -9); ctx.fillText(label, W / 2, H + 9); }
     ctx.restore();
   }
+
 
   // The first airport teaches without words: until the first landing, a
   // ghost finger drags from the arriving plane along the approach lights.

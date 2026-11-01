@@ -107,6 +107,10 @@ shifts make it harder airport by airport.
 - Settings: volumes, large aircraft, vibration, and **calm skies** (three-
   quarter speed, for when it gets too much; calm shifts are marked and never
   ranked).
+- The landscape fills any screen, phone or tablet: the airspace is the
+  same 960 × 600 everywhere (so the game is equally hard on every device),
+  and the scenery carries on past it, dimmed behind the control zone's
+  dashed amber edge.
 - The menu is a split-flap arrivals board and each briefing is a boarding
   pass. Every airport is painted in code; there are no image files.
 - Its playbook (what it is, how it's built, where it's going) is

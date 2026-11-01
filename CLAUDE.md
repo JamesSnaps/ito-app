@@ -1486,6 +1486,18 @@ it current when you do (its "Current state" and roadmap especially).
   `passport.js` draws the icons, the stamps (one outline per condition,
   inked through the `#fa-ink` SVG filter, a seeded tilt) and the book; the
   records page links to `/final-approach/?passport=<name>`, read-only.
+- **Filling the screen** (v1.28.0): the airspace stays 0..960 × 0..600 (all
+  rules, spawns and edges), but `paintTerrain` asks `Art.buildTerrain` for a
+  `bleed` that reaches the screen's edges, and the canvas carries
+  `bounds` (`S.bounds`, Art's `B`). Inside the airspace the painting must
+  stay identical: anything outside it uses its own random sequence (`brng`;
+  fields culled past the old ±60 margin, extra copses, rocks, scrub,
+  dunes), roads and rivers carry on along the same curve (`pts.full`, houses
+  only on the airspace part), and the grain is aligned to the airspace's
+  corner. A pixel check found every airport within 0.25% of its old
+  painting. Weather particles, clouds and fog cover `B`; diverting aircraft
+  leave at `B` + 40. `drawBoundary` dims beyond the airspace and draws the
+  dashed amber edge with "<AIRPORT> CONTROL ZONE".
 - **`window.__finalApproach`** exposes the state for Playwright checks,
   plus `update` (step the simulation, e.g. ten minutes in a loop),
   `queueArrival`, `clearOfStorms`, `stormAt`, `clearOfTraffic`, `track`,
