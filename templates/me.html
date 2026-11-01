@@ -244,6 +244,9 @@
       ]));
     }
     if (message) app.appendChild(n('p', {class: 'me-message', role: 'status', text: message}));
+    // Whenever this device is someone: on load, after making a profile, or
+    // after signing in from another device. Starting it twice does nothing.
+    if (profile) GN.pairing.watch();
   }
 
   (async () => {
@@ -272,7 +275,6 @@
         message = `No sign-in request with that code is waiting for ${profile.name}. It may have run out, or be for someone else.`;
       }
     }
-    if (profile) GN.pairing.watch();
     // The list may predate a change made just now.
     GN.profiles.loading = null;
     await GN.profiles.load();
