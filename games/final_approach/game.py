@@ -56,6 +56,8 @@ MAX_LIVES = 3
 FREE_TYPES = ("prop", "jet", "heli", "heavy")
 FREE_TRAFFIC = ("light", "normal", "rush")
 FREE_EMERGENCIES = ("off", "some", "lots")
+FREE_DISRUPTIONS = ("off", "some", "lots")
+FREE_KEYS = {"length", "traffic", "types", "fuel", "storms", "wind", "emergencies"}
 # Conditions: a cleared airport replayed harder, for a stamp. The same
 # offer as the game's conditionsFor(): only what differs from the airport.
 CONDITIONS = ("dusk", "night", "snow", "storm", "fog")
@@ -101,18 +103,22 @@ def _whole(value, low, high):
 
 def parse_free(free):
     """A free-play run's settings, checked against the fixed list (the game's
-    freeChoices). Raises ValueError."""
-    if not isinstance(free, dict) or set(free) != {"length", "traffic", "types", "fuel", "storms", "wind", "emergencies"}:
+    freeChoices). Disruptions arrived in v1.29.0: a shift from an older page
+    (still in a device's outbox) has no such key, and counts as "off". Raises
+    ValueError."""
+    if not isinstance(free, dict) or set(free) not in (FREE_KEYS, FREE_KEYS | {"disruptions"}):
         raise ValueError("Free play needs its settings.")
+    disruptions = free.get("disruptions", "off")
     types = free["types"]
     if (not isinstance(types, list) or not types or len(set(types)) != len(types)
             or any(t not in FREE_TYPES for t in types)):
         raise ValueError("Free play's aircraft are props, jets, helis or heavies.")
     if (free["length"] not in ("shift", "endless") or free["traffic"] not in FREE_TRAFFIC
-            or free["emergencies"] not in FREE_EMERGENCIES or not _whole(free["storms"], 0, 3)
+            or free["emergencies"] not in FREE_EMERGENCIES or disruptions not in FREE_DISRUPTIONS
+            or not _whole(free["storms"], 0, 3)
             or not isinstance(free["fuel"], bool) or not isinstance(free["wind"], bool)):
         raise ValueError("Those aren't free play's settings.")
-    return {**free, "types": [t for t in FREE_TYPES if t in types]}
+    return {**free, "disruptions": disruptions, "types": [t for t in FREE_TYPES if t in types]}
 
 
 def free_summary(free):
@@ -129,6 +135,9 @@ def free_summary(free):
         bits.append("low fuel")
     if free["emergencies"] != "off":
         bits.append("lots of emergencies" if free["emergencies"] == "lots" else "emergencies")
+    disruptions = free.get("disruptions", "off")      # none recorded before v1.29.0
+    if disruptions != "off":
+        bits.append("lots of disruptions" if disruptions == "lots" else "disruptions")
     if free["length"] == "endless":
         bits.append("endless")
     text = " · ".join(bits)

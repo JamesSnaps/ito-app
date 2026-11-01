@@ -390,7 +390,9 @@ a.btn { display: inline-block; text-decoration: none; }
 .hud-center { position: absolute; left: 50%; transform: translateX(-50%); text-align: center; }
 .hud-center .flaps { justify-content: center; }
 .hud-right { display: flex; gap: 6px; align-items: stretch; }
-#hud-wind.urgent .flaps { --tile-ink: #ff6b57; }
+#hud-wind.urgent .flaps, #hud-dis.urgent .flaps { --tile-ink: #ff6b57; }
+#hud-dis .flaps { --tile-ink: var(--amber); }
+#hud-dis.closed .flaps { --tile-ink: #ffb3a8; }
 .lamps { display: flex; align-items: center; gap: calc(var(--fh) * 0.3); height: var(--fh); padding: 0 2px; }
 .lamps i {
   width: calc(var(--fh) * 0.56);
@@ -430,6 +432,87 @@ a.btn { display: inline-block; text-decoration: none; }
   pointer-events: none;
 }
 #toast .flaps { --tile-ink: var(--amber); }
+/* A disruption's sentence, under the toast: what's happening and (the first
+   time) what to do about it. */
+#notice {
+  position: fixed;
+  left: 50%;
+  top: calc(env(safe-area-inset-top) + 24px + clamp(16px, 4vh, 26px) * 2.2 + clamp(15px, 3.4vh, 22px) * 1.6);
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: min(540px, 62vw);
+  padding: 7px 12px 8px;
+  border-radius: 8px;
+  background: rgba(16, 18, 19, 0.86);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  color: var(--cream);
+  font: 500 15px / 1.35 Barlow, sans-serif;
+  text-align: center;
+  pointer-events: none;
+}
+
+/* The cyber attack's ransom note (v1.30.0): three rows of flaps where the
+   toast goes, over it, and Restore backup under them. Only the button takes
+   touches; the sky under the rest can still be drawn on. */
+#ransom {
+  --fh: clamp(13px, 3vh, 20px);
+  position: fixed;
+  left: 50%;
+  top: calc(env(safe-area-inset-top) + 14px + clamp(16px, 4vh, 26px) * 2.2);
+  transform: translateX(-50%);
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(var(--fh) * 0.18);
+  padding: calc(var(--fh) * 0.45) calc(var(--fh) * 0.5);
+  border-color: rgba(255, 80, 60, 0.55);
+  box-shadow: 0 0 0 1px rgba(255, 80, 60, 0.25), 0 6px 22px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+#ransom .flaps { --tile-ink: #ff6b57; }
+#ransom.gremlin { border-color: rgba(124, 207, 99, 0.6); box-shadow: 0 0 0 1px rgba(124, 207, 99, 0.25), 0 6px 22px rgba(0, 0, 0, 0.45); }
+#ransom.gremlin .flaps { --tile-ink: #9be27f; }
+#ransom.done .flaps { --tile-ink: var(--cream); }
+.gremlin-face { display: none; }
+#ransom.gremlin .gremlin-face {
+  display: block;
+  position: absolute;
+  width: calc(var(--fh) * 3);
+  top: calc(var(--fh) * -1.5);
+  right: calc(var(--fh) * -1.3);
+  transform: rotate(14deg);
+  animation: gremlin-peek 1.6s ease-in-out infinite alternate;
+}
+@keyframes gremlin-peek { from { transform: rotate(8deg) translateY(1px); } to { transform: rotate(20deg) translateY(-2px); } }
+.restore {
+  position: relative;
+  overflow: hidden;
+  margin-top: calc(var(--fh) * 0.2);
+  padding: calc(var(--fh) * 0.32) calc(var(--fh) * 0.8);
+  border: 1px solid rgba(243, 234, 210, 0.45);
+  border-radius: 999px;
+  background: rgba(30, 34, 36, 0.95);
+  color: var(--cream);
+  font: 600 max(10px, calc(var(--fh) * 0.62)) / 1.1 Barlow, sans-serif;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+  pointer-events: auto;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.restore-fill {
+  position: absolute;
+  inset: 0;
+  width: calc(var(--k, 0) * 100%);
+  background: linear-gradient(90deg, rgba(90, 200, 120, 0.55), rgba(120, 255, 170, 0.75));
+}
+.restore-label { position: relative; }
+.restore.holding { border-color: #8fe0a8; }
+#ransom.done .restore { visibility: hidden; }
 
 #rotate { display: none; z-index: 10; background: rgba(8, 10, 12, 0.94); }
 @media (orientation: portrait) and (max-width: 700px) {
@@ -438,6 +521,9 @@ a.btn { display: inline-block; text-decoration: none; }
 
 /* ---------- small landscape screens (phones) ---------- */
 @media (max-height: 480px) {
+  /* Twelve rows (v1.29.0) and the foot still fit a phone held sideways. */
+  #menu { --rh: clamp(13px, 3.6vh, 26px); }
+  #notice { font-size: 12.5px; padding: 5px 10px 6px; max-width: min(460px, 60vw); }
   .board { padding: 10px 14px 10px; }
   .housing { padding: 8px; border-radius: 13px; }
   .tagline { display: none; }

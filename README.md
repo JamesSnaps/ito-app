@@ -87,7 +87,7 @@ bring it down on the runway that matches its colour, lined up with the
 approach lights. Keep everything apart; low fuel, storm cells and wind
 shifts make it harder airport by airport.
 
-- Ten airports, each adding one idea, plus an Endless mode. Emergencies
+- Eleven airports, each adding one idea, plus an Endless mode. Emergencies
   (fuel, medical, air ambulance, damaged aircraft, State One) come first:
   land one for a medal, lose one and it costs two strikes. Lifeline teaches
   them; Endless has them Off, Some or Lots. Grown-ups' profiles also get a
@@ -100,8 +100,25 @@ shifts make it harder airport by airport.
   to any device.
 - **Free play** on any airport you've cleared: shift or endless, light to
   rush traffic, which aircraft, low fuel, 0–3 storms, wind shifts and
-  emergencies. A toggle only appears once the airport that teaches it is
-  cleared. Free play earns no stars and never ranks; the records tag it.
+  emergencies and disruptions. A toggle only appears once the airport that
+  teaches it is cleared. Free play earns no stars and never ranks; the
+  records tag it.
+- **Holding and disruptions** (v1.29.0): every airport has two or three hold
+  fixes (BNN, OCK, LAM…): let a route go at one and the aircraft circles
+  there, using fuel, until you draw it out; up to four stack on a fix
+  without conflicting. Holding Pattern, the third airport, teaches it, along
+  with disruptions: a runway closed by a deer, a dog or a runaway luggage
+  trolley, a drone closing a patch of sky, and a wave of diversions from
+  another airport. Each is announced on the board with a countdown, one at a
+  time, never during an emergency, and explained the first time it happens.
+- **More disruptions** (v1.30.0): hot-air balloons drifting across
+  (Crossroads; daytime only), the Kestrels display team crossing along a
+  corridor shown in advance (Running on Fumes), and a cyber attack on the
+  tower (Heavy Metal and Night Shift): the board flips to a ransom note,
+  the radar only updates once a second, new routes take two seconds to
+  reach the pilot, and holding Restore backup for three seconds ends it.
+  Children's profiles and guests get a cheeky gremlin in the wires instead.
+  Free play's Disruptions toggle brings all six kinds.
 - **Conditions** on any airport you've cleared: Dusk (an evening rush as
   it gets dark), Night (arrivals seen a second later), Snow (icy runways:
   line up within 45°), Storm (an extra storm cell) and Fog (follow the
@@ -121,7 +138,8 @@ shifts make it harder airport by airport.
 - The landscape fills any screen, phone or tablet: the airspace is the
   same 960 × 600 everywhere (so the game is equally hard on every device),
   and the scenery carries on past it, dimmed behind the control zone's
-  dashed amber edge.
+  dashed amber edge. Arrivals can be seen flying in from beyond it, and
+  sometimes check in as they cross.
 - The menu is a split-flap arrivals board and each briefing is a boarding
   pass. Every airport is painted in code; there are no image files.
 - Its playbook (what it is, how it's built, where it's going) is

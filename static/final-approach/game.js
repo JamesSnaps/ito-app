@@ -148,8 +148,10 @@
   // dealt like a shuffled deck: all of them before any repeats, and never the
   // same one twice running.
   const decks = {};
+  // A prefix's variants are its numbered recordings only ("tower_drone_1",
+  // "tower_drone_2"), so "tower_drone" never deals "tower_drone_gone_1".
   function variants(prefix) {
-    return Object.keys(AUDIO).filter(n => n === prefix || n.startsWith(prefix + '_'));
+    return Object.keys(AUDIO).filter(n => n === prefix || (n.startsWith(prefix + '_') && /^\d+$/.test(n.slice(prefix.length + 1))));
   }
   function deal(prefix) {
     const all = variants(prefix);
@@ -304,7 +306,9 @@
     warn:      () => { tone(1046, 0.09, { type: 'square', vol: 0.035 }); tone(784, 0.11, { type: 'square', vol: 0.035, delay: 0.1 }); },
     spawn:     () => tone(520, 0.1, { type: 'triangle', vol: 0.035 }),
     divert:    p => {
-      say(p.divertedBy === 'Storm' ? 'say_divert_storm' : 'say_divert_fuel', p, { priority: true });
+      // Only the lines that fit: a storm, or an empty tank.
+      if (p.divertedBy === 'Storm') say('say_divert_storm', p, { priority: true });
+      else if (p.divertedBy === 'Out of fuel') say('say_divert_fuel', p, { priority: true });
       return playSound('divert', { vol: 0.6, pan: panOf(p.x) }) || tone(500, 0.4, { type: 'sawtooth', vol: 0.05, slide: -300 });
     },
     crash:     () => playSound('collision') || (noise(1, 0.5), tone(140, 0.7, { type: 'sawtooth', vol: 0.12, slide: -90 })),
@@ -313,6 +317,14 @@
     lose:      () => playSound('chime_fail', { vol: 0.7 }) || [392, 330, 262].forEach((f, i) => tone(f, 0.3, { type: 'triangle', vol: 0.1, delay: i * 0.15 })),
     wind:      () => playSound('wind_shift', { vol: 0.7 }) || tone(260, 0.5, { type: 'triangle', vol: 0.08, slide: 240 }),
     rattle:    () => playSound('flap_rattle', { vol: 0.35 }),
+    // An airport announcement chime for disruptions: two soft notes, down.
+    chime:     () => playSound('attention', { vol: 0.6 }) || (tone(659, 0.5, { vol: 0.09 }), tone(523, 0.7, { vol: 0.09, delay: 0.32 })),
+    // Disruptions, part 2: stand-ins until the recordings exist (balloon_burner,
+    // display_flypast, cyber_glitch, gremlin_giggle, restore_ok).
+    burner:    () => noise(0.9, 0.12, 380, 'lowpass'),
+    flypast:   () => { noise(1.6, 0.16, 700, 'bandpass'); tone(180, 1.4, { type: 'sawtooth', vol: 0.03, slide: -90 }); },
+    glitch:    () => { for (let i = 0; i < 7; i++) tone(200 + Math.random() * 1600, 0.05, { type: 'square', vol: 0.03, delay: i * 0.06 }); },
+    giggle:    () => [880, 1040, 920, 1180, 1000].forEach((f, i) => tone(f, 0.09, { type: 'triangle', vol: 0.05, slide: 120, delay: i * 0.1 })),
     // A rubber stamp coming down on the passport.
     thunk:     () => { noise(0.07, 0.4, 260, 'lowpass'); tone(95, 0.14, { vol: 0.16, slide: -45 }); },
     flap:      () => {
@@ -439,12 +451,18 @@
       landed: 0, lives: MAX_LIVES, time: 0, spawnTimer: 1,
       flipped: false, windTimer: level.windShift || 0, windWarned: false,
       drawing: null, overTimer: 0, outcome: null, warnCooldown: 0, shiftId: null, assisted: false,
-      medals: 0, emgPending: null, emgLast: null, closures: [],
+      medals: 0, emgPending: null, emgLast: null, closures: [], police: null,
+      fixes: holdingOn(level) ? (level.holds || []) : [], dis: null, disLast: null, disQuiet: 0, emgQuiet: 0,
+      radar: null, smokeFade: null,
       sky: Art.sky(th, level.id * 31), snow: th.snowfall ? Art.snowfall(140) : [],
     });
     paintTerrain();
+    notice('');
+    hideRansom(false, true);
+    restore.down = false;
     const plan = emergencyPlan(level);
     S.emgTimer = plan ? plan.first + Math.random() * 6 : Infinity;
+    S.disTimer = level.disruptions ? level.disruptions.first + Math.random() * 6 : Infinity;
     const rng = Art.mulberry32(level.id * 977);
     for (let i = 0; i < (level.storms || 0); i++) S.storms.push(makeStorm(level, rng));
   }
@@ -521,6 +539,14 @@
         const at = stormAt(st, lead + t);
         if (dist(px, py, at.x, at.y) < st.r * 0.8 + 30) return false;
       }
+      // A drone zone, from the moment it's announced until it's gone.
+      const d = S.dis, when = S.time + lead + t;
+      if (d && d.kind === 'drone' && when >= d.at - 1 && when <= d.until + 1 && dist(px, py, d.x, d.y) < d.r + 30) return false;
+      // Balloons: where each will be by then (they drift in straight lines).
+      if (d && d.kind === 'balloons' && when <= d.until + 1 &&
+          d.balloons.some(b => { const q = balloonAt(d, b, when); return dist(px, py, q.x, q.y) < d.r + 30; })) return false;
+      // The display corridor, the whole time it's shown, and a moment after.
+      if (d && d.kind === 'display' && when <= d.until + 1 && Math.abs(corridorPos(d, px, py).across) < d.hw + 30) return false;
     }
     return true;
   }
@@ -534,8 +560,18 @@
     const out = [];
     let x = p.x, y = p.y, h = p.heading, i = 0, entered = p.entered;
     const step = p.T.speed * (p.speedK || 1) * TRACK_STEP;
+    // Holding (or on the way to a fix): round its ring once it gets there.
+    const hold = p.hold && !(p.hold.on && p.path.length) ? Object.assign({}, p.hold) : null;
+    const join = () => { hold.on = true; hold.a = Math.atan2(y - hold.fix.y, x - hold.fix.x); hold.r = Math.max(8, dist(x, y, hold.fix.x, hold.fix.y)); };
     for (let t = 0; t <= secs + 1e-6; t += TRACK_STEP) {
       out.push({ x, y });
+      if (hold && !hold.on && (i >= p.path.length || dist(x, y, hold.fix.x, hold.fix.y) <= holdR(hold.slot) + 2)) join();
+      if (hold && hold.on) {
+        const q = { x, y, heading: h };
+        holdStep(q, hold, TRACK_STEP, S.time + t);
+        x = q.x; y = q.y; h = q.heading;
+        continue;
+      }
       let left = step;
       while (left > 0 && i < p.path.length) {
         const q = p.path[i], d = dist(x, y, q.x, q.y);
@@ -719,7 +755,7 @@
   // earned or ranked. A toggle only shows once the airport that teaches it
   // has been cleared (or this airport has it anyway).
   const cleared = id => (save.stars[id] || 0) > 0;
-  const TEACHES = { jet: 2, heli: 3, heavy: 8, fuel: 5, storms: 6, wind: 7, emergencies: 11 };
+  const TEACHES = { jet: 2, heli: 3, heavy: 8, fuel: 5, storms: 6, wind: 7, emergencies: 11, disruptions: 12 };
   const TYPE_WEIGHT = { prop: 1, jet: 1, heavy: 0.6, heli: 0.8 };
   const LANDS_ON = { prop: 'short', jet: 'long', heavy: 'long', heli: 'pad' };
   const FREE_TRAFFIC = { light: { gap: 1.35, cap: -1 }, normal: { gap: 1, cap: 0 }, rush: { gap: 0.75, cap: 2 } };
@@ -730,6 +766,7 @@
       length: 'shift', traffic: 'normal', types: Object.keys(L.traffic.types),
       fuel: L.traffic.fuel < 60, storms: L.storms || 0, wind: !!L.windShift,
       emergencies: L.emergencies ? (L.emergencies.every[0] < EMG_RATE.lots[1] ? 'lots' : 'some') : 'off',
+      disruptions: L.disruptions ? (L.disruptions.every[0] < DIS_RATE.lots[1] ? 'lots' : 'some') : 'off',
     };
   }
   // What can be changed at this airport, for this player.
@@ -742,6 +779,7 @@
       storms: !!L.storms || cleared(TEACHES.storms),
       wind: !!L.windShift || cleared(TEACHES.wind),
       emergencies: !!L.emergencies || cleared(TEACHES.emergencies),
+      disruptions: !!L.disruptions || cleared(TEACHES.disruptions),
     };
   }
   // The remembered choices, with anything not (or no longer) allowed reset.
@@ -752,10 +790,11 @@
     if (!(c.traffic in FREE_TRAFFIC)) c.traffic = d.traffic;
     c.types = (Array.isArray(c.types) ? c.types : []).filter(t => opts.types.includes(t));
     if (!c.types.length) c.types = d.types;
-    for (const k of ['fuel', 'storms', 'wind', 'emergencies']) if (!opts[k]) c[k] = d[k];
+    for (const k of ['fuel', 'storms', 'wind', 'emergencies', 'disruptions']) if (!opts[k]) c[k] = d[k];
     c.fuel = !!c.fuel; c.wind = !!c.wind;
     c.storms = clamp(Math.round(+c.storms) || 0, 0, 3);
     if (!['off', 'some', 'lots'].includes(c.emergencies)) c.emergencies = d.emergencies;
+    if (!['off', 'some', 'lots'].includes(c.disruptions)) c.disruptions = d.disruptions;
     return c;
   }
   function freePlayLevel(L, c) {
@@ -766,6 +805,7 @@
       base: L, free: Object.assign({}, c, { types: c.types.slice() }), endless: c.length === 'endless',
       storms: c.storms, windShift: c.wind ? (L.windShift || FREE_WIND) : 0,
       emergencies: c.emergencies === 'off' ? undefined : { every: EMG_RATE[c.emergencies], first: 25 },
+      disruptions: c.disruptions === 'off' ? undefined : { kinds: DIS_KINDS.slice(), every: DIS_RATE[c.disruptions], first: 30 },
       traffic: Object.assign({}, t, {
         types,
         interval: t.interval.map(v => v * tr.gap),
@@ -782,6 +822,7 @@
     if (c.wind) bits.push('wind shifts');
     if (c.fuel) bits.push('low fuel');
     if (c.emergencies !== 'off') bits.push(c.emergencies === 'lots' ? 'lots of emergencies' : 'emergencies');
+    if (c.disruptions && c.disruptions !== 'off') bits.push(c.disruptions === 'lots' ? 'lots of disruptions' : 'disruptions');
     if (c.length === 'endless') bits.push('endless');
     const s = bits.join(' · ');
     return s ? s[0].toUpperCase() + s.slice(1) : 'As usual';
@@ -818,7 +859,7 @@
   function emergencyTick(dt) {
     if (S.emgTimer === Infinity || S.time < 8) return;
     if (!S.emgPending) S.emgTimer -= dt;
-    if (S.emgTimer > 0 || S.emgPending || emergencyActive()) return;
+    if (S.emgTimer > 0 || S.emgPending || emergencyActive() || S.dis || S.time < (S.disQuiet || 0)) return;
     if (grownUpOK() && S.emgLast !== 'birdstrike' && Math.random() < 0.2 && birdStrike()) return;
     const choices = emergencyChoices();
     S.emgPending = choices[Math.floor(Math.random() * choices.length)];
@@ -843,6 +884,625 @@
     say(EMG.birdstrike.call, q, { priority: true });
     return true;
   }
+
+  // ---------- holding ----------
+  // Each airport has two or three hold fixes: beacons near the edges, named
+  // from one shared pool (HOLD_FIXES in levels.js, keyed BNN, OCK, …). A
+  // route let go at one (within HOLD_CATCH) sends the aircraft there to circle,
+  // burning fuel, until it's drawn out again. Up to HOLD_MAX stack on a fix,
+  // each on its own ring (its own height, really), so aircraft in the same
+  // stack never count as a conflict with each other. Taught by Holding
+  // Pattern: shown from there on in the career, and everywhere once it's
+  // cleared.
+  const HOLD_TAUGHT = TEACHES.disruptions;
+  const HOLD_CATCH = 30, HOLD_MAX = 4, HOLD_TURN = 0.7;   // rad/s round the fix
+  const holdR = slot => 22 + slot * 10;
+  const HOLD_OUTER = holdR(HOLD_MAX - 1);
+  function holdingOn(L) {
+    const base = L.base || L;
+    return LEVELS.indexOf(base) >= LEVELS.findIndex(l => l.id === HOLD_TAUGHT) || cleared(HOLD_TAUGHT);
+  }
+  const stackOf = fix => S.planes.filter(p => p.state === 'fly' && p.hold && p.hold.fix === fix);
+  function freeSlot(fix, self) {
+    const used = new Set(stackOf(fix).filter(p => p !== self).map(p => p.hold.slot));
+    for (let k = 0; k < HOLD_MAX; k++) if (!used.has(k)) return k;
+    return -1;
+  }
+  function fixNear(x, y) {
+    const reach = Math.max(HOLD_CATCH, 22 / view.scale);
+    let best = null, bestD = reach;
+    for (const f of S.fixes) {
+      const d = dist(x, y, f.x, f.y);
+      if (d < bestD) { best = f; bestD = d; }
+    }
+    return best;
+  }
+  // A route let go at a fix: the aircraft will hold there.
+  function holdAt(p) {
+    const end = p.path[p.path.length - 1];
+    const fix = end && fixNear(end.x, end.y);
+    if (!fix) return false;
+    if (p.bubble) { addText(end.x, end.y - 22, 'State One can\'t hold', '#ffffff', 13); return false; }
+    const slot = freeSlot(fix, p.pendingOf || p);
+    if (slot < 0) { addText(fix.x, fix.y - 30, 'Stack full', '#ffffff', 13); return false; }
+    p.hold = { fix, slot, on: false };
+    S.effects.push({ kind: 'ring', x: fix.x, y: fix.y, color: '#f3ead2', t: 0, life: 0.6 });
+    addText(fix.x, fix.y - holdR(HOLD_MAX - 1) - 6, `Hold · ${HOLD_FIXES[fix.fix] || fix.fix}`, '#f3ead2', 12);
+    playSound('hold_ping', { vol: 0.5, pan: panOf(fix.x) }) ||
+      (tone(880, 0.06, { type: 'triangle', vol: 0.045 }), tone(660, 0.09, { type: 'triangle', vol: 0.04, delay: 0.07 }));
+    buzz(12);
+    // The pilot reads the fix back by name ("Holding at Bovingdon").
+    say(`say_hold_${fix.fix.toLowerCase()}`, p, { chance: 0.85 });
+    return true;
+  }
+  function enterHold(p) {
+    const h = p.hold;
+    h.on = true;
+    h.a = Math.atan2(p.y - h.fix.y, p.x - h.fix.x);
+    h.r = Math.max(8, dist(p.x, p.y, h.fix.x, h.fix.y));
+    p.path = [];
+    if (!save.heldOnce) { save.heldOnce = true; persist(); }
+  }
+  // One step round the orbit (clockwise on screen: right-hand turns, as real
+  // holds fly), easing out or in to the slot's ring. The whole stack turns
+  // together, a quarter turn apart, so it stays spread out: each aircraft
+  // drifts round to its slot's place after joining. Works on a copy for
+  // predictions (track, `now` in the future) as well as the real aircraft.
+  function holdStep(q, h, dt, now) {
+    h.r += clamp(holdR(h.slot) - h.r, -14 * dt, 14 * dt);
+    const want = now * HOLD_TURN + h.fix.x * 0.01 + h.slot * Math.PI / 2;
+    h.a += (HOLD_TURN + clamp(angDiff(h.a, want) * 0.8, -0.35, 0.35)) * dt;
+    const nx = h.fix.x + Math.cos(h.a) * h.r, ny = h.fix.y + Math.sin(h.a) * h.r;
+    q.heading = Math.atan2(ny - q.y, nx - q.x);
+    q.x = nx; q.y = ny;
+  }
+  // In a fix's stack: holding there, or on its way in and already among the rings.
+  const inStack = p => p.hold && (p.hold.on || dist(p.x, p.y, p.hold.fix.x, p.hold.fix.y) < HOLD_OUTER + 14);
+  const stacked = (a, b) => inStack(a) && inStack(b) && a.hold.fix === b.hold.fix;
+
+  // ---------- disruptions ----------
+  // Things that happen to the whole airport: a runway obstruction, a drone
+  // closing a patch of sky, a wave of diverted arrivals. Always announced on
+  // the board with a countdown before anything changes; temporary; one at a
+  // time; never during an emergency (nor an emergency during one) and never
+  // in a shift's first seconds. Holding Pattern teaches them; the first of
+  // each kind on a device explains itself.
+  const DIS_RATE = { some: [70, 100], lots: [40, 60] };
+  const DIS_KINDS = ['runway', 'drone', 'wave', 'balloons', 'display', 'cyber'];
+  const DIS_WARN = { runway: 8, drone: 8, wave: 10, balloons: 8, display: 10, cyber: 5 };
+  // How long each lasts once it's on. Balloons and the display team last as
+  // long as their crossing takes (worked out when they're planned).
+  const DIS_FOR = { runway: 20, drone: 30, cyber: 15 };
+  const DRONE_R = 46;
+  // Hot-air balloons (v1.30.0): one to three drift across in a loose group.
+  // An aircraft inside a balloon's bubble diverts, as for a storm.
+  const BALLOON_R = 32, BALLOON_SPEED = 20;
+  const BALLOON_GROUP = [[0, 0], [62, 95], [-58, 180]];          // [across, behind] the line
+  // The air display (v1.30.0): the Kestrels cross along a corridor shown for
+  // the whole countdown; anything in the corridor near them as they pass diverts.
+  const DISPLAY_TEAM = 'the Kestrels';
+  const DISPLAY_HW = 34, DISPLAY_SPEED = 120;
+  const KESTRELS = [[0, 0], [-15, 13], [15, 13], [-30, 26], [30, 26]];   // [across, behind] the leader
+  const KESTREL_SMOKE = ['#f4f1ea', '#e2733a', '#e2733a', '#5b86b8', '#5b86b8'];
+  const DISPLAY_ZONE = [-60, 24];                                  // behind / ahead of the leader that counts
+  // The cyber attack (grown-ups) or system gremlin (children and guests),
+  // v1.30.0: the radar only updates as its beam sweeps by (once a second), a
+  // new route takes COMMS_DELAY seconds to reach the pilot, and holding
+  // Restore backup for RESTORE_HOLD seconds ends it early. Only what's drawn
+  // and when a route is sent change: every aircraft flies exactly as before.
+  const SWEEP = 1, COMMS_DELAY = 2, RESTORE_HOLD = 3;
+  const RANSOM = {
+    cyber: { note: ['Systems locked', 'Pay 40 BTC', 'To restore'], done: ['Systems', 'restored', ''] },
+    gremlin: { note: ['Gremlin in', 'the wires!', 'Hee hee hee'], done: ['Gremlin', 'gone', 'Bye bye!'] },
+  };
+  const OBSTACLES = {
+    deer: 'A deer is heading for runway',
+    dog: 'A dog is loose near runway',
+    cart: 'A runaway luggage trolley is rolling toward runway',
+  };
+  // The first of each kind on a device pauses the game on a card that says
+  // what's happening and what to do (the countdown waits for "Got it").
+  // (Keyed by kind, and 'gremlin' for the children's cyber attack.)
+  const DIS_TITLE = {
+    runway: 'Runway closing', drone: 'Drone sighted', wave: 'Diversions',
+    balloons: 'Balloons', display: 'Air display', cyber: 'Cyber attack', gremlin: 'Gremlin',
+  };
+  const DIS_HOW = {
+    runway: 'In 8 seconds the runway closes for about 20 seconds while a van clears it. Hold arrivals at a beacon, or land them on another runway of the same colour. The countdown is at the top left.',
+    drone: 'In 8 seconds that patch of sky closes for about 30 seconds: anything that flies into the red circle diverts, like a storm. Route round it, or hold until it\'s gone.',
+    wave: 'Park them at the hold beacons and bring them in one at a time.',
+    balloons: 'Watch the dotted line: in 8 seconds the balloons start drifting slowly along it and out the other side. Nobody can move a balloon, and anything that flies into the circle round one diverts, like a storm. Route round them.',
+    display: 'In 10 seconds they fly past, trailing smoke; it takes them less than ten seconds. Anything inside the band as they pass diverts. Move aircraft out of it, or hold them, until they\'ve gone by.',
+    cyber: 'In 5 seconds the tower\'s systems lock up for about 15 seconds. The radar only updates once a second, so aircraft jump about, and a new route takes 2 seconds to reach the pilot. Everyone keeps flying the routes you gave them. Hold Restore backup for 3 seconds to fix it early, but you won\'t be watching the sky while you do.',
+    gremlin: 'In 5 seconds a gremlin gets into the wires for about 15 seconds! The radar only updates once a second, so aircraft hop about, and a new route takes 2 seconds to reach the pilot. Everyone keeps flying the routes you gave them. Hold Restore backup for 3 seconds to shoo it out early.',
+  };
+  function emergencyBusy() {
+    return emergencyActive() || !!S.emgPending || S.planes.some(p => p.emg && p.state === 'land') ||
+      S.closures.length > 0 || (S.police && S.time < S.police.until) || S.time < (S.emgQuiet || 0);
+  }
+  function disruptionTick(dt) {
+    if (S.dis) return stepDisruption(dt);
+    const plan = S.level.disruptions;
+    if (!plan) return;
+    S.disTimer -= dt;
+    if (S.disTimer > 0 || S.time < 20 || emergencyBusy()) return;
+    if (!startDisruption(plan)) S.disTimer = 3;
+  }
+  function startDisruption(plan, only) {
+    let kinds = (only ? [only] : plan.kinds).filter(k => k !== 'wave' || S.fixes.length);
+    if (!only && kinds.length > 1) kinds = kinds.filter(k => k !== S.disLast);
+    kinds = kinds.slice().sort(() => Math.random() - 0.5);
+    for (const kind of kinds) {
+      const plan = { runway: planObstruction, drone: planDrone, wave: planWave, balloons: planBalloons, display: planDisplay, cyber: planCyber }[kind];
+      const d = plan && plan();
+      if (!d) continue;
+      Object.assign(d, { kind, phase: 'warn', since: S.time, at: S.time + DIS_WARN[kind] });
+      d.until = d.at + (d.dur || DIS_FOR[kind] || 0);
+      S.dis = d;
+      S.disLast = kind;
+      announceDisruption(d);
+      return true;
+    }
+    return false;
+  }
+  function planObstruction() {
+    const open = S.level.runways.filter(r => r.kind !== 'pad' && !S.closures.some(c => c.runway === r));
+    if (!open.length) return null;
+    const r = open[Math.floor(Math.random() * open.length)];
+    const a = r.angle * Math.PI / 180;
+    // Where along the runway it happens, and from which side: the animal
+    // wanders in (and is shooed out) on one side, the ops van drives in from
+    // the other. Neither may cross another runway or the pad (a dog running
+    // over the open runway next door would close nothing), and the van's side
+    // should face the middle of the map, so it's on screen.
+    const others = S.level.runways.filter(o => o !== r);
+    const clearOf = (x0, y0, x1, y1) => {
+      for (let k = 0; k <= 12; k++) {
+        const x = lerp(x0, x1, k / 12), y = lerp(y0, y1, k / 12);
+        if (x < 4 || x > W - 4 || y < 4 || y > H - 4) continue;     // off the map is out of sight
+        for (const o of others) {
+          if (o.kind === 'pad') { if (dist(x, y, o.x, o.y) < 30) return false; continue; }
+          const oa = o.angle * Math.PI / 180;
+          const w = o.kind === 'long' ? 11 : 8;
+          if (segDist(x, y, o.x, o.y, o.x + Math.cos(oa) * o.length, o.y + Math.sin(oa) * o.length) < w + 24) return false;
+        }
+      }
+      return true;
+    };
+    let best = null;
+    for (const f of [0.5, 0.38, 0.62, 0.28, 0.72]) {
+      const mid = { x: r.x + Math.cos(a) * r.length * f, y: r.y + Math.sin(a) * r.length * f };
+      for (const side of [1, -1]) {
+        const nx = -Math.sin(a) * side, ny = Math.cos(a) * side;   // the van's side
+        const animal = clearOf(mid.x, mid.y, mid.x - nx * 90, mid.y - ny * 90);
+        const van = clearOf(mid.x, mid.y, mid.x + nx * 125, mid.y + ny * 125);
+        const facing = nx * (W / 2 - mid.x) + ny * (H / 2 - mid.y) >= 0;
+        const score = (animal ? 4 : 0) + (van ? 2 : 0) + (facing ? 1 : 0) - Math.abs(f - 0.5);
+        if (!best || score > best.score) best = { score, mid, nx, ny };
+      }
+    }
+    const what = pick(Object.keys(OBSTACLES));
+    const end = runwayEnd(r);
+    return { runway: r, mid: best.mid, nx: best.nx, ny: best.ny, a, what, number: Art.designator(end.angle * 180 / Math.PI), since: S.time };
+  }
+  // Near an approach, but never over a runway, a pad, a hold fix or anyone
+  // who'd be inside it when it closes.
+  function planDrone() {
+    const cands = [];
+    const ends = S.level.runways.map(runwayEnd);
+    for (const end of ends) {
+      // A pad is approached from anywhere: try all round it.
+      const angs = end.angle == null ? [0, 1, 2, 3, 4, 5, 6, 7].map(i => i * Math.PI / 4) : [end.angle];
+      for (const ang of angs) {
+        for (const d of [175, 200, 160, 225]) {
+          for (const side of [0, 30, -30]) {
+            cands.push({ x: end.x - Math.cos(ang) * d - Math.sin(ang) * side, y: end.y - Math.sin(ang) * d + Math.cos(ang) * side, pad: end.kind === 'pad' });
+          }
+        }
+      }
+    }
+    const R = DRONE_R, warn = DIS_WARN.drone;
+    const fine = c => {
+      if (c.x < R + 30 || c.x > W - R - 30 || c.y < R + 70 || c.y > H - R - 30) return false;
+      if ((c.x < 220 || c.x > 740) && c.y < 165) return false;     // clear of the HUD's corners
+      for (const r of S.level.runways) {
+        if (r.kind === 'pad') { if (dist(c.x, c.y, r.x, r.y) < R + 40) return false; continue; }
+        const a = r.angle * Math.PI / 180;
+        if (segDist(c.x, c.y, r.x, r.y, r.x + Math.cos(a) * r.length, r.y + Math.sin(a) * r.length) < R + 30) return false;
+      }
+      if (S.fixes.some(f => dist(c.x, c.y, f.x, f.y) < R + HOLD_OUTER + 16)) return false;
+      if (S.storms.some(st => dist(c.x, c.y, st.x, st.y) < R + st.r)) return false;
+      return true;
+    };
+    const nobodyInside = c => S.planes.every(p => {
+      if (p.state !== 'fly') return true;
+      const at = track(p, warn + 1);
+      return at.every((q, i) => !q || i * TRACK_STEP < warn - 3 || dist(q.x, q.y, c.x, c.y) > R + 25);
+    });
+    const ok = cands.filter(fine).sort(() => Math.random() - 0.5).sort((a, b) => a.pad - b.pad);
+    const spot = ok.find(nobodyInside) || null;
+    return spot && { x: spot.x, y: spot.y, r: R, seed: Math.random() * 100 };
+  }
+  function planWave() {
+    const L = S.level;
+    const lots = L.disruptions && L.disruptions.every[0] < DIS_RATE.lots[1];
+    let n = (lots ? 4 : 3) + (Math.random() < 0.5 ? 1 : 0);
+    if (!L.endless) {
+      const airborne = S.planes.filter(p => p.state === 'fly').length + S.incoming.length;
+      n = Math.min(n, L.target - S.landed - airborne);
+    }
+    if (n < 2) return null;
+    const others = LEVELS.filter(l => !l.endless && l !== (L.base || L));
+    return { left: n, n, gap: 0, from: pick(others).name };
+  }
+  function segDist(px, py, ax, ay, bx, by) {
+    const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy || 1;
+    const t = clamp(((px - ax) * dx + (py - ay) * dy) / l2, 0, 1);
+    return dist(px, py, ax + t * dx, ay + t * dy);
+  }
+  // Where a straight line through (c) along (ux, uy) is inside the airspace:
+  // [in, out] as distances along it from c (in < out), or null.
+  function spanAcross(c, ux, uy) {
+    let lo = -Infinity, hi = Infinity;
+    for (const [p, u, max] of [[c.x, ux, W], [c.y, uy, H]]) {
+      if (Math.abs(u) < 1e-9) { if (p < 0 || p > max) return null; continue; }
+      const a = (0 - p) / u, b = (max - p) / u;
+      lo = Math.max(lo, Math.min(a, b)); hi = Math.min(hi, Math.max(a, b));
+    }
+    return lo < hi ? [lo, hi] : null;
+  }
+  // Balloons and the display team only fly in daylight and fair weather: never
+  // at dusk or after dark (Night Shift, or the Dusk and Night conditions), nor
+  // with storm cells about or in fog.
+  const fairWeather = () => !(S.theme && S.theme.night) && !S.duskTheme && !S.storms.length && S.level.condition !== 'fog';
+  // Clear of the hold fixes' stacks (holding is where you put aircraft to keep
+  // them out of the way, so nothing should sweep through one).
+  const clearOfFixes = (ax, ay, bx, by, r) => S.fixes.every(f => segDist(f.x, f.y, ax, ay, bx, by) > r + HOLD_OUTER + 8);
+  // The top edge is under the HUD's plates (and the toast): balloons never come
+  // in there, where their marker could be hidden.
+  const underTopEdge = (x, y) => y < 70;
+
+  // One to three balloons in a loose group, each on its own straight line
+  // (parallel), starting just outside the airspace and drifting out the far side.
+  function planBalloons() {
+    if (!fairWeather()) return null;
+    const lots = S.level.disruptions && S.level.disruptions.every[0] < DIS_RATE.lots[1];
+    const n = lots ? 2 + Math.floor(Math.random() * 2) : 1 + Math.floor(Math.random() * 3);
+    const R = BALLOON_R;
+    for (let tries = 0; tries < 60; tries++) {
+      const steep = Math.random() < 0.4;
+      let a = (steep ? Math.PI / 2 : 0) + (Math.random() - 0.5) * 0.6;
+      if (Math.random() < 0.5) a += Math.PI;
+      const ux = Math.cos(a), uy = Math.sin(a), nx = -uy, ny = ux;
+      const off = steep ? lerp(-210, 210, Math.random()) : lerp(-130, 170, Math.random());
+      const mid = { x: W / 2 + nx * off * (steep ? 1 : 0.4), y: H / 2 + ny * off };
+      const group = [];
+      let ok = true;
+      for (let i = 0; i < n && ok; i++) {
+        const [across, behind] = BALLOON_GROUP[i];
+        const c = { x: mid.x + nx * across, y: mid.y + ny * across };
+        const span = spanAcross(c, ux, uy);
+        if (!span || span[1] - span[0] < 320) { ok = false; break; }
+        const s0 = span[0] - R - 14 - behind, s1 = span[1] + R + 14;
+        const ein = { x: c.x + ux * span[0], y: c.y + uy * span[0] }, eout = { x: c.x + ux * span[1], y: c.y + uy * span[1] };
+        if (underTopEdge(ein.x, ein.y) || !clearOfFixes(ein.x, ein.y, eout.x, eout.y, R)) { ok = false; break; }
+        group.push({
+          x0: c.x + ux * s0, y0: c.y + uy * s0, vx: ux * BALLOON_SPEED, vy: uy * BALLOON_SPEED,
+          ein, eout, travel: (s1 - s0) / BALLOON_SPEED, look: Math.floor(Math.random() * Art.BALLOON_LOOKS.length), seed: Math.random() * 10,
+        });
+      }
+      if (!ok) continue;
+      // no two the same colours
+      group.forEach((b, i) => { while (group.slice(0, i).some(o => o.look === b.look)) b.look = (b.look + 1) % Art.BALLOON_LOOKS.length; });
+      return { balloons: group, r: R, dur: Math.max(...group.map(b => b.travel)) };
+    }
+    return null;
+  }
+  // A balloon's position at game time `when`: it reaches the edge of the
+  // airspace as it comes on, so before that it's further out, drifting in.
+  const balloonAt = (d, b, when) => {
+    const k = when - d.at;
+    return { x: b.x0 + b.vx * k, y: b.y0 + b.vy * k };
+  };
+  const inBalloon = p => {
+    const d = S.dis;
+    if (!d || d.kind !== 'balloons' || d.phase !== 'on') return false;
+    return d.balloons.some(b => { const q = balloonAt(d, b, S.time); return dist(p.x, p.y, q.x, q.y) < d.r; });
+  };
+
+  // A straight corridor right across the map, clear of the hold fixes.
+  function planDisplay() {
+    if (!fairWeather()) return null;
+    const hw = DISPLAY_HW;
+    for (let tries = 0; tries < 80; tries++) {
+      const steep = Math.random() < 0.35;
+      let a = (steep ? Math.PI / 2 : 0) + (Math.random() - 0.5) * (steep ? 0.7 : 1);
+      if (Math.random() < 0.5) a += Math.PI;
+      const ux = Math.cos(a), uy = Math.sin(a), nx = -uy, ny = ux;
+      const off = (Math.random() - 0.5) * (steep ? 440 : 280);
+      const c = { x: W / 2 + nx * off, y: H / 2 + ny * off };
+      const span = spanAcross(c, ux, uy);
+      if (!span || span[1] - span[0] < 420) continue;
+      const ein = { x: c.x + ux * span[0], y: c.y + uy * span[0] }, eout = { x: c.x + ux * span[1], y: c.y + uy * span[1] };
+      if (!clearOfFixes(ein.x, ein.y, eout.x, eout.y, hw)) continue;
+      const start = span[0] - 150, end = span[1] + 90;
+      return { c, a, ux, uy, nx, ny, hw, span, start, end, dur: (end - start) / DISPLAY_SPEED, team: DISPLAY_TEAM };
+    }
+    return null;
+  }
+  // The leader's distance along the corridor at game time `when`.
+  const displayLead = (d, when) => d.start + DISPLAY_SPEED * Math.max(0, when - d.at);
+  // Where a point is relative to the corridor: along it and across it.
+  const corridorPos = (d, x, y) => ({ along: (x - d.c.x) * d.ux + (y - d.c.y) * d.uy, across: (x - d.c.x) * d.nx + (y - d.c.y) * d.ny });
+  const inDisplay = p => {
+    const d = S.dis;
+    if (!d || d.kind !== 'display' || d.phase !== 'on') return false;
+    const q = corridorPos(d, p.x, p.y), lead = displayLead(d, S.time);
+    return Math.abs(q.across) < d.hw && q.along > lead + DISPLAY_ZONE[0] && q.along < lead + DISPLAY_ZONE[1];
+  };
+
+  // Grown-ups get the cyber attack; children's profiles and guests the gremlin.
+  function planCyber() {
+    return { gremlin: !grownUpOK() };
+  }
+  const cyberOn = () => !!S.dis && S.dis.kind === 'cyber' && S.dis.phase === 'on';
+  function announceDisruption(d) {
+    const key = d.kind === 'cyber' && d.gremlin ? 'gremlin' : d.kind;
+    const first = !(save.disSeen || {})[key];
+    save.disSeen = Object.assign({}, save.disSeen, { [key]: true });
+    persist();
+    let line;
+    if (d.kind === 'runway') { toast(`Rwy ${d.number} closing`); line = `${OBSTACLES[d.what]} ${d.number}!`; }
+    if (d.kind === 'drone') { toast('Drone sighted'); line = 'A drone has been spotted near an approach!'; }
+    if (d.kind === 'wave') { toast(`${d.n} diversions`); line = `${d.from} is closed: ${d.n} diversions inbound in 10 seconds.`; }
+    if (d.kind === 'balloons') {
+      const n = d.balloons.length;
+      toast(n === 1 ? 'Balloon ahead' : 'Balloons ahead');
+      line = n === 1 ? 'A hot-air balloon is drifting this way!' : `${n === 2 ? 'Two' : 'Three'} hot-air balloons are drifting this way!`;
+    }
+    if (d.kind === 'display') { toast('Air display'); line = `The ${d.team.replace(/^the /, '')} display team is coming through along the dashed band!`; }
+    if (d.kind === 'cyber') {
+      toast('Network fault');
+      line = d.gremlin ? 'Something is nibbling the tower\'s wires!' : 'The tower\'s network is under attack!';
+    }
+    sfx.chime();
+    // The tower says it too (the lines were recorded for each kind and wave size).
+    if (d.kind === 'runway') say(`tower_obstruct_${d.what}`, null, { priority: true, delay: 1.2 });
+    if (d.kind === 'drone') say('tower_drone', null, { priority: true, delay: 1.2 });
+    if (d.kind === 'wave' && d.n >= 3) say(`tower_wave_${Math.min(5, d.n)}`, null, { priority: true, delay: 1.2 });
+    if (d.kind === 'balloons') say('tower_balloons', null, { priority: true, delay: 1.2 });
+    if (d.kind === 'display') say('tower_display', null, { priority: true, delay: 1.2 });
+    if (d.kind === 'cyber') say(d.gremlin ? 'tower_gremlin' : 'tower_cyber', null, { priority: true, delay: 1.2 });
+    if (d.kind === 'runway' && d.what === 'dog') setTimeout(() => playSound('dog_bark', { vol: 0.5 }), 2600);
+    buzz([30, 40, 30]);
+    if (first) explain(DIS_TITLE[key], `${line} ${DIS_HOW[key]}`);
+    else notice(line, 5);
+  }
+  function stepDisruption(dt) {
+    const d = S.dis;
+    if (d.phase === 'warn' && S.time >= d.at) {
+      d.phase = 'on';
+      if (d.kind === 'runway') {
+        S.closures.push({ runway: d.runway, until: Infinity, since: S.time, obstruction: d });
+        goAround(d.runway);
+        toast(`Runway ${rwyNumber(d)} closed`);
+        say('tower_clearing', null, { priority: true });
+        playSound('ops_van', { vol: 0.5 });
+      }
+      if (d.kind === 'drone') {
+        toast('No-fly zone on');
+        playSound('drone_buzz', { vol: 0.45, pan: panOf(d.x) });
+        for (const p of S.planes) if (p.state === 'fly' && p.entered && inDrone(p)) divert(p, 'Drone');
+      }
+      if (d.kind === 'wave') toast('Inbound now');
+      if (d.kind === 'balloons') {
+        const mid = d.balloons[0];
+        playSound('balloon_burner', { vol: 0.55, pan: panOf(Math.max(0, Math.min(W, mid.ein.x))) }) || sfx.burner();
+        d.burnIn = 6 + Math.random() * 5;
+      }
+      if (d.kind === 'display') playSound('display_flypast', { vol: 0.7, pan: panOf(d.c.x + d.ux * d.span[0]) }) || sfx.flypast();
+      if (d.kind === 'cyber') startCyber(d);
+    }
+    if (d.phase !== 'on') return;
+    if (d.kind === 'wave') {
+      d.gap -= dt;
+      if (d.gap <= 0) {
+        if (queueArrival()) { S.incoming[S.incoming.length - 1].wave = true; d.left--; d.gap = 1.1; } else d.gap = 0.4;
+      }
+      if (d.left <= 0) endDisruption();
+      return;
+    }
+    if (d.kind === 'balloons') {
+      // A burner roars now and then as they drift.
+      d.burnIn -= dt;
+      if (d.burnIn <= 0) {
+        d.burnIn = 7 + Math.random() * 7;
+        const b = pick(d.balloons), q = balloonAt(d, b, S.time);
+        if (q.x > 0 && q.x < W && q.y > 0 && q.y < H) playSound('balloon_burner', { vol: 0.35, pan: panOf(q.x) });
+      }
+    }
+    if (d.kind === 'cyber') radarSweep(dt);
+    if (S.time >= d.until) {
+      if (d.kind === 'runway') {
+        const c = S.closures.find(x => x.obstruction === d);
+        if (c) reopenRunway(c);
+      } else if (d.kind === 'drone') { toast('Drone gone'); say('tower_drone_gone', null, { priority: true }); }
+      else if (d.kind === 'balloons') { toast(d.balloons.length === 1 ? 'Balloon gone' : 'Balloons gone'); say('tower_balloons_gone', null, { priority: true }); }
+      else if (d.kind === 'display') {
+        toast('Display over');
+        say('tower_display_clear', null, { priority: true });
+        S.smokeFade = { d, until: S.time + 5 };          // the smoke drifts away after them
+      } else if (d.kind === 'cyber') endCyber(d);
+      endDisruption();
+    }
+  }
+
+  // ---------- the cyber attack / system gremlin ----------
+  // The board scrambles and flips to a ransom note (a cheeky one for
+  // children and guests). Underneath, for DIS_FOR.cyber seconds: the radar
+  // shows each aircraft only where its beam last saw it (a full turn every
+  // SWEEP seconds), and a new route reaches the pilot COMMS_DELAY seconds
+  // after it's drawn (shown as pending meanwhile). Restore backup, held for
+  // RESTORE_HOLD seconds, ends it early. Input is never frozen and nothing
+  // drawn is made up: a blip is a real aircraft where it really was.
+  function startCyber(d) {
+    S.radar = { beam: -Math.PI / 2, seen: new Map() };
+    for (const p of S.planes) if (p.state === 'fly') blip(p);
+    showRansom(d.gremlin);
+    sfx.rattle();
+    if (d.gremlin) playSound('gremlin_giggle', { vol: 0.7 }) || sfx.giggle();
+    else playSound('cyber_glitch', { vol: 0.7 }) || sfx.glitch();
+    // (no toast: the ransom note is the news, where the toast would be)
+    buzz([20, 30, 20, 30, 20]);
+  }
+  // What the radar shows for an aircraft: where it was when the beam last
+  // passed, and the route it was flying then.
+  function blip(p) {
+    S.radar.seen.set(p, { x: p.x, y: p.y, rot: p.rot, heading: p.heading, path: p.path.slice(), at: S.time });
+  }
+  // The beam turns once every SWEEP seconds round the middle of the map; an
+  // aircraft's blip moves when the beam crosses its bearing.
+  function radarSweep(dt) {
+    const R = S.radar;
+    if (!R) return;
+    const from = R.beam, turn = TAU * dt / SWEEP;
+    R.beam += turn;
+    for (const p of S.planes) {
+      if (p.state !== 'fly') { R.seen.delete(p); continue; }
+      const bearing = Math.atan2(p.y - H / 2, p.x - W / 2);
+      const past = ((bearing - from) % TAU + TAU) % TAU;
+      if (past < turn || !R.seen.has(p)) blip(p);
+    }
+  }
+  function endCyber(d) {
+    S.radar = null;
+    restore.down = false;
+    setRestore(0);
+    hideRansom(d.gremlin);                 // the note flips to "Systems restored" / "Gremlin gone"
+    playSound('restore_ok', { vol: 0.7 }) || sfx.chime();
+    say(d.gremlin ? 'tower_gremlin_gone' : 'tower_cyber_restored', null, { priority: true });
+  }
+  // Restore backup, held long enough: the attack ends now.
+  function restoreSystems() {
+    if (!cyberOn()) return;
+    S.dis.until = S.time;
+    S.dis.restored = true;
+  }
+  // The comms delay: a route drawn while it's on goes into a copy of the
+  // aircraft (`into`, which reads everything else from the aircraft itself),
+  // and is handed over COMMS_DELAY seconds after it's let go.
+  const commsOn = () => cyberOn();
+  function sendRoute(p, q) {
+    p.pend = { q, at: S.time + COMMS_DELAY };
+  }
+  function applyRoute(p) {
+    const q = p.pend.q;
+    p.pend = null;
+    if (p.state !== 'fly') return;
+    let landing = q.landing;
+    // The runway may have closed, or the wind turned, while it was on its way:
+    // break off, as any go-around does (no route, fly on and be given another).
+    if (landing && (isClosed(landing.runway, p) || (landing.kind !== 'pad' && q.flipped !== S.flipped))) {
+      p.path = []; p.landing = null;
+      if (p.hold && !p.hold.on) p.hold = null;
+      addText(p.x, p.y - 22, 'Go around', '#ffffff', 13);
+      say('say_goaround', p, { priority: true });
+      return;
+    }
+    p.path = sinceStart(p, q.path, q.from);
+    p.landing = landing;
+    if (q.hold) {
+      const slot = freeSlot(q.hold.fix, p);
+      if (slot < 0) { if (p.hold && !p.hold.on) p.hold = null; addText(q.hold.fix.x, q.hold.fix.y - 30, 'Stack full', '#ffffff', 13); }
+      else p.hold = { fix: q.hold.fix, slot, on: false };
+    } else if (p.hold && !p.hold.on) p.hold = null;
+    // The radar shows the route it's now flying from where it last saw it.
+    const b = S.radar && S.radar.seen.get(p);
+    if (b) b.path = p.path.slice();
+    if (!b) S.effects.push({ kind: 'ring', x: p.x, y: p.y, color: '#f3ead2', t: 0, life: 0.5 });
+  }
+
+  // A route drawn during a radar fault starts where the blip was. By the time
+  // it reaches the pilot the aircraft is further on, so the start of the
+  // route it has already flown past is dropped: only points behind it and no
+  // further from the route's start than the aircraft itself is (a route that
+  // deliberately turns back further out is left alone).
+  function sinceStart(p, path, from) {
+    if (!from || !path.length) return path;
+    const hx = Math.cos(p.heading), hy = Math.sin(p.heading);
+    const reach = dist(from.x, from.y, p.x, p.y) + 10;
+    let k = 0;
+    while (k < path.length - 1 && (path[k].x - p.x) * hx + (path[k].y - p.y) * hy < 6 &&
+           dist(path[k].x, path[k].y, from.x, from.y) <= reach) k++;
+    return path.slice(k);
+  }
+
+  // The ransom note: three rows of flaps on the HUD, under the landed count.
+  let ransomTimer = 0;
+  const SCRAMBLE = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/?!-+';
+  const junk = n => Array.from({ length: n }, () => SCRAMBLE[Math.floor(Math.random() * SCRAMBLE.length)]).join('');
+  function showRansom(gremlin) {
+    const el = $('ransom');
+    el.classList.toggle('gremlin', gremlin);
+    el.classList.remove('done');
+    show('ransom', true);
+    boards.ransom.forEach(b => b.set(junk(14), { stagger: 6, maxSteps: 12 }));
+    clearTimeout(ransomTimer);
+    const note = RANSOM[gremlin ? 'gremlin' : 'cyber'].note;
+    ransomTimer = setTimeout(() => {
+      boards.ransom.forEach((b, i) => b.set(note[i], { align: 'center', stagger: 18, maxSteps: 10, delay: i * 90 }));
+      sfx.rattle();
+    }, 700);
+  }
+  function hideRansom(gremlin, now) {
+    clearTimeout(ransomTimer);
+    if (now) { show('ransom', false); return; }
+    $('ransom').classList.add('done');
+    const done = RANSOM[gremlin ? 'gremlin' : 'cyber'].done;
+    boards.ransom.forEach((b, i) => b.set(done[i], { align: 'center', stagger: 20, maxSteps: 8 }));
+    ransomTimer = setTimeout(() => show('ransom', false), 2200);
+  }
+  // Restore backup: a hold, not a tap, so it's a choice.
+  const restore = { down: false, start: 0 };
+  function setRestore(k) {
+    const btn = $('btn-restore');
+    btn.style.setProperty('--k', k.toFixed(3));
+    btn.classList.toggle('holding', k > 0);
+    btn.querySelector('.restore-label').textContent = k > 0 ? `Restoring… ${Math.max(1, Math.ceil(RESTORE_HOLD * (1 - k)))}` : 'Hold · restore backup';
+  }
+  function restoreFrame(now) {
+    if (!restore.down) return;
+    if (!cyberOn() || S.screen !== 'play') { restore.down = false; setRestore(0); return; }
+    const k = (now - restore.start) / (RESTORE_HOLD * 1000);
+    setRestore(Math.min(1, k));
+    if (k >= 1) { restore.down = false; restoreSystems(); }
+  }
+  {
+    const btn = $('btn-restore');
+    const down = e => {
+      if (!cyberOn() || restore.down) return;
+      if (e.preventDefault) e.preventDefault();
+      restore.down = true;
+      restore.start = performance.now();
+      tone(440, 0.08, { type: 'triangle', vol: 0.04 });
+      if (e.pointerId != null) try { btn.setPointerCapture(e.pointerId); } catch { /* fine */ }
+    };
+    const up = () => { if (restore.down) { restore.down = false; setRestore(0); } };
+    btn.addEventListener('pointerdown', down);
+    for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) btn.addEventListener(ev, up);
+    btn.addEventListener('keydown', e => { if ((e.key === ' ' || e.key === 'Enter') && !e.repeat) down(e); });
+    btn.addEventListener('keyup', e => { if (e.key === ' ' || e.key === 'Enter') up(); });
+    btn.addEventListener('contextmenu', e => e.preventDefault());
+  }
+
+  function endDisruption() {
+    S.dis = null;
+    const plan = S.level.disruptions;
+    S.disTimer = plan ? lerp(plan.every[0], plan.every[1], Math.random()) : Infinity;
+    S.disQuiet = S.time + 8;          // a breather before any emergency
+  }
+  const rwyNumber = d => Art.designator(runwayEnd(d.runway).angle * 180 / Math.PI);
+  const inDrone = p => S.dis && S.dis.kind === 'drone' && S.dis.phase === 'on' && dist(p.x, p.y, S.dis.x, S.dis.y) < S.dis.r;
 
   function queueArrival() {
     const pending = S.emgPending;
@@ -906,7 +1566,13 @@
     if (p.emg) {
       say(EMG[p.emg].call, p, { priority: true });
       if (p.emg === 'state') say('tower_state', null, { priority: true });
-    } else sfx.spawn();
+    } else {
+      sfx.spawn();
+      // Crossing into your airspace: now and then the pilot checks in, as
+      // real aircraft do with each new controller.
+      if (s.wave) say('say_divert_in', p, { chance: 0.5 });
+      else say('say_checkin', p, { chance: 0.35 });
+    }
   }
 
   // ---------- simulation ----------
@@ -933,6 +1599,9 @@
 
     // arrivals
     S.spawnTimer -= dt;
+    // A diversion wave brings its own arrivals: the usual ones wait for it.
+    const wave = S.dis && S.dis.kind === 'wave';
+    if (S.spawnTimer <= 0 && wave) S.spawnTimer = 1;
     if (S.spawnTimer <= 0) {
       const airborne = S.planes.filter(p => p.state === 'fly').length + S.incoming.length;
       const needed = L.endless || S.landed + airborne < L.target;
@@ -964,6 +1633,7 @@
     }
 
     emergencyTick(dt);
+    disruptionTick(dt);
     for (const c of S.closures.slice()) {
       if (c.reservedFor) {
         const q = c.reservedFor;
@@ -974,6 +1644,8 @@
       if (S.time >= c.until) reopenRunway(c);
     }
     for (const st of S.storms) updateStorm(st, dt);
+    // Routes sent during a comms delay reach their pilots.
+    for (const p of S.planes) if (p.pend && S.time >= p.pend.at) applyRoute(p);
     for (const p of S.planes) {
       if (p.state === 'fly') updateFlight(p, dt);
       else if (p.state === 'land') updateLanding(p, dt);
@@ -1000,7 +1672,14 @@
     p.age += dt;
     p.fuel -= dt;
     let step = p.T.speed * (p.speedK || 1) * dt;
-    if (p.turnRate) {
+    // Holding: drawn out the moment a new route has a point; joins its ring
+    // as it reaches it (or its route's end).
+    if (p.hold && p.hold.on && p.path.length) { p.hold = null; say('say_unhold', p, { chance: 0.6 }); }
+    if (p.hold && !p.hold.on && dist(p.x, p.y, p.hold.fix.x, p.hold.fix.y) <= holdR(p.hold.slot) + 2) enterHold(p);
+    if (p.hold && p.hold.on) {
+      holdStep(p, p.hold, dt, S.time);
+      step = 0;
+    } else if (p.turnRate) {
       // A damaged aircraft can't turn sharply: it steers toward the route at
       // a limited rate and lets go of points it can no longer make. Missing
       // the runway that way means going around: it needs a long, straight
@@ -1048,10 +1727,11 @@
       }
       if (!p.path.length && p.landing) return beginLanding(p);
     }
+    if (p.hold && !p.hold.on && !p.path.length) enterHold(p);
     if (step > 0) move(p, step);
 
     if (!p.entered && p.x > EDGE && p.x < W - EDGE && p.y > EDGE && p.y < H - EDGE) p.entered = true;
-    if (p.entered) {
+    if (p.entered && !(p.hold && p.hold.on)) {
       const c = Math.cos(p.heading), s = Math.sin(p.heading);
       if ((p.x < EDGE && c < 0) || (p.x > W - EDGE && c > 0)) p.heading = Math.PI - p.heading;
       if ((p.y < EDGE && s < 0) || (p.y > H - EDGE && s > 0)) p.heading = -p.heading;
@@ -1085,6 +1765,9 @@
     if (tank < 0.15 && !p.saidMayday) { p.saidMayday = true; say('say_mayday', p, { priority: true }); }
     if (p.fuel <= 0) return divert(p, 'Out of fuel');
     if (p.entered && S.storms.some(st => dist(p.x, p.y, st.x, st.y) < st.r * 0.8)) return divert(p, 'Storm');
+    if (p.entered && inDrone(p)) return divert(p, 'Drone');
+    if (p.entered && inBalloon(p)) return divert(p, 'Balloon');
+    if (p.entered && inDisplay(p)) return divert(p, 'Air display');
   }
 
   function beginLanding(p) {
@@ -1099,6 +1782,7 @@
     S.landed++;
     sfx.land();
     if (S.level.id === 1 && !save.taught) { save.taught = true; persist(); }
+    if (p.emg) S.emgQuiet = S.time + 8;
     if (p.emg) {
       S.medals++;
       addText(end.x, end.y - 44, 'Medal!', '#f2b33d', 18);
@@ -1153,6 +1837,7 @@
     p.path = [];
     p.landing = null;
     S.lives -= p.emg ? 2 : 1;
+    if (p.emg) S.emgQuiet = S.time + 8;
     if (S.drawing && S.drawing.plane === p) S.drawing = null;
     if (p.emg) addText(p.x, p.y - 36, 'Emergency lost: two strikes', '#ff8a7a', 13);
     // head for the nearest edge
@@ -1180,6 +1865,7 @@
     for (let i = 0; i < fly.length; i++) {
       for (let j = i + 1; j < fly.length; j++) {
         const a = fly[i], b = fly[j];
+        if (stacked(a, b)) continue;        // one stack, different heights
         const d = dist(a.x, a.y, b.x, b.y), r = a.T.radius + b.T.radius;
         if (d < r) return crash(a, b);
         if (d < r * 2.6) { a.warn = b.warn = true; S.conflicts.push([a, b]); }
@@ -1231,6 +1917,9 @@
   function finish(outcome, delay) {
     S.outcome = outcome;
     S.screen = 'ending';
+    S.radar = null;
+    restore.down = false;
+    hideRansom(false, true);
     S.overTimer = delay;
     $('btn-pause').disabled = true;
     const L = S.level;
@@ -1417,7 +2106,9 @@
   // After a damaged aircraft lands, fire engines close its runway for a few
   // seconds. Anyone on approach to it goes around.
   const CLOSED_FOR = 8;
-  const isClosed = (r, p) => S.closures.some(c => c.runway === r && c.reservedFor !== p);
+  // Closed to everyone, or (a foam reservation) to everyone but the aircraft it's kept for.
+  // With no aircraft given (drawing the lights), any closure counts.
+  const isClosed = (r, p) => S.closures.some(c => c.runway === r && (!c.reservedFor || c.reservedFor !== p));
   // A belly landing: once its route locks on, foam goes down and the runway
   // is kept for it alone; anyone else on approach goes around.
   function reserveForGear(p) {
@@ -1432,6 +2123,16 @@
     }
     say('tower_foam', null, { priority: true });
   }
+  // Anyone on approach to a runway that's closing goes around (no strike).
+  function goAround(runway) {
+    for (const q of S.planes) {
+      if (q.state === 'fly' && q.landing && q.landing.runway === runway) {
+        q.landing = null; q.path = [];
+        addText(q.x, q.y - 22, 'Go around', '#ffffff', 13);
+        if (S.drawing && S.drawing.plane === q) S.drawing = null;
+      }
+    }
+  }
   function closeRunway(end, p, secs = CLOSED_FOR) {
     const roll = end.length * 0.8;
     const stop = { x: end.x + Math.cos(end.angle) * roll, y: end.y + Math.sin(end.angle) * roll };
@@ -1440,12 +2141,7 @@
       runway: end.runway, until: S.time + secs, since: S.time, stop, angle: end.angle,
       from: [{ x: stop.x + nx * 70, y: stop.y + ny * 70 }, { x: stop.x - nx * 70 - Math.cos(end.angle) * 30, y: stop.y - ny * 70 - Math.sin(end.angle) * 30 }],
     });
-    for (const q of S.planes) {
-      if (q.state === 'fly' && q.landing && q.landing.runway === end.runway) {
-        q.landing = null; q.path = [];
-        addText(q.x, q.y - 22, 'Go around', '#ffffff', 13);
-      }
-    }
+    goAround(end.runway);
     toast('Runway closed');
     playSound('siren', { vol: 0.5, fadeOut: 1.2 });
     say('tower_closed', null, { priority: true });
@@ -1460,7 +2156,8 @@
   function reopenRunway(c) {
     S.closures = S.closures.filter(x => x !== c);
     toast('Runway open');
-    say('tower_open', null, { priority: true });
+    // "Emergency vehicles clear" only fits an emergency's closure.
+    say(c.obstruction ? 'tower_open_1' : 'tower_open', null, { priority: true });
   }
 
   function flipWind() {
@@ -1517,11 +2214,13 @@
     let best = null, bestD = reach;
     for (const p of S.planes) {
       if (p.state !== 'fly') continue;
-      const d = dist(p.x, p.y, w.x, w.y);
+      // You grab what you can see: during a radar fault, the blip.
+      const at = (S.radar && S.radar.seen.get(p)) || p;
+      const d = dist(at.x, at.y, w.x, w.y);
       if (d < bestD) { best = { plane: p, end: null }; bestD = d; }
     }
     for (const p of S.planes) {
-      if (p.state !== 'fly' || p.landing || !p.path.length) continue;
+      if (p.state !== 'fly' || p.landing || p.hold || !p.path.length) continue;
       const e = p.path[p.path.length - 1];
       const d = dist(e.x, e.y, w.x, w.y);
       if (d < bestD - 4) { best = { plane: p, end: e }; bestD = d; }
@@ -1537,12 +2236,27 @@
     e.preventDefault();
     canvas.setPointerCapture(e.pointerId);
     const p = pick.plane;
-    if (!pick.end) {
+    // A comms delay: the route is drawn into a copy and sent when it's let go.
+    let into = null;
+    if (commsOn()) {
+      into = Object.create(p);
+      // During a radar fault a fresh route starts at the blip you touched, not
+      // at the aircraft's hidden position (applyRoute trims what it's passed).
+      const blip = !pick.end && S.radar && S.radar.seen.get(p);
+      Object.assign(into, { pendingOf: p, path: pick.end ? p.path.slice() : [], landing: null, hold: null, flipped: S.flipped,
+        from: blip ? { x: blip.x, y: blip.y } : null });
+      // The landing checks (landingFor, straightIn) read the route's origin
+      // from the aircraft: for a route drawn from the blip, that's the blip.
+      if (blip) Object.assign(into, { x: blip.x, y: blip.y, heading: blip.heading != null ? blip.heading : p.heading });
+    } else if (!pick.end) {
       p.path = [];
       p.landing = null;
+      // On its way to a fix: a new route cancels that. Already holding: it
+      // stays in the hold until the new route has a point (a tap is no harm).
+      if (p.hold && !p.hold.on) p.hold = null;
     }
-    const from = pick.end || { x: p.x, y: p.y };
-    S.drawing = { plane: p, pointerId: e.pointerId, last: { x: from.x, y: from.y }, done: false, extending: !!pick.end };
+    const from = pick.end || (into && into.from) || { x: p.x, y: p.y };
+    S.drawing = { plane: p, into, pointerId: e.pointerId, last: { x: from.x, y: from.y }, done: false, extending: !!pick.end };
     extendRoute(w);
   });
   canvas.addEventListener('pointermove', e => {
@@ -1553,8 +2267,17 @@
   const endDraw = e => {
     const d = S.drawing;
     if (!d || d.pointerId !== e.pointerId) return;
-    if (!d.done && d.plane.path.length > 4) say('say_turn', d.plane, { chance: 0.3 });
+    const q = d.into || d.plane;
+    // Let go at a hold fix: the aircraft holds there.
+    const held = !d.done && q.path.length && holdAt(q);
+    if (!held && !d.done && q.path.length > 4) say('say_turn', d.plane, { chance: 0.3 });
     S.drawing = null;
+    // Drawn during a comms delay: on its way to the pilot (or straight there,
+    // if the systems came back while it was being drawn).
+    if (d.into) {
+      if (commsOn()) sendRoute(d.plane, d.into);
+      else { d.plane.pend = { q: d.into, at: S.time }; applyRoute(d.plane); }
+    }
   };
   canvas.addEventListener('pointerup', endDraw);
   canvas.addEventListener('pointercancel', endDraw);
@@ -1562,7 +2285,7 @@
   function extendRoute(w) {
     const d = S.drawing;
     if (!d || d.done) return;
-    const p = d.plane;
+    const p = d.into || d.plane;
     const x = clamp(w.x, EDGE + 2, W - EDGE - 2), y = clamp(w.y, EDGE + 2, H - EDGE - 2);
     const gap = dist(d.last.x, d.last.y, x, y);
     if (gap < SPACING) return;
@@ -1671,24 +2394,41 @@
     }
     for (const c of S.closures) drawClosure(c, t);
     if (S.police) drawPolice(t);
+    drawObstruction(t);
+    drawInbound(Bd, t);
     drawBoundary(Bd, t);
+    drawFixes(t);
 
     const landing = S.planes.filter(p => p.state === 'land');
     const air = S.planes.filter(p => p.state !== 'land');
     for (const p of landing) Art.aircraftShadow(ctx, p);
     for (const p of landing) Art.aircraft(ctx, p, p.t, night);
     for (const st of S.storms) Art.storm(ctx, st, t);
+    if (S.dis && S.dis.kind === 'drone') Art.droneZone(ctx, S.dis, t, S.dis.phase === 'on', markK());
+    drawDisplay(t, 'ground');
+    drawBalloons(t, 'ground');
     // Route-end handles at least 22 CSS pixels across, like the markers.
     const handleR = Math.max(6.5, 11 / view.scale);
-    for (const p of air) if (p.state === 'fly') Art.route(ctx, p, p.T.color, t, S.drawing && S.drawing.plane === p, handleR);
-    for (const p of air) Art.trail(ctx, p);
-    for (const p of air) Art.aircraftShadow(ctx, p);
-    for (const p of air) {
+    // During a radar fault every aircraft in the air is drawn as its blip.
+    const seen = air.map(shown).filter(Boolean);
+    const d = S.drawing;
+    for (const p of seen) if (p.state === 'fly') Art.route(ctx, p, p.T.color, t, d && d.plane === (p.real || p) && !d.into, handleR);
+    for (const p of seen) {
+      const real = p.real || p;
+      if (real.pend) drawPending(real, p, t);
+      if (d && d.into && d.plane === real) Art.route(ctx, Object.assign(Object.create(d.into), { x: p.x, y: p.y }), p.T.color, t, true, handleR);
+    }
+    for (const p of seen) Art.trail(ctx, p);
+    for (const p of seen) Art.aircraftShadow(ctx, p);
+    for (const p of seen) {
       if (p.state === 'fly') drawStatus(p, t, 'under');
       Art.aircraft(ctx, p, p.t, night);
       if (p.state === 'fly') drawStatus(p, t, 'over');
       if (p.state === 'fly' && p.emg) drawEmergency(p, t);
     }
+    drawBalloons(t, 'sky');
+    drawDisplay(t, 'sky');
+    drawRadar(t);
     drawConflicts(t);
     // At least 30 CSS pixels across on any screen, so a phone shows it.
     const markerR = Math.max(16, 16 / view.scale);
@@ -1712,6 +2452,236 @@
     for (const e of S.effects) Art.effect(ctx, e);
     Art.vignette(ctx, night);
     ctx.restore();
+  }
+
+  // Marks on the map stay readable on a phone: at least their designed size
+  // in CSS pixels.
+  const markK = () => Math.max(1, 0.85 / view.scale);
+
+  // ---------- hold fixes ----------
+  function drawFixes(t) {
+    if (!S.fixes.length) return;
+    const d = S.drawing && !S.drawing.done ? S.drawing : null;
+    const last = d && d.plane.path.length ? d.plane.path[d.plane.path.length - 1] : null;
+    const near = last && !d.plane.bubble ? fixNear(last.x, last.y) : null;
+    // Until someone has held an aircraft, Holding Pattern's beacons say "HOLD".
+    const teach = !save.heldOnce && S.level.id === HOLD_TAUGHT && S.screen === 'play';
+    for (const f of S.fixes) {
+      Art.holdFix(ctx, f, t, {
+        k: markK(), ring: holdR(1), count: stackOf(f).length, highlight: !!d && !d.plane.bubble, near: near === f,
+        catchR: Math.max(HOLD_CATCH, 22 / view.scale), teach, night: isNight(),
+      });
+    }
+  }
+
+  // ---------- a runway obstruction ----------
+  // While it's announced, the deer (or dog, or trolley) wanders onto the
+  // runway from the far side; once the runway closes the ops van drives out,
+  // the animal is shooed off the way it came (the trolley is towed away), and
+  // the van goes home.
+  function drawObstruction(t) {
+    const d = S.dis;
+    if (!d || d.kind !== 'runway') return;
+    const ease = q => q * (2 - q);
+    const k = markK(), face = Math.atan2(d.ny, d.nx);
+    let o = { x: d.mid.x, y: d.mid.y, a: face, moving: false, alpha: 1 }, van = null;
+    const along = (pt, off) => ({ x: pt.x + Math.cos(d.a) * off, y: pt.y + Math.sin(d.a) * off });
+    if (d.phase === 'warn') {
+      const q = clamp((S.time - d.since) / (d.at - d.since), 0, 1);
+      const off = 46 * (1 - ease(q));
+      o = Object.assign(o, along({ x: d.mid.x - d.nx * off, y: d.mid.y - d.ny * off }, Math.sin(S.time * 0.7) * 5), { moving: q < 1 });
+    } else {
+      const q = clamp((S.time - d.at) / (d.until - d.at), 0, 1);
+      const from = { x: clamp(d.mid.x + d.nx * 120, 20, W - 20), y: clamp(d.mid.y + d.ny * 120, 20, H - 20) };
+      const park = { x: d.mid.x + d.nx * 15, y: d.mid.y + d.ny * 15 };
+      const vk = q < 0.3 ? ease(q / 0.3) : q < 0.8 ? 1 : 1 - ease((q - 0.8) / 0.2);
+      van = { x: lerp(from.x, park.x, vk), y: lerp(from.y, park.y, vk), h: q < 0.8 ? face + Math.PI : face };
+      if (d.what === 'cart') {
+        if (q >= 0.8) o = Object.assign(o, { x: van.x - d.nx * 13, y: van.y - d.ny * 13, moving: true });
+      } else {
+        const g = q < 0.55 ? 0 : ease(Math.min(1, (q - 0.55) / 0.3));
+        o = Object.assign(o, { x: d.mid.x - d.nx * 80 * g, y: d.mid.y - d.ny * 80 * g, a: face + Math.PI, moving: g > 0 && g < 1, alpha: 1 - Math.max(0, (g - 0.6) / 0.4) });
+      }
+    }
+    if (o.alpha > 0) {
+      ctx.save(); ctx.globalAlpha = o.alpha;
+      Art.obstacle(ctx, d.what, o.x, o.y, o.a, t, o.moving, k);
+      ctx.restore();
+    }
+    if (van) Art.opsVan(ctx, van.x, van.y, van.h, t);
+  }
+
+  // ---------- balloons ----------
+  // Announced: a dotted line for each balloon from where it'll come in to
+  // where it'll leave, and a marker at the edge counting down. On: the
+  // balloons, their shadows and their bubbles, and the way still to go.
+  function drawBalloons(t, layer) {
+    const d = S.dis;
+    if (!d || d.kind !== 'balloons') return;
+    const k = markK(), live = d.phase === 'on';
+    const at = d.balloons.map(b => balloonAt(d, b, S.time));
+    if (layer === 'ground') {
+      d.balloons.forEach((b, i) => {
+        const q = at[i];
+        // the rest of the way, once it's inside
+        const from = live && insideAirspace(b, q) ? q : b.ein;
+        Art.driftLine(ctx, from.x, from.y, b.eout.x, b.eout.y, t, live ? 0.5 : 0.9);
+      });
+      if (live) d.balloons.forEach((b, i) => Art.balloonBubble(ctx, at[i].x, at[i].y, d.r, t, true));
+      d.balloons.forEach((b, i) => Art.balloonShadow(ctx, at[i].x, at[i].y, k));
+      return;
+    }
+    d.balloons.forEach((b, i) => Art.balloon(ctx, at[i].x, at[i].y, t, k, b.look, b.seed, isNight()));
+    if (!live) {
+      // where each comes in, with the countdown filling round it
+      const r = Math.max(16, 16 / view.scale), done = clamp((S.time - d.since) / (d.at - d.since), 0, 1);
+      for (const b of d.balloons) {
+        const x = clamp(b.ein.x, r + 4, W - r - 4), y = clamp(b.ein.y, r + 4, H - r - 4);
+        ctx.save();
+        ctx.translate(x, y);
+        const pulse = (t * 1.4) % 1;
+        ctx.strokeStyle = `rgba(242,179,61,${0.65 * (1 - pulse)})`; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.arc(0, 0, r * (1.05 + pulse * 0.9), 0, TAU); ctx.stroke();
+        ctx.fillStyle = 'rgba(20,24,28,0.86)';
+        ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.fill();
+        ctx.lineCap = 'round'; ctx.lineWidth = r * 0.16;
+        ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+        ctx.beginPath(); ctx.arc(0, 0, r * 0.88, 0, TAU); ctx.stroke();
+        ctx.strokeStyle = '#f2b33d';
+        ctx.beginPath(); ctx.arc(0, 0, r * 0.88, -Math.PI / 2, -Math.PI / 2 + TAU * Math.max(0.02, done)); ctx.stroke();
+        Art.balloon(ctx, 0, r * 0.12, t, r / 24, b.look, b.seed, false);
+        ctx.restore();
+      }
+    }
+  }
+  // Has the balloon got into the airspace yet (so its line starts from it)?
+  const insideAirspace = (b, q) => q.x >= -1 && q.x <= W + 1 && q.y >= -1 && q.y <= H + 1;
+
+  // ---------- the air display ----------
+  // The corridor shows for the whole countdown and, once they're coming,
+  // ahead of the formation; behind them it's clear again and only the smoke
+  // is left, drifting away.
+  function displayPoint(d, along, across) {
+    return { x: d.c.x + d.ux * along + d.nx * across, y: d.c.y + d.uy * along + d.ny * across };
+  }
+  function drawDisplay(t, layer) {
+    const d = S.dis && S.dis.kind === 'display' ? S.dis : null;
+    if (layer === 'ground') {
+      if (!d) return;
+      const live = d.phase === 'on', lead = displayLead(d, S.time);
+      const s0 = live ? Math.max(d.span[0] - 30, lead + DISPLAY_ZONE[0]) : d.span[0] - 30;
+      Art.corridor(ctx, d.c, d.a, d.hw, s0, d.span[1] + 30, t, live);
+      if (!live) {
+        const k = markK(), p = displayPoint(d, d.span[0] + Math.min(150, (d.span[1] - d.span[0]) / 2), 0);
+        ctx.save();
+        Art.tag(ctx, 'KESTRELS · DISPLAY', p.x, p.y, k, '#f2b33d');
+        ctx.restore();
+      }
+      return;
+    }
+    const fade = !d && S.smokeFade && S.time < S.smokeFade.until ? S.smokeFade : null;
+    const src = d || (fade && fade.d);
+    if (!src || (d && d.phase !== 'on')) return;
+    const alpha = d ? 1 : (fade.until - S.time) / 5;
+    const lead = displayLead(src, Math.min(S.time, src.until));
+    // A touch bigger than life, and bigger still on a phone, spaced to match.
+    const k = markK() * 1.25;
+    KESTRELS.forEach(([across, behind], i) => {
+      const a = displayPoint(src, src.start - behind * k, across * k), b = displayPoint(src, lead - behind * k, across * k);
+      Art.smoke(ctx, a.x, a.y, b.x, b.y, KESTREL_SMOKE[i], 560, alpha);
+    });
+    if (d) for (const [across, behind] of KESTRELS) {
+      const p = displayPoint(d, lead - behind * k, across * k);
+      Art.displayJet(ctx, p.x, p.y, d.a, k);
+    }
+  }
+
+  // ---------- the cyber attack ----------
+  // What's on screen for an aircraft: itself, or (radar fault) its blip.
+  // Null for one the beam hasn't found yet.
+  function shown(p) {
+    const R = S.radar;
+    if (!R || p.state !== 'fly') return p;
+    const b = R.seen.get(p);
+    if (!b) return null;
+    const live = S.drawing && S.drawing.plane === p && !S.drawing.into;
+    return Object.assign(Object.create(p), { real: p, x: b.x, y: b.y, rot: b.rot, heading: b.heading, path: live ? p.path : b.path, trail: [] });
+  }
+  // The radar's beam, a faint sweep, and each blip's afterglow.
+  function drawRadar(t) {
+    const R = S.radar;
+    if (!R) return;
+    ctx.save();
+    const reach = Math.hypot(W, H) / 2 + 60;
+    ctx.translate(W / 2, H / 2);
+    for (let i = 0; i < 10; i++) {
+      ctx.fillStyle = `rgba(70,230,140,${0.1 * (1 - i / 10)})`;
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, reach, R.beam - (i + 1) * 0.06, R.beam - i * 0.06); ctx.closePath(); ctx.fill();
+    }
+    ctx.strokeStyle = 'rgba(60,210,130,0.7)'; ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(R.beam) * reach, Math.sin(R.beam) * reach); ctx.stroke();
+    ctx.restore();
+    ctx.save();
+    for (const [p, b] of R.seen) {
+      const k = clamp(1 - (S.time - b.at) / 0.9, 0, 1);
+      if (k <= 0 || p.state !== 'fly') continue;
+      ctx.strokeStyle = `rgba(120,255,180,${0.8 * k})`; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(b.x, b.y, p.T.radius + 6 + (1 - k) * 10, 0, TAU); ctx.stroke();
+    }
+    ctx.restore();
+  }
+  // A route on its way to the pilot: dashed, with a clock filling at its end.
+  function drawPending(p, from, t) {
+    const q = p.pend.q, k = clamp(1 - (p.pend.at - S.time) / COMMS_DELAY, 0, 1);
+    const end = q.path.length ? q.path[q.path.length - 1] : from;
+    ctx.save();
+    if (q.path.length) {
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      ctx.beginPath(); ctx.moveTo(from.x, from.y);
+      for (const pt of q.path) ctx.lineTo(pt.x, pt.y);
+      ctx.setLineDash([7, 7]); ctx.lineDashOffset = -t * 20;
+      ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(15,20,25,0.5)'; ctx.stroke();
+      ctx.lineWidth = 2.8; ctx.strokeStyle = '#f2b33d'; ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    const r = Math.max(7, 10 / view.scale);
+    ctx.fillStyle = 'rgba(20,24,28,0.8)';
+    ctx.beginPath(); ctx.arc(end.x, end.y, r, 0, TAU); ctx.fill();
+    ctx.strokeStyle = '#f2b33d'; ctx.lineWidth = r * 0.35; ctx.lineCap = 'butt';
+    ctx.beginPath(); ctx.arc(end.x, end.y, r * 0.62, -Math.PI / 2, -Math.PI / 2 + TAU * Math.max(0.02, k)); ctx.stroke();
+    Art.tag(ctx, 'SENDING', end.x, end.y - r - 9 * markK(), markK(), '#f2b33d');
+    ctx.restore();
+  }
+
+  // ---------- inbound, beyond the control zone ----------
+  // While an arrival's marker counts down, the aircraft itself is drawn
+  // flying in along its real heading, where it is at that moment: only where
+  // the screen shows past the airspace (a phone's sides, an iPad's top and
+  // bottom), so the timing is the same on every device. It's drawn before
+  // the boundary dims the outside, can't be touched, and becomes the real
+  // aircraft as the countdown ends. One held at the edge (the sky not clear
+  // yet) circles where it waits.
+  function inboundAt(s, t) {
+    const v = TYPES[s.type].speed * (s.speedK || 1);
+    const ux = Math.cos(s.heading), uy = Math.sin(s.heading);
+    if (s.held) {
+      const cx = s.x - ux * 26, cy = s.y - uy * 26, a = t * 1.1 + s.lead;
+      return { x: cx + Math.cos(a) * 16, y: cy + Math.sin(a) * 16, rot: a + Math.PI / 2 };
+    }
+    const back = v * Math.max(0, s.t);
+    return { x: s.x - ux * back, y: s.y - uy * back, rot: s.heading };
+  }
+  function drawInbound(Bd, t) {
+    if (Bd.x0 >= 0 && Bd.y0 >= 0 && Bd.x1 <= W && Bd.y1 <= H) return;
+    for (const s of S.incoming) {
+      const at = inboundAt(s, t);
+      const m = 16;
+      if (at.x < Bd.x0 - m || at.x > Bd.x1 + m || at.y < Bd.y0 - m || at.y > Bd.y1 + m) continue;
+      if (at.x > 0 && at.x < W && at.y > 0 && at.y < H) continue;      // inside: the real aircraft takes over
+      const ghost = { type: s.type, x: at.x, y: at.y, rot: at.rot, heading: at.rot, t: t + s.lead * 3, id: Math.round(s.lead * 97), scale: 1, alpha: 0.9, alt: 1 };
+      Art.aircraftShadow(ctx, ghost);
+      Art.aircraft(ctx, ghost, ghost.t, isNight());
+    }
   }
 
   // ---------- the edge of the control zone ----------
@@ -1790,7 +2760,7 @@
     ctx.save();
     ctx.translate(p.x, p.y);
     if (layer === 'under') {
-      if (S.drawing && S.drawing.plane === p) {
+      if (S.drawing && S.drawing.plane === (p.real || p)) {
         ctx.fillStyle = 'rgba(255,255,255,0.18)';
         ctx.beginPath(); ctx.arc(0, 0, R + 7, 0, TAU); ctx.fill();
         ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 1.5;
@@ -1941,14 +2911,16 @@
     ctx.lineDashOffset = -t * 20;
     ctx.globalAlpha = 0.85;
     ctx.beginPath();
-    for (const [a, b] of S.conflicts) { ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); }
+    // (between blips, during a radar fault)
+    const at = p => (S.radar && S.radar.seen.get(p)) || p;
+    for (const [a, b] of S.conflicts) { const pa = at(a), pb = at(b); ctx.moveTo(pa.x, pa.y); ctx.lineTo(pb.x, pb.y); }
     ctx.stroke();
     ctx.restore();
   }
 
   // ---------- UI ----------
   const show = (id, on) => $(id).classList.toggle('hidden', !on);
-  const overlays = ['menu', 'brief', 'pause', 'result', 'settings', 'free', 'guest', 'passport'];
+  const overlays = ['menu', 'brief', 'pause', 'result', 'settings', 'free', 'guest', 'passport', 'explain'];
   function only(id) { for (const o of overlays) show(o, o === id); }
 
   const boards = {
@@ -1957,7 +2929,9 @@
     code: new Flap.Board($('hud-code'), 3),
     landed: new Flap.Board($('hud-landed'), 5),
     wind: new Flap.Board($('hud-wind-flaps'), 4),
+    dis: new Flap.Board($('hud-dis-flaps'), 4),
     toast: new Flap.Board($('toast-flaps'), 16),
+    ransom: [1, 2, 3].map(i => new Flap.Board($('ransom-' + i), 14)),
   };
 
   let toastTimer = 0;
@@ -1969,6 +2943,16 @@
       boards.toast.set('', { stagger: 10, maxSteps: 3 });
       setTimeout(() => show('toast', false), 700);
     }, 2800);
+  }
+
+  // A sentence under the toast: what a disruption is, and (the first time) what to do.
+  let noticeTimer = 0;
+  function notice(text, secs = 6) {
+    const el = $('notice');
+    el.textContent = text;
+    show('notice', !!text);
+    clearTimeout(noticeTimer);
+    if (text) noticeTimer = setTimeout(() => show('notice', false), secs * 1000);
   }
 
   const hudState = {};
@@ -1986,6 +2970,22 @@
       const wind = `${Math.floor(s / 60)}:${pad2(s % 60)}`;
       if (hudState.wind !== wind) { hudState.wind = wind; boards.wind.set(wind, { align: 'right', stagger: 0, maxSteps: 2 }); }
       $('hud-wind').classList.toggle('urgent', s <= 5);
+    }
+    // A disruption's countdown: to when it starts, then (runway, drone) to when it ends.
+    const d = S.dis;
+    const on = !!d && (d.phase === 'warn' || d.kind !== 'wave');
+    if (hudState.disOn !== on) { hudState.disOn = on; show('hud-dis', on); }
+    if (on) {
+      const warn = d.phase === 'warn';
+      const rwy = d.kind === 'runway' ? rwyNumber(d) : '';          // follows a wind shift
+      const label = warn ? { runway: `Rwy ${rwy} closes`, drone: 'Drone zone in', wave: 'Diversions in', balloons: 'Balloons in', display: 'Display in', cyber: 'Network fault' }[d.kind]
+        : { runway: `Rwy ${rwy} opens`, drone: 'Drone gone in', balloons: 'Balloons gone in', display: 'Display over in', cyber: d.gremlin ? 'Gremlin' : 'Systems locked' }[d.kind];
+      if (hudState.disLabel !== label) { hudState.disLabel = label; $('hud-dis-label').textContent = label; }
+      const s = Math.max(0, Math.ceil((warn ? d.at : d.until) - S.time));
+      const text = `${Math.floor(s / 60)}:${pad2(s % 60)}`;
+      if (hudState.dis !== text) { hudState.dis = text; boards.dis.set(text, { align: 'right', stagger: 0, maxSteps: 2 }); }
+      $('hud-dis').classList.toggle('urgent', warn && s <= 3);
+      $('hud-dis').classList.toggle('closed', !warn);
     }
   }
 
@@ -2009,10 +3009,14 @@
   }
   const STAMP_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/></svg>';
 
+  // Open once the airport before it is cleared, or once it (or any airport
+  // after it) has been: inserting a new airport must never close one that a
+  // player has already reached.
   function isUnlocked(L) {
-    if (L.unlock) return (save.stars[L.unlock] || 0) > 0;
+    if (L.unlock) return cleared(L.unlock);
     const i = LEVELS.indexOf(L);
-    return i === 0 || (save.stars[LEVELS[i - 1].id] || 0) > 0;
+    return i === 0 || cleared(LEVELS[i - 1].id) || cleared(L.id) ||
+      LEVELS.slice(i + 1).some(later => !later.endless && cleared(later.id));
   }
 
   function openMenu() {
@@ -2105,6 +3109,7 @@
     const wx = [];
     // Endless shows its emergencies choice just below, so it isn't repeated here.
     if (L.emergencies && L.emergencies !== 'choice') wx.push('Emergencies');
+    if (L.disruptions) wx.push('Disruptions');
     if (L.storms) wx.push('Storms');
     if (L.windShift) wx.push('Wind shifts');
     if (L.traffic.fuel < 60) wx.push('Low fuel');
@@ -2255,6 +3260,16 @@
     S.screen = 'play';
     only(null);
   }
+  // A card over a paused sky, the first time something new happens.
+  function explain(title, text) {
+    if (S.screen !== 'play') return;
+    S.screen = 'explain';
+    S.drawing = null;
+    $('explain-text').textContent = text;
+    only('explain');
+    new Flap.Board($('explain-flaps'), title.length).set(title, { stagger: 30 });
+  }
+  $('btn-explain-ok').addEventListener('click', resume);
 
   // ---------- free play sheet ----------
   let freeBase = null, freeChoice = null;
@@ -2264,7 +3279,7 @@
     const opts = freeOptions(L);
     for (const btn of document.querySelectorAll('#free-types button')) btn.classList.toggle('hidden', !opts.types.includes(btn.dataset.v));
     show('free-types-row', opts.types.length > 1);
-    for (const k of ['fuel', 'storms', 'wind', 'emergencies']) show(`free-${k}-row`, opts[k]);
+    for (const k of ['fuel', 'storms', 'wind', 'emergencies', 'disruptions']) show(`free-${k}-row`, opts[k]);
     $('free-sub').textContent = `${L.name}, your way. Free play earns no stars and never counts on a leaderboard.`;
     if (S.level !== L) loadLevel(L);
     S.screen = 'free';
@@ -2411,7 +3426,7 @@
   window.addEventListener('keydown', e => {
     if (e.key === 'Escape' || e.key === 'p') {
       if (S.screen === 'play') pause();
-      else if (S.screen === 'pause') resume();
+      else if (S.screen === 'pause' || S.screen === 'explain') resume();
       else if (S.screen === 'settings') closeSettings();
       else if (S.screen === 'free') openBrief(freeBase);
       else if (S.screen === 'passport') closePassport();
@@ -2427,6 +3442,7 @@
     const calm = save.calm && S.screen === 'play';
     if (calm) S.assisted = true;
     update(calm ? dt * 0.75 : dt, now / 1000);
+    restoreFrame(now);
     soundscape(now / 1000);
     render(now);
     requestAnimationFrame(frame);
@@ -2464,5 +3480,10 @@
     },
     conditionsFor, conditionLevel, conditionLock, CONDITIONS, landingFor, straightIn, openPassport,
     grownUpOK, endlessKey, freeOptions, freeChoices, freePlayLevel, freeSummary, openFree,
+    HOLD_FIXES, isUnlocked, holdingOn, fixNear, holdAt, holdR, stacked, inDrone, planDrone, loadLevel,
+    inBalloon, balloonAt, inDisplay, displayLead, corridorPos, shown, restoreSystems, emergencyBusy,
+    // Start a disruption now (kind: runway, drone, wave, balloons, display or
+    // cyber), as the schedule would. False when it can't (balloons at night).
+    disrupt: kind => { S.disTimer = Infinity; return startDisruption(S.level.disruptions || { kinds: DIS_KINDS }, kind); },
     sound: { audio, load, buffers, scape, bus: () => bus } };
 })();

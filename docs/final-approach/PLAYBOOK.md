@@ -128,6 +128,56 @@ Every feature should serve at least one of these and harm none.
   value to its end value as you land aircraft (in Endless, over five
   minutes). Each airport caps how many can be in the air at once, and stops
   sending arrivals once enough are inbound to reach the target.
+- **Holding** (v1.29.0): every airport has two or three hold fixes, beacons
+  near the edges tagged with its real identifier (BNN, OCK, LAM, BIG, WILLO,
+  TIMBA: one shared pool of names). Let a route go within about 30 units of one and the
+  aircraft flies there and circles clockwise, burning fuel, until you draw
+  it out again (a tap alone doesn't release it). Up to four stack on a fix,
+  each on its own ring (22, 32, 42, 52 units out), turning together a
+  quarter turn apart; aircraft in the same stack are at different heights
+  and never conflict with each other. State One can't hold. Fixes show from
+  Holding Pattern on, and on every airport once it's cleared.
+- **Disruptions** (v1.29.0): a runway obstruction (one runway closes for
+  20 s while the ops van clears a deer, a dog or a runaway luggage trolley),
+  a drone (a 46-unit circle near an approach closes for 30 s; flying into it
+  diverts, a strike, as a storm does) and a diversion wave (another airport
+  is closed and 3 to 5 extra arrivals come in a burst). Each is announced on
+  the board with a countdown first (8 s; 10 s for a wave) and a plate at the
+  top left counts down; they come one at a time, never during an emergency
+  (emergencies wait for them too, with 8 s' breather either side), never in
+  a shift's first 20 seconds. The first of each kind on a device pauses on a
+  card that explains it; after that a one-line note under the toast says
+  what's happening. Arrivals never spawn into a drone zone, from the moment
+  it's announced; a wave's arrivals follow every arrival-safety rule and may
+  go past the airport's cap.
+- **More disruptions** (v1.30.0), on the same rules (announced with a
+  countdown, one at a time, never during an emergency, explained the first
+  time):
+  - **Hot-air balloons**: one to three drift across in a loose group at 20
+    units a second along parallel straight lines, shown dotted with chevrons
+    for the 8 s' warning and with a marker counting down where each will come
+    in. Each has a 32-unit bubble; flying into one diverts (a strike), as a
+    storm does. They take 35 to 60 s to cross and can't be moved. Never at
+    dusk or night (Night Shift, the Dusk and Night conditions), in fog or
+    with storm cells about; their lines stay clear of the hold stacks.
+  - **The air display**: the Kestrels, five jets trailing smoke, cross along
+    a straight corridor (68 units wide) shown as a dashed band for the whole
+    10 s' warning. They fly at 120 units a second and take 7 to 10 s; an
+    aircraft inside the band near the formation as it passes diverts (a
+    strike). Behind them the band clears and only the smoke is left. Same
+    weather rule as the balloons; the corridor never crosses a hold stack.
+  - **The cyber attack** (signed-in grown-ups) or **system gremlin**
+    (children's profiles and guests): "Network fault" for 5 s, then for 15 s
+    the board scrambles and flips to a ransom note (SYSTEMS LOCKED / PAY 40
+    BTC / TO RESTORE; the gremlin's is GREMLIN IN / THE WIRES! / HEE HEE
+    HEE). The radar only shows each aircraft where its beam last saw it (a
+    full turn a second), so blips jump; everything keeps flying exactly as
+    routed. A new route takes 2 s to reach the pilot (it shows dashed,
+    "SENDING"), and the aircraft keeps its old route meanwhile. Holding
+    **Restore backup** for 3 s ends it early. Input never freezes and no
+    aircraft on screen is made up.
+  - Arrivals never come in where a balloon will be, nor anywhere near the
+    display corridor while it's shown.
 
 ### Airports
 
@@ -135,14 +185,20 @@ Every feature should serve at least one of these and harm none.
 |---|---|---|---|---|---|
 | 1 | MDS | Meadow Strip | Meadow | 6 | Drawing routes |
 | 2 | TWF | Twin Fields | Meadow | 10 | Jets and colour matching |
-| 3 | RTW | Rotor Wash | Coast | 14 | Helicopters and pads |
-| 4 | XRD | Crossroads | Desert | 16 | Angled runways |
-| 5 | FUM | Running on Fumes | Meadow | 16 | Low fuel |
-| 6 | THD | Thunderheads | Coast | 18 | Storm cells |
-| 7 | WVN | Weathervane | Snow | 18 | Wind shifts reverse runways |
-| 8 | HVY | Heavy Metal | Snow | 20 | Heavies, two long runways |
-| 9 | NGT | Night Shift | Night | 24 | Everything, after dark |
+| 3 | HLD | Holding Pattern | Meadow | 12 | Hold fixes; runway obstructions (id 12, v1.29.0) |
+| 4 | RTW | Rotor Wash | Coast | 14 | Helicopters and pads |
+| 5 | XRD | Crossroads | Desert | 16 | Angled runways; drones, hot-air balloons |
+| 6 | FUM | Running on Fumes | Meadow | 16 | Low fuel; the air display |
+| 7 | THD | Thunderheads | Coast | 18 | Storm cells |
+| 8 | WVN | Weathervane | Snow | 18 | Wind shifts reverse runways; diversion waves |
+| 9 | HVY | Heavy Metal | Snow | 20 | Heavies, two long runways; runway obstructions, cyber attacks |
+| 10 | NGT | Night Shift | Night | 24 | Everything, after dark; runway, drone, wave and cyber disruptions |
+| 11 | LFL | Lifeline | Coast | 18 | Emergencies (id 11) |
 | ∞ | INF | Endless | Coast | — | Traffic keeps building |
+
+An airport opens once the one before it is cleared, or once it or any
+airport after it has been (v1.29.0): inserting Holding Pattern at 3 mustn't
+close Rotor Wash to someone who'd already cleared it.
 
 ![Heavy Metal: a heavy on final, a near miss, a low-fuel prop](img/heavy-metal-traffic.jpg)
 
@@ -295,10 +351,25 @@ Game Night.
 
 ---
 
-## 5. Current state (v1.28.0)
+## 5. Current state (v1.31.0)
 
 **Done:**
 
+- [x] Arrivals seen flying in beyond the control zone while their marker
+  counts down (where the screen has room, so the timing is the same on
+  every device), and checking in by radio as they cross (v1.31.0)
+- [x] Disruptions, part 2: hot-air balloons (Crossroads), the Kestrels'
+  air display (Running on Fumes) and the cyber attack, a system gremlin for
+  children and guests (Heavy Metal, Night Shift), each announced with a
+  countdown and explained the first time; all six kinds in free play's
+  Disruptions toggle. Spoken lines and sounds are wired by name, to be
+  recorded (v1.30.0)
+
+- [x] Disruptions, part 1: hold fixes on every airport (a shared pool of six
+  beacon names), the Holding Pattern teaching airport (third on the board,
+  id 12), runway obstructions, drones and diversion waves, each announced
+  with a countdown and explained the first time; a Disruptions toggle in
+  free play (Off / Some / Lots) once Holding Pattern is cleared (v1.29.0)
 - [x] The landscape fills any screen: painted past the airspace (which
   stays 960 × 600 and paints exactly as before), weather over all of it,
   and the edge of the control zone marked with a dashed amber line and the
@@ -366,7 +437,7 @@ in v1.19.0.
 
 ## 6. The full game we're building towards
 
-Today it's nine airports and Endless. This is the shape we're growing it
+Today it's eleven airports and Endless. This is the shape we're growing it
 into. The roadmap (section 7) is the order we'll build it in.
 
 ### Modes
@@ -488,8 +559,8 @@ as a toggle.
   it.
 - **Wake turbulence:** nothing lands close behind a superjumbo on the same
   runway, so the order of landings matters.
-- **Holding patterns:** circle an aircraft in place. Now planned as hold
-  fixes on the map (see "Disruptions" in the roadmap), not a tool.
+- **Holding patterns** ✅ (v1.29.0): hold fixes on the map, not a tool (see
+  "Disruptions" in the roadmap and section 3).
 - **Moving runways:** a carrier's deck sails and turns.
 - **Mountains** (added 1 November 2026). High ground is a fixed no-fly
   area, like a storm that doesn't move. An aircraft that flies into it pulls
@@ -668,7 +739,11 @@ its own version bump. "Done when" is the bar for ticking it off.
 
 **The order now** (31 October 2026): Phase 5 (free play, then conditions
 and the Passport), then **Disruptions** (after Phase 5), then Phase 4
-(departures), then on from Phase 6.
+(departures), then on from Phase 6. Phase 5 is done, and Disruptions
+part 1 (holding, obstructions, drones, diversion waves) shipped in v1.29.0
+and part 2 (balloons, the air display, the cyber attack) in v1.30.0; what's
+left of Disruptions (Endless's choice, runway lights, Santa) is small and
+can come around Phase 4.
 
 ### Phase 1: in the hub ✅ (v1.18.0)
 
@@ -1033,7 +1108,21 @@ differently, and stamps show on the pass, the board, the Passport and the record
   after the airport that teaches each toggle is cleared.
 - Frame rate: dusk on Heavy Metal (the busiest terrain) holds 60fps.
 
-### Disruptions (after Phase 5, before Phase 4)
+### Disruptions (after Phase 5, before Phase 4; part 1 ✅ v1.29.0, part 2 ✅ v1.30.0)
+
+**Part 1, built (v1.29.0):** hold fixes and Holding Pattern; runway
+obstruction, drone and diversion wave; free play's Disruptions toggle.
+**Part 2, built (v1.30.0):** hot-air balloons, the air display (the
+Kestrels) and the cyber attack / system gremlin (section 3 has the rules);
+free play's toggle brings all six. Each has the tower's lines (the gremlin's
+playful: "Oh no, a gremlin has got into the computer!") and its sounds: a
+balloon's burner, the Kestrels' fly-past, the system glitching (or the
+gremlin giggling) and coming back.
+**Left for later:** Endless's Off / Some / Lots for disruptions (with its
+own boards, like emergencies), runway lights failing (night only), seasonal
+arrivals (Santa's sleigh), and what becomes of
+the career's Hold tool. Balance by hand: how often each turns up, the
+balloons' speed and the display's corridor width are first guesses.
 
 Planned 31 October 2026. Things that happen *to* the airport: a blocked
 runway, closed airspace, a burst of diverted traffic, a cyber attack.
@@ -1041,7 +1130,15 @@ Emergencies are about one aircraft; disruptions are about the whole sky.
 Most of them take something away for a while (a runway, a patch of sky,
 your radar), so they need a new basic move first: holding.
 
-#### Holding comes first
+#### Holding comes first ✅ (v1.29.0)
+
+As built: every airport places two or three fixes from one shared pool of
+names (`HOLD_FIXES` in levels.js: Bovingdon, Ockham, Lambourne, Biggin,
+Willo, Timba), so a name sounds the same wherever it's heard and spoken
+lines can be recorded once per name. Holding Pattern (third on the board)
+teaches it: its beacons say HOLD until someone has held an aircraft. Fixes
+appear from Holding Pattern on, and everywhere once it's cleared, so the
+first two airports stay as simple as ever. See section 3 for the rules.
 
 - Every airport gets two or three **hold fixes** near the edges of the
   map, each a named beacon (named like Heathrow's real stacks: Bovingdon,
@@ -1058,13 +1155,13 @@ your radar), so they need a new basic move first: holding.
 
 | Disruption | What happens | How you handle it |
 |---|---|---|
-| **Runway obstruction** | A deer, debris, a broken-down tug, or a dog loose on the runway (it happens). One runway closes for about 20 seconds while a vehicle drives out to clear it | Hold, or send aircraft to another runway of the same kind |
-| **Drone sighted** | A circle of airspace near an approach closes for about 30 seconds | Route around it, or hold |
-| **Diversion wave** | "Gatwick closed: 4 diversions inbound". A burst of arrivals at once after a countdown | Hold fixes make it playable: stack them, bring them in one by one |
-| **Hot air balloons** | Slow, drifting, beautiful obstacles that cross the map | Route around; they can't be moved |
-| **Air display** | A formation crosses along a line shown in advance | Keep everything clear of the line while it passes |
+| **Runway obstruction** ✅ | A deer, a dog or a runaway luggage trolley wanders onto a runway while it's announced. It closes for 20 seconds while the yellow ops van drives out, the animal is shooed off (the trolley towed away) and the van goes home | Hold, or send aircraft to another runway of the same kind |
+| **Drone sighted** ✅ | A circle of airspace (46 units) near an approach, clear of runways, pads and fixes, closes for 30 seconds | Route around it, or hold |
+| **Diversion wave** ✅ | "Twin Fields is closed: 4 diversions inbound" (another of our airports). A burst of 3 to 5 arrivals after a 10-second countdown | Hold fixes make it playable: stack them, bring them in one by one |
+| **Hot air balloons** ✅ | Slow, drifting, beautiful obstacles that cross the map (one to three, daytime only) | Route around; they can't be moved |
+| **Air display** ✅ | The Kestrels cross along a corridor shown in advance, trailing smoke | Keep everything clear of the band while they pass |
 | **Runway lights fail** (night only) | One runway's approach lights go out | Line up from memory; the runway itself still shows |
-| **Cyber attack** (grown-ups' profiles) / **system gremlin** (children's and guests) | See below | Fly on what you planned; restore the backup if you dare |
+| **Cyber attack** ✅ (grown-ups' profiles) / **system gremlin** (children's and guests) | See below | Fly on what you planned; restore the backup if you dare |
 
 **The cyber attack.** The split-flap board scrambles with a clatter and
 flips to a ransom note:
@@ -1092,6 +1189,21 @@ real.
 
 **Seasonal, any time:** Santa's sleigh on Christmas Eve, one magical
 arrival that needs a clear path to the pad.
+
+**Where they turn up (v1.30.0):** Holding Pattern (runway, every 60–80 s),
+Crossroads (drones and balloons, 70–95 s: a desert balloon festival, and
+balloons are the gentlest of the new ones), Running on Fumes (the air
+display, 85–110 s, first at about 45 s: a summer show over the meadows,
+and waiting for the corridor costs fuel), Weathervane (waves, 75–100 s),
+Heavy Metal (runway and cyber, 60–85 s; the cyber attack comes late in the
+career because it takes away your radar) and Night Shift (runway, drone,
+wave and cyber, 50–70 s; no balloons or display after dark). Meadow
+Strip, Twin Fields, Rotor Wash, Thunderheads, Lifeline and Endless have
+none: kept gentle, or busy with their own idea. Free play: Some (70–100 s)
+or Lots (40–60 s), all six kinds (balloons and the display only when the
+weather allows); the first of each on a device is explained by its card,
+wherever it turns up first. No new airport: each kind is taught by the
+first airport that has it, with its card.
 
 #### The rules (as for emergencies)
 
@@ -1242,6 +1354,16 @@ play:
 | Oswald and Barlow, bundled | Oswald looks most like a Solari board at phone size; the no-CDN rule. |
 | No image files | Resolution-independent, nothing to download, consistent everywhere. |
 | A fixed 960×600 world, letterboxed | Level design needs fixed geometry; landscape phones and desktops both fit. |
+| The airspace keeps its 960 × 600 (16:10) shape (decided 1 November 2026) | The family mostly plays on an iPad, where 16:10 is nearly a perfect fit. A phone-first 2:1 would shrink everything about 20% on the iPad; an iPad-first squarer shape gains almost nothing on the iPad and costs phones about 10%. The painting already fills the rest of any screen (v1.28.0). |
+| Holding is fixes on the map, not a career tool with charges | It's a calm move for a busy sky, so a young player gets it early and always has it (v1.29.0). |
+| Hold fix names come from one shared pool of six | Names easy to say on the radio, recorded once each and heard at many airports (v1.29.0). |
+| The first of each disruption on a device pauses on a card | Never a surprise: an 8-year-old gets told what it is and what to do, once; after that the board and a one-line note are enough (v1.29.0). |
+| Disruptions and emergencies never overlap, with a breather between | One new problem at a time (v1.29.0). |
+| Balloons and the display team only fly in daylight and fair weather | Real ones don't fly at night or in storms and fog, and it keeps Night Shift about the dark (v1.30.0). |
+| The cyber attack only changes what's drawn and when routes arrive, never how aircraft fly; input never freezes and nothing on screen is invented | It's about planning ahead, not being cheated: every blip is a real aircraft where it really was (v1.30.0). |
+| Children and guests get a system gremlin, not hackers and a ransom | Same effects, a cheeky note and a grinning gremlin instead of anything frightening; the grown-up version follows `grownUpOK()` like the grown-up emergencies (v1.30.0). |
+| Restore backup is a three-second hold, not a tap | A real choice: you can end it early, but not while watching the sky (v1.30.0). |
+| An airport opens if the one before it, it, or any later one is cleared | New airports can be inserted early without locking anyone out (v1.29.0). |
 | Approach must be lined up | It makes the angle of approach the skill, and the approach lights make it readable. |
 | A collision ends the shift; diversions are strikes | Collisions are the cardinal sin; fuel and weather are pressure, so they forgive twice. |
 | Arrivals announced two seconds ahead | Calm tension: you always get a warning. |

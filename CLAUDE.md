@@ -1441,7 +1441,9 @@ it current when you do (its "Current state" and roadmap especially).
   show: a toggle needs its teaching airport cleared (`TEACHES`: jets 2,
   helicopters 3, heavies 8, fuel 5, storms 6, wind 7, emergencies 11) unless
   this airport has the feature itself, and an aircraft type needs somewhere
-  to land. `freeChoices(L)` reads `save.free[id]` and resets anything no
+  to land. Disruptions (v1.29.0) are taught by Holding Pattern (12); the
+  server's `parse_free` also takes a shift without the `disruptions` key
+  (an older page's outbox) as "off". `freeChoices(L)` reads `save.free[id]` and resets anything no
   longer allowed. With `L.free`, `finish()` awards no stars or Endless bests,
   the result hides stars, Next and medals, and offers Change. The shift
   carries `free` (the choices); the server's `parse_free` checks it against
@@ -1500,6 +1502,161 @@ it current when you do (its "Current state" and roadmap especially).
   painting. Weather particles, clouds and fog cover `B`; diverting aircraft
   leave at `B` + 40. `drawBoundary` dims beyond the airspace and draws the
   dashed amber edge with "<CODE> CONTROL ZONE" (the airport's three letters, by choice).
+- **Holding** (v1.29.0). Every airport in levels.js has `holds`: two or
+  three `{ fix, x, y }`, where `fix` is a key into **`HOLD_FIXES`** (levels.js:
+  BNN Bovingdon, OCK Ockham, LAM Lambourne, BIG Biggin, WILLO Willo, TIMBA
+  Timba: real identifiers, Heathrow's four stacks and two Gatwick points). **One shared pool of names, repeated across airports, on purpose:
+  each name has its own spoken readbacks** (`say_hold_<key>_1/_2`,
+  "Holding at Bovingdon"), so a new name means new recordings:
+  `tools/final_approach_sounds.py` reads the list from that constant, and a
+  test fails if a name has no lines. `S.fixes` is the airport's
+  holds when `holdingOn(L)` (Holding Pattern or later on the board, or
+  Holding Pattern cleared), else empty. A route is caught by a fix only when
+  it's *let go* near one (`endDraw` → `holdAt`, within `HOLD_CATCH` or 22
+  CSS px), never while drawing past it, so a route along an edge can't snag.
+  `p.hold = { fix, slot, on }`: a slot (0–3, `HOLD_MAX` 4) is reserved at
+  once; the aircraft flies its route and joins (`enterHold`) when it reaches
+  its ring (`holdR(slot)` = 22 + 10·slot) or the route's end. `holdStep`
+  orbits clockwise at `HOLD_TURN` rad/s, the whole stack a quarter turn apart
+  (phase-locked to `S.time`, so they never bunch), easing to its ring; fuel
+  burns as normal. Drawn out: the first route point clears `p.hold` (a tap
+  alone doesn't). `stacked(a, b)` (same fix, both on or among its rings)
+  skips conflicts and collisions between them; nothing else is exempt.
+  `track()` predicts holds too (checked within ~3 units over 5 s), so
+  arrival safety keeps arrivals off stacks. A hold-bound route draws locked
+  (no handle); State One can't hold. Fixes are drawn live by `Art.holdFix`
+  (not baked into the terrain, so no airport's seeded painting moved), sized
+  by `markK()` to stay readable on a phone; they say HOLD at Holding Pattern
+  until `save.heldOnce`.
+- **Holding Pattern** (HLD, **id 12**, third on the board) teaches holding
+  and runway obstructions. Ids are stable keys for saves and records; the
+  board numbers by position. **`isUnlocked`** opens an airport when the one
+  before it, it, or any later non-endless airport is cleared, so inserting
+  an airport never locks anyone out. `TEACHES.disruptions` is 12.
+- **Disruptions** (v1.29.0; part 2 below): `disruptions: { kinds, every, first }` on a
+  level ('runway', 'drone', 'wave', and since v1.30.0 'balloons', 'display',
+  'cyber'); free play builds one from its
+  Disruptions toggle (`DIS_RATE` some/lots, all kinds). `disruptionTick`
+  waits for `emergencyBusy()` (an emergency flying, pending, rolling out, a
+  closure, police, or 8 s after one ended) and `S.time ≥ 20`, then
+  `startDisruption` plans one (`planObstruction`, `planDrone`, `planWave`;
+  null if it can't, and another kind or a retry in 3 s). `S.dis` runs
+  `warn` (8 s, a wave 10 s: toast, chime, the `#hud-dis` countdown plate)
+  then `on`. Emergencies wait for `S.dis` and `S.disQuiet` in turn, so the
+  two never overlap. The first of each kind per device (`save.disSeen`)
+  pauses on the `#explain` card (screen `explain`, "Got it" resumes);
+  later ones get a one-line `#notice` under the toast.
+  - **Runway**: an obstacle (`deer`, `dog`, `cart`) walks on while it's
+    announced; then a closure `{ runway, until: Infinity, obstruction }` in
+    `S.closures` (so `isClosed`/`landingFor` refuse it and its lights go out),
+    `goAround(runway)` for anyone on approach, and the ops van
+    (`drawObstruction`, `Art.obstacle`, `Art.opsVan`). 20 s, then
+    `reopenRunway`. `isClosed(r)` with no aircraft now counts every closure
+    (it used to miss ordinary ones, so a closed runway's lights showed).
+  - **Drone**: `S.dis` carries `{x, y, r: 46, at, until}`, placed behind an
+    active approach (or round a pad), clear of runways, pads, fixes, storms,
+    the HUD's corners and anyone predicted to be inside when it closes.
+    `clearOfStorms` refuses arrival paths through it from `at − 1` to
+    `until + 1` (so `queueArrival` and `admit` honour it like a storm);
+    flying into it while `on` diverts ('Drone', a strike). 30 s.
+  - **Wave**: `planWave` takes 3–5 (4–5 at Lots), capped by what's left of
+    the target; normal arrivals pause during it, and on `on` it queues one
+    arrival every 1.1 s through `queueArrival` (every safety rule applies; the
+    traffic cap doesn't). Its name is another of our airports.
+  - Radio and sound (recorded with ElevenLabs, like the rest): each
+    announcement has the tower's line (`tower_obstruct_deer|dog|cart`,
+    `tower_drone`, `tower_wave_3|4|5`), then `tower_clearing` with the
+    `ops_van` sound as a runway closes, `tower_open_1` when it reopens,
+    `drone_buzz` and `tower_drone_gone`; wave arrivals may check in
+    (`say_divert_in`); joining a hold plays `hold_ping` and the pilot's
+    readback, leaving it `say_unhold`; the warning chime is `attention`, and
+    a loose dog barks (`dog_bark`). A divert speaks only for a storm or fuel
+    (it said "out of fuel" for every other reason).
+  - `variants(prefix)` only deals numbered recordings of exactly that prefix
+    (`tower_drone_1`), never a longer name that starts the same way
+    (`tower_drone_gone_1`): before v1.29.0 the drone's announcement could
+    play "the drone's gone".
+  - Hooks: `__finalApproach.disrupt(kind)` starts one now (any of the six
+    kinds; false when it can't, e.g. balloons at night); also `holdAt`,
+    `fixNear`, `stacked`, `planDrone`, `loadLevel`, `isUnlocked`, `HOLD_FIXES`,
+    and for part 2 `inBalloon`, `balloonAt`, `inDisplay`, `displayLead`,
+    `corridorPos`, `shown`, `restoreSystems`, `emergencyBusy`.
+- **Disruptions, part 2** (v1.30.0): three more kinds on the same machinery
+  (`planBalloons`, `planDisplay`, `planCyber` in `startDisruption`; `d.dur`
+  sets `until` for the two whose length is a crossing). Placement:
+  Crossroads `['drone', 'balloons']`, Running on Fumes `['display']`, Heavy
+  Metal `['runway', 'cyber']`, Night Shift adds `'cyber'`; free play's
+  Some/Lots use all six (`DIS_KINDS`). `fairWeather()` keeps balloons and the
+  display out of dusk, night (Night Shift, the Dusk and Night conditions),
+  fog and any shift with storm cells: their planner returns null and another
+  kind is tried. `save.disSeen` keys the first-time card by kind, with
+  `gremlin` apart from `cyber`.
+  - **Balloons**: `S.dis.balloons` is one to three (two or three at Lots),
+    each on its own parallel straight line (`BALLOON_GROUP` offsets: across
+    and behind), at `BALLOON_SPEED` 20 units/s; each reaches the airspace's
+    edge as it comes on, and `until` is when the last has drifted out
+    (~35–60 s). `balloonAt(d, b, when)` is exact for any time (before `at`
+    it's further out, drifting in), so `clearOfStorms` refuses arrival paths
+    within `BALLOON_R` (32) + 30 of where any balloon will be. Flying inside a
+    balloon's 32-unit bubble while `on` diverts ('Balloon', a strike). Lines
+    keep their bubbles clear of every hold stack (`clearOfFixes`) and don't
+    come in from the top edge, under the HUD (`underTopEdge`). Drawn by
+    `drawBalloons` (ground: the dotted drift line `Art.driftLine`, bubbles,
+    soft shadows; sky: `Art.balloon`, upright, striped gores from
+    `Art.BALLOON_LOOKS`, basket, burner flicker; while announced, a marker at
+    each entry point with the countdown filling round it).
+  - **Air display**: the Kestrels (`DISPLAY_TEAM`), five jets (`KESTRELS`
+    formation, `KESTREL_SMOKE` colours) along a straight corridor across the
+    map, half-width `DISPLAY_HW` 34, clear of the fixes, shown from the
+    announcement (10 s). On, the leader is at `displayLead(d, t)` (120
+    units/s from 150 before the edge to 90 past it: 7–10 s); an aircraft
+    inside the band within `DISPLAY_ZONE` (60 behind to 24 ahead of the
+    leader) diverts ('Air display'). Arrival paths may not come within
+    hw + 30 of the line at any time until a second after it ends. The band
+    shows ahead of the formation only; the smoke fades for 5 s after
+    (`S.smokeFade`). `Art.corridor`, `Art.displayJet`, `Art.smoke`.
+  - **Cyber attack / system gremlin**: `planCyber` sets `gremlin:
+    !grownUpOK()` (guests and children's profiles always get the gremlin).
+    5 s' warning ("Network fault"), then 15 s (`DIS_FOR.cyber`):
+    `startCyber` creates `S.radar = { beam, seen }` and shows `#ransom` (a
+    `.plate` inside `#hud`, so `underHud` keeps arrivals from under it; three
+    14-tile boards in `boards.ransom`, scrambled to junk and flipped to
+    `RANSOM.cyber.note` / `RANSOM.gremlin.note`). **Radar fault**:
+    `radarSweep` turns the beam once per `SWEEP` (1 s) round the map's centre
+    and re-blips (`blip`) an aircraft when the beam crosses its bearing;
+    `shown(p)` gives a proxy (`Object.create(p)` with the blip's x, y, rot and
+    route) that render, `drawConflicts` and `pickAt` use, so you grab what
+    you see. The simulation never reads `S.radar`. Landing aircraft are drawn
+    live (the tower can see the runway). **Comms delay**: while `cyberOn()`,
+    pointerdown draws into `S.drawing.into`, a copy (`Object.create(p)` with
+    its own path, landing, hold, `pendingOf`, `flipped`); `endDraw` makes it
+    `p.pend = { q, at }` (`COMMS_DELAY` 2 s, drawn dashed amber with
+    "SENDING" and a filling clock), and `update` calls `applyRoute` when it's
+    due: the runway may have closed or the wind turned meanwhile (then it
+    goes around), and a hold re-takes a free slot. The aircraft flies its old
+    route until then. **Restore backup** (`#btn-restore`) must be held
+    `RESTORE_HOLD` 3 s of real time (`restoreFrame`, from `frame`; pointer
+    or Space/Enter); letting go resets it. `endCyber` clears the radar and
+    flips the note to "Systems restored" / "Gremlin gone, bye bye!".
+    `finish()` and `loadLevel` hide it at once.
+  - **Audio** (recorded with ElevenLabs in `tools/final_approach_sounds.py`;
+    if a file is missing `say()` deals nothing and `playSound()` returns
+    false, and the effects fall back to small synth stand-ins in `sfx`): tower lines `tower_balloons`,
+    `tower_balloons_gone`, `tower_display`, `tower_display_clear`,
+    `tower_cyber`, `tower_cyber_restored`, `tower_gremlin`,
+    `tower_gremlin_gone` (each recorded as `<prefix>_1`, `_2`); effects
+    `balloon_burner` (as they come on, then now and then), `display_flypast`,
+    `cyber_glitch` and `gremlin_giggle` (as the board scrambles), and
+    `restore_ok`.
+- **Inbound beyond the edge** (v1.31.0): while an arrival's marker counts
+  down, `drawInbound` draws the aircraft itself where it is at that moment
+  (its spawn point less speed × time left, along its heading; a held one
+  circles just outside), but only where the screen shows past the
+  airspace, so the timing is identical on every device. It's drawn before
+  `drawBoundary` dims the outside, it isn't in `S.planes` (can't be
+  touched), and the real aircraft spawns at the same point as the countdown
+  ends. An ordinary arrival sometimes checks in as it does
+  (`say_checkin`, chance 0.35; a wave's arrivals say `say_divert_in`).
 - **`window.__finalApproach`** exposes the state for Playwright checks,
   plus `update` (step the simulation, e.g. ten minutes in a loop),
   `queueArrival`, `clearOfStorms`, `stormAt`, `clearOfTraffic`, `track`,
@@ -1514,7 +1671,7 @@ it current when you do (its "Current state" and roadmap especially).
   in is a tile opening `/final-approach/` in the Safari sheet, like Keep
   score (playbook roadmap).
 
-## Picnic Raid (added v1.29.0)
+## Picnic Raid (added v1.32.0)
 
 Our own game, made for the family the way Wildwood was: fill a picnic
 basket, pack it up to bank the points, and hide traps (Ants, Wasp, Seagull,

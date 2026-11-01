@@ -898,9 +898,11 @@ const Art = (() => {
     ctx.setLineDash([0.01, 7]);
     ctx.lineDashOffset = p.odo % 7;
     ctx.lineWidth = 5.2; ctx.strokeStyle = 'rgba(15,20,25,0.35)'; ctx.stroke();
-    ctx.lineWidth = 3.2; ctx.strokeStyle = p.landing ? color : 'rgba(255,255,255,0.95)'; ctx.stroke();
+    // Locked onto a runway or a hold fix: in the aircraft's colour, no handle.
+    const locked = p.landing || p.hold;
+    ctx.lineWidth = 3.2; ctx.strokeStyle = locked ? color : 'rgba(255,255,255,0.95)'; ctx.stroke();
     ctx.setLineDash([]);
-    if (!p.landing) {
+    if (!locked) {
       // The end of an unfinished route is a handle: grab it to carry on.
       const e = p.path[p.path.length - 1];
       const pulse = active ? 0 : (Math.sin((t || 0) * 4) + 1) / 2;
@@ -1221,6 +1223,392 @@ const Art = (() => {
     ctx.restore();
   }
 
+  // ---------- holding and disruptions ----------
+  // A hold fix: a beacon (the VOR hexagon) with its holding ring, dots
+  // drifting clockwise round it as the aircraft will, and its three letters
+  // on a dark tag that reads on any landscape. `k` scales the marks so they
+  // stay finger-sized on a phone; `count` is how many are in the stack.
+  function tag(ctx, text, x, y, k, ink, extra, extraInk) {
+    ctx.font = `600 ${11 * k}px ${FONT}`;
+    ctx.letterSpacing = `${k}px`;
+    const w1 = ctx.measureText(text).width, w2 = extra ? ctx.measureText(extra).width + 4 * k : 0;
+    const w = w1 + w2 + 9 * k, h = 15 * k;
+    ctx.fillStyle = 'rgba(20,24,28,0.86)';
+    ctx.beginPath(); rrect(ctx, x - w / 2, y - h / 2, w, h, 3 * k); ctx.fill();
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = ink;
+    ctx.fillText(text, x - w / 2 + 4.5 * k, y + 0.5 * k);
+    if (extra) { ctx.fillStyle = extraInk; ctx.fillText(extra, x - w / 2 + 4.5 * k + w1 + 4 * k, y + 0.5 * k); }
+    ctx.letterSpacing = '0px';
+  }
+  function holdFix(ctx, f, t, o) {
+    const k = o.k || 1, ring = o.ring || 32;
+    ctx.save();
+    ctx.translate(f.x, f.y);
+    if (o.near || o.highlight) {
+      ctx.fillStyle = `rgba(243,234,210,${o.near ? 0.16 : 0.07})`;
+      ctx.beginPath(); ctx.arc(0, 0, o.catchR, 0, TAU); ctx.fill();
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.setLineDash([5, 5]);
+      ctx.lineDashOffset = -t * 14;
+      ctx.globalAlpha = o.near ? 1 : 0.6 + 0.3 * Math.sin(t * 8);
+      ctx.beginPath(); ctx.arc(0, 0, o.catchR, 0, TAU); ctx.stroke();
+      ctx.globalAlpha = 1; ctx.setLineDash([]);
+    }
+    if (o.teach) {
+      const q = (t * 0.7) % 1;
+      ctx.strokeStyle = `rgba(242,179,61,${0.8 * (1 - q)})`; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.arc(0, 0, 12 + q * 40, 0, TAU); ctx.stroke();
+    }
+    // the ring the stack flies, dots drifting round clockwise
+    ctx.lineCap = 'round';
+    ctx.setLineDash([0.01, 7]); ctx.lineDashOffset = -t * 9;
+    ctx.strokeStyle = 'rgba(20,24,28,0.35)'; ctx.lineWidth = 4.2;
+    ctx.beginPath(); ctx.arc(0, 0, ring, 0, TAU); ctx.stroke();
+    ctx.strokeStyle = o.night ? 'rgba(243,234,210,0.7)' : 'rgba(255,252,240,0.85)'; ctx.lineWidth = 2.4;
+    ctx.beginPath(); ctx.arc(0, 0, ring, 0, TAU); ctx.stroke();
+    ctx.setLineDash([]);
+    // a chevron at the top showing which way round
+    ctx.strokeStyle = 'rgba(255,252,240,0.95)'; ctx.lineWidth = 2; ctx.lineJoin = 'round';
+    ctx.beginPath(); ctx.moveTo(-3, -ring - 4.5); ctx.lineTo(2.5, -ring); ctx.lineTo(-3, -ring + 4.5); ctx.stroke();
+    // the beacon
+    const r = 8 * k;
+    if (o.night) {
+      ctx.globalCompositeOperation = 'lighter';
+      const g = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 2.4);
+      g.addColorStop(0, 'rgba(242,179,61,0.35)'); g.addColorStop(1, 'rgba(242,179,61,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, r * 2.4, 0, TAU); ctx.fill();
+      ctx.globalCompositeOperation = 'source-over';
+    }
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3; ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r); }
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(20,24,28,0.9)'; ctx.fill();
+    ctx.strokeStyle = PAINT; ctx.lineWidth = 1.6 * k; ctx.stroke();
+    const blink = 0.55 + 0.45 * Math.sin(t * 3);
+    ctx.fillStyle = `rgba(242,179,61,${0.6 + 0.4 * blink})`;
+    ctx.beginPath(); ctx.arc(0, 0, 2.4 * k, 0, TAU); ctx.fill();
+    tag(ctx, f.fix, 0, r + 11 * k, k, '#f3ead2', o.count ? `×${o.count}` : '', '#f2b33d');
+    if (o.teach) {
+      ctx.font = `600 ${12 * k}px ${FONT}`; ctx.letterSpacing = `${1.5 * k}px`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+      ctx.lineWidth = 3.5; ctx.strokeStyle = 'rgba(18,22,26,0.8)'; ctx.lineJoin = 'round';
+      ctx.strokeText('HOLD', 0, -ring - 8);
+      ctx.fillStyle = '#f2b33d'; ctx.fillText('HOLD', 0, -ring - 8);
+      ctx.letterSpacing = '0px';
+    }
+    ctx.restore();
+  }
+
+  // A small quadcopter, rotors blurred.
+  function drone(ctx, x, y, s, t) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(Math.sin(t * 1.3) * 0.3);
+    ctx.fillStyle = 'rgba(0,0,0,0.22)';
+    ctx.beginPath(); ctx.ellipse(s * 0.9, s * 1.5, s * 1.1, s * 0.7, 0, 0, TAU); ctx.fill();
+    ctx.strokeStyle = '#2b3136'; ctx.lineWidth = s * 0.28; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(-s, -s); ctx.lineTo(s, s); ctx.moveTo(s, -s); ctx.lineTo(-s, s); ctx.stroke();
+    for (const [dx, dy] of [[-s, -s], [s, -s], [s, s], [-s, s]]) {
+      ctx.fillStyle = 'rgba(220,226,230,0.55)';
+      ctx.beginPath(); ctx.arc(dx, dy, s * 0.62, 0, TAU); ctx.fill();
+      ctx.strokeStyle = 'rgba(40,46,50,0.7)'; ctx.lineWidth = s * 0.12;
+      const a = t * 40 + dx;
+      ctx.beginPath(); ctx.moveTo(dx - Math.cos(a) * s * 0.6, dy - Math.sin(a) * s * 0.6); ctx.lineTo(dx + Math.cos(a) * s * 0.6, dy + Math.sin(a) * s * 0.6); ctx.stroke();
+    }
+    ctx.fillStyle = '#e8553f';
+    ctx.beginPath(); rrect(ctx, -s * 0.5, -s * 0.38, s, s * 0.76, s * 0.2); ctx.fill();
+    ctx.fillStyle = Math.sin(t * 10) > 0 ? '#7dff9a' : '#2b3136';
+    ctx.beginPath(); ctx.arc(0, 0, s * 0.16, 0, TAU); ctx.fill();
+    ctx.restore();
+  }
+  // A drone zone: dashed amber while it's announced, then closed sky in red
+  // and white with the drone buzzing about inside it.
+  function droneZone(ctx, z, t, live, k) {
+    ctx.save();
+    ctx.translate(z.x, z.y);
+    if (live) {
+      ctx.fillStyle = 'rgba(232,85,63,0.17)';
+      ctx.beginPath(); ctx.arc(0, 0, z.r, 0, TAU); ctx.fill();
+      ctx.save();
+      ctx.beginPath(); ctx.arc(0, 0, z.r, 0, TAU); ctx.clip();
+      ctx.strokeStyle = 'rgba(232,85,63,0.28)'; ctx.lineWidth = 2;
+      for (let d = -z.r * 2; d < z.r * 2; d += 11) { ctx.beginPath(); ctx.moveTo(d, -z.r); ctx.lineTo(d + z.r * 2, z.r); ctx.stroke(); }
+      ctx.restore();
+      ctx.lineWidth = 3.4; ctx.strokeStyle = '#ffffff';
+      ctx.beginPath(); ctx.arc(0, 0, z.r, 0, TAU); ctx.stroke();
+      ctx.strokeStyle = '#e8402f'; ctx.setLineDash([9, 7]); ctx.lineDashOffset = -t * 10;
+      ctx.beginPath(); ctx.arc(0, 0, z.r, 0, TAU); ctx.stroke();
+      ctx.setLineDash([]);
+    } else {
+      ctx.globalAlpha = 0.6 + 0.4 * Math.sin(t * 6);
+      ctx.strokeStyle = '#f2b33d'; ctx.lineWidth = 2.6; ctx.setLineDash([7, 6]); ctx.lineDashOffset = -t * 14;
+      ctx.beginPath(); ctx.arc(0, 0, z.r, 0, TAU); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(242,179,61,0.08)';
+      ctx.beginPath(); ctx.arc(0, 0, z.r, 0, TAU); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+    const s = 7 * Math.max(1, k * 0.85);
+    drone(ctx, Math.cos(t * 0.9 + z.seed) * z.r * 0.4, Math.sin(t * 1.4 + z.seed) * z.r * 0.3, s, t);
+    tag(ctx, live ? 'DRONE · NO FLY' : 'DRONE', 0, -z.r - 11 * k, k, live ? '#ffb3a8' : '#f2b33d');
+    ctx.restore();
+  }
+
+  // Whatever is on the runway: a deer, a dog, or a runaway luggage trolley.
+  // Drawn facing `a`, a little bigger than life so a phone shows it.
+  function obstacle(ctx, kind, x, y, a, t, moving, k) {
+    ctx.save();
+    ctx.translate(x, y);
+    const q = (t * 2) % 1;
+    ctx.strokeStyle = `rgba(242,179,61,${0.85 * (1 - q)})`; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(0, 0, (12 + q * 10) * k, 0, TAU); ctx.stroke();
+    ctx.scale(k * 1.35, k * 1.35);
+    ctx.rotate(a);
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath(); ctx.ellipse(1.5, 2, 6.5, 3, 0, 0, TAU); ctx.fill();
+    const step = moving ? Math.sin(t * 18) * 1.2 : 0;
+    if (kind === 'cart') {
+      ctx.fillStyle = '#7d8489'; ctx.fillRect(-6, -3.6, 12, 7.2);
+      ctx.fillStyle = '#3a4147'; ctx.fillRect(5, -1, 3, 2);
+      ctx.fillStyle = '#d64b3a'; ctx.fillRect(-5, -3, 4.5, 3);
+      ctx.fillStyle = '#3d9be0'; ctx.fillRect(0, -3, 4.5, 3);
+      ctx.fillStyle = '#f2b632'; ctx.fillRect(-4, 0.4, 7, 2.6);
+    } else {
+      const deer = kind === 'deer';
+      const coat = deer ? '#a8743f' : '#f2efe6', dark = deer ? '#6e4a28' : '#7a5a3a';
+      ctx.strokeStyle = dark; ctx.lineWidth = 1.1; ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(-3, -1.6); ctx.lineTo(-3 - step, -3.6); ctx.moveTo(-3, 1.6); ctx.lineTo(-3 + step, 3.6);
+      ctx.moveTo(2.6, -1.6); ctx.lineTo(2.6 + step, -3.6); ctx.moveTo(2.6, 1.6); ctx.lineTo(2.6 - step, 3.6);
+      ctx.stroke();
+      ctx.fillStyle = coat;
+      ctx.beginPath(); ctx.ellipse(0, 0, deer ? 5 : 4.4, deer ? 2.3 : 2.1, 0, 0, TAU); ctx.fill();
+      if (!deer) { ctx.fillStyle = '#8a6440'; ctx.beginPath(); ctx.arc(-1, -0.4, 1.3, 0, TAU); ctx.fill(); }
+      ctx.fillStyle = coat;
+      ctx.beginPath(); ctx.arc(deer ? 6 : 5.2, 0, deer ? 1.9 : 1.8, 0, TAU); ctx.fill();
+      ctx.fillStyle = dark;
+      ctx.beginPath(); ctx.arc(deer ? 7.6 : 6.7, 0, 0.7, 0, TAU); ctx.fill();
+      if (deer) {
+        ctx.strokeStyle = '#5a3c20'; ctx.lineWidth = 0.8;
+        ctx.beginPath(); ctx.moveTo(5.6, -1.2); ctx.lineTo(4.6, -3.4); ctx.lineTo(3.6, -3.8); ctx.moveTo(4.9, -2.6); ctx.lineTo(5.8, -3.6);
+        ctx.moveTo(5.6, 1.2); ctx.lineTo(4.6, 3.4); ctx.lineTo(3.6, 3.8); ctx.moveTo(4.9, 2.6); ctx.lineTo(5.8, 3.6); ctx.stroke();
+        ctx.fillStyle = '#fbf6ec'; ctx.beginPath(); ctx.arc(-5, 0, 0.9, 0, TAU); ctx.fill();
+      } else {
+        ctx.strokeStyle = coat; ctx.lineWidth = 1.1;
+        const wag = Math.sin(t * 16) * 1.6;
+        ctx.beginPath(); ctx.moveTo(-4.2, 0); ctx.lineTo(-6.8, wag); ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+  // The airport's ops van: yellow, with an amber light that flashes.
+  function opsVan(ctx, x, y, h, t) {
+    ctx.save();
+    ctx.translate(x, y); ctx.rotate(h); ctx.scale(1.3, 1.3);
+    ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(-5, -2, 12, 6);
+    ctx.fillStyle = '#f2b632'; ctx.fillRect(-6, -3, 12, 6);
+    ctx.fillStyle = '#2b3136'; ctx.fillRect(2.5, -2.4, 2.4, 4.8);
+    ctx.fillStyle = '#1e262c'; ctx.fillRect(-6, -0.5, 8, 1);
+    const flash = Math.sin(t * 14) > 0;
+    ctx.fillStyle = flash ? '#ffb02e' : '#8a5a10';
+    ctx.beginPath(); ctx.arc(-1, 0, 1.4, 0, TAU); ctx.fill();
+    if (flash) {
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = 'rgba(255,176,46,0.4)';
+      ctx.beginPath(); ctx.arc(-1, 0, 7, 0, TAU); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // ---------- disruptions, part 2 (v1.30.0) ----------
+  // Hot-air balloons, seen from the tower: upright, so they read as balloons
+  // on a phone. Each has its own pair of colours in curved gores, a wicker
+  // basket and a burner that flickers now and then. `look` picks the colours.
+  const BALLOON_LOOKS = [
+    ['#e0483a', '#f6c84a'],   // red and gold
+    ['#2f6fb3', '#f4f1ea'],   // blue and white
+    ['#3f9a5c', '#f08a3c'],   // green and orange
+    ['#8a4fb0', '#f2a6c4'],   // purple and pink
+    ['#f2b632', '#2a8f9e'],   // sunflower and teal
+  ];
+  function balloonShadow(ctx, x, y, k) {
+    ctx.save();
+    ctx.translate(x + 20 * k, y + 28 * k);
+    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 13 * k);
+    g.addColorStop(0, 'rgba(10,14,18,0.26)'); g.addColorStop(1, 'rgba(10,14,18,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.ellipse(0, 0, 13 * k, 9 * k, 0, 0, TAU); ctx.fill();
+    ctx.restore();
+  }
+  function balloon(ctx, x, y, t, k, look, seed, night) {
+    const [a, b] = BALLOON_LOOKS[look % BALLOON_LOOKS.length];
+    const R = 11 * k, cy = -6 * k;              // envelope centre, above the basket
+    const bob = Math.sin(t * 0.9 + seed) * 1.2 * k;
+    ctx.save();
+    ctx.translate(x, y + bob);
+    // the envelope: a round top narrowing to the mouth
+    const shape = () => {
+      ctx.beginPath();
+      ctx.moveTo(-3 * k, cy + R * 1.55);
+      ctx.bezierCurveTo(-R * 0.75, cy + R * 0.95, -R * 1.02, cy + R * 0.35, -R, cy);
+      ctx.arc(0, cy, R, Math.PI, 0);
+      ctx.bezierCurveTo(R * 1.02, cy + R * 0.35, R * 0.75, cy + R * 0.95, 3 * k, cy + R * 1.55);
+      ctx.closePath();
+    };
+    // ropes and the basket
+    ctx.strokeStyle = 'rgba(40,30,22,0.8)'; ctx.lineWidth = 0.7 * k;
+    ctx.beginPath();
+    ctx.moveTo(-2.6 * k, cy + R * 1.55); ctx.lineTo(-2.6 * k, cy + R * 1.55 + 4.2 * k);
+    ctx.moveTo(2.6 * k, cy + R * 1.55); ctx.lineTo(2.6 * k, cy + R * 1.55 + 4.2 * k);
+    ctx.stroke();
+    const by = cy + R * 1.55 + 4 * k;
+    ctx.fillStyle = '#8a5a2e'; ctx.beginPath(); rrect(ctx, -3.4 * k, by, 6.8 * k, 4.6 * k, 1 * k); ctx.fill();
+    ctx.strokeStyle = '#5e3b1b'; ctx.lineWidth = 0.6 * k;
+    ctx.beginPath(); ctx.moveTo(-3.4 * k, by + 1.6 * k); ctx.lineTo(3.4 * k, by + 1.6 * k); ctx.stroke();
+    // the burner: a small flame at the mouth, now and then a bigger burst
+    const burst = Math.sin(t * 0.7 + seed * 3) > 0.82;
+    const flick = 0.55 + 0.45 * Math.sin(t * 23 + seed * 7) * Math.sin(t * 11 + seed);
+    if (burst || flick > 0.75) {
+      const fr = (burst ? 4.2 : 2.2) * k;
+      ctx.globalCompositeOperation = 'lighter';
+      const g = ctx.createRadialGradient(0, cy + R * 1.45, 0, 0, cy + R * 1.45, fr * (night ? 3 : 1.8));
+      g.addColorStop(0, 'rgba(255,236,150,0.95)'); g.addColorStop(0.45, 'rgba(255,140,40,0.7)'); g.addColorStop(1, 'rgba(255,90,20,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(0, cy + R * 1.45, fr * (night ? 3 : 1.8), 0, TAU); ctx.fill();
+      ctx.globalCompositeOperation = 'source-over';
+    }
+    // gores: concentric upright ellipses in alternating colours, clipped
+    ctx.save();
+    shape(); ctx.clip();
+    ctx.fillStyle = a; ctx.fillRect(-R * 1.2, cy - R * 1.2, R * 2.4, R * 3);
+    for (let i = 1; i < 5; i++) {
+      ctx.fillStyle = i % 2 ? b : a;
+      ctx.beginPath(); ctx.ellipse(0, cy + R * 0.2, R * (1 - i * 0.2), R * 1.6, 0, 0, TAU); ctx.fill();
+    }
+    // light from the top left, shade on the right
+    const sh = ctx.createLinearGradient(-R, cy - R, R, cy + R);
+    sh.addColorStop(0, 'rgba(255,255,255,0.28)'); sh.addColorStop(0.5, 'rgba(255,255,255,0)'); sh.addColorStop(1, 'rgba(20,20,40,0.32)');
+    ctx.fillStyle = sh; ctx.fillRect(-R * 1.2, cy - R * 1.2, R * 2.4, R * 3);
+    ctx.restore();
+    shape();
+    ctx.strokeStyle = 'rgba(30,26,30,0.55)'; ctx.lineWidth = 0.9 * k; ctx.stroke();
+    ctx.restore();
+  }
+  // A balloon's bubble: the circle an aircraft mustn't enter. Dashed amber
+  // while it's on its way, red and white once it counts.
+  function balloonBubble(ctx, x, y, r, t, live) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.fillStyle = live ? 'rgba(232,85,63,0.10)' : 'rgba(242,179,61,0.08)';
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.fill();
+    ctx.lineWidth = 2.2;
+    if (live) { ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.stroke(); }
+    ctx.strokeStyle = live ? '#e8402f' : '#f2b33d';
+    ctx.setLineDash([6, 6]); ctx.lineDashOffset = -t * 8;
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.stroke();
+    ctx.restore();
+  }
+  // Where the balloons will drift: a dotted line with chevrons pointing the
+  // way, from (x0, y0) to (x1, y1).
+  function driftLine(ctx, x0, y0, x1, y1, t, alpha) {
+    const a = Math.atan2(y1 - y0, x1 - x0), len = Math.hypot(x1 - x0, y1 - y0);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(x0, y0); ctx.rotate(a);
+    ctx.lineCap = 'round';
+    ctx.setLineDash([0.01, 10]); ctx.lineDashOffset = -t * 10;
+    ctx.strokeStyle = 'rgba(20,24,28,0.55)'; ctx.lineWidth = 5.6;
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(len, 0); ctx.stroke();
+    ctx.strokeStyle = '#f2b33d'; ctx.lineWidth = 3.4;
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(len, 0); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.lineJoin = 'round';
+    for (let s = 60 + ((t * 18) % 90); s < len - 20; s += 90) {
+      for (const [w, c] of [[4.4, 'rgba(20,24,28,0.55)'], [2.4, '#f2b33d']]) {
+        ctx.lineWidth = w; ctx.strokeStyle = c;
+        ctx.beginPath(); ctx.moveTo(s - 6, -6); ctx.lineTo(s, 0); ctx.lineTo(s - 6, 6); ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
+  // The display team: small swept jets in the team's livery (rust, with a
+  // cream flash), and the smoke they trail.
+  function displayJet(ctx, x, y, a, k) {
+    ctx.save();
+    ctx.translate(x, y); ctx.rotate(a); ctx.scale(k, k);
+    ctx.fillStyle = 'rgba(0,0,0,0.22)';
+    ctx.save(); ctx.translate(6, 8);
+    ctx.beginPath(); ctx.moveTo(9, 0); ctx.lineTo(-2, -8); ctx.lineTo(-6, -8); ctx.lineTo(-4, 0); ctx.lineTo(-6, 8); ctx.lineTo(-2, 8); ctx.closePath(); ctx.fill();
+    ctx.restore();
+    // wings
+    ctx.fillStyle = '#b8522a';
+    ctx.beginPath(); ctx.moveTo(4, 0); ctx.lineTo(-3, -8.5); ctx.lineTo(-6.5, -8.5); ctx.lineTo(-3.5, 0); ctx.lineTo(-6.5, 8.5); ctx.lineTo(-3, 8.5); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#f3ead2';
+    ctx.beginPath(); ctx.moveTo(-1.2, -3); ctx.lineTo(-4.4, -7.6); ctx.lineTo(-5.4, -7.6); ctx.lineTo(-3, -3); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(-1.2, 3); ctx.lineTo(-4.4, 7.6); ctx.lineTo(-5.4, 7.6); ctx.lineTo(-3, 3); ctx.closePath(); ctx.fill();
+    // tailplane
+    ctx.fillStyle = '#b8522a';
+    ctx.beginPath(); ctx.moveTo(-6, 0); ctx.lineTo(-9, -3.6); ctx.lineTo(-10, -3.6); ctx.lineTo(-9, 0); ctx.lineTo(-10, 3.6); ctx.lineTo(-9, 3.6); ctx.closePath(); ctx.fill();
+    // fuselage
+    ctx.fillStyle = '#d9692f';
+    ctx.beginPath(); ctx.ellipse(0, 0, 9.5, 1.9, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#f3ead2'; ctx.fillRect(-7, -0.5, 12, 1);
+    ctx.fillStyle = '#25313a';
+    ctx.beginPath(); ctx.ellipse(4.2, 0, 2.2, 1.1, 0, 0, TAU); ctx.fill();
+    ctx.restore();
+  }
+  // One jet's smoke, from (x0, y0) to the jet at (x1, y1): thicker and
+  // fainter the further back, gone `fade` units behind.
+  function smoke(ctx, x0, y0, x1, y1, color, fade, alpha) {
+    const len = Math.hypot(x1 - x0, y1 - y0);
+    if (len < 2 || alpha <= 0) return;
+    const ux = (x1 - x0) / len, uy = (y1 - y0) / len;
+    const from = Math.max(0, len - fade);
+    ctx.save();
+    ctx.lineCap = 'round';
+    const steps = 10;
+    for (let i = 0; i < steps; i++) {
+      const s0 = from + (len - from) * (i / steps), s1 = from + (len - from) * ((i + 1) / steps);
+      const q = (i + 1) / steps;                      // 1 at the jet
+      ctx.globalAlpha = alpha * q * 0.75;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2.5 + (1 - q) * 9;
+      ctx.beginPath(); ctx.moveTo(x0 + ux * s0, y0 + uy * s0); ctx.lineTo(x0 + ux * s1, y0 + uy * s1); ctx.stroke();
+    }
+    ctx.restore();
+  }
+  // The display corridor: a band along the line (centre `c`, direction `a`,
+  // half-width `hw`) between `s0` and `s1` along it, dashed edges, hatched
+  // amber while it's coming, red once the formation is in it.
+  function corridor(ctx, c, a, hw, s0, s1, t, live) {
+    if (s1 <= s0) return;
+    ctx.save();
+    ctx.translate(c.x, c.y); ctx.rotate(a);
+    ctx.fillStyle = live ? 'rgba(232,85,63,0.14)' : 'rgba(242,179,61,0.17)';
+    ctx.fillRect(s0, -hw, s1 - s0, hw * 2);
+    ctx.save();
+    ctx.beginPath(); ctx.rect(s0, -hw, s1 - s0, hw * 2); ctx.clip();
+    ctx.strokeStyle = live ? 'rgba(232,85,63,0.26)' : 'rgba(242,179,61,0.32)'; ctx.lineWidth = 2.2;
+    const off = (t * 14) % 16;
+    for (let x = s0 - hw * 2 - off; x < s1 + hw * 2; x += 16) { ctx.beginPath(); ctx.moveTo(x, -hw); ctx.lineTo(x + hw * 2, hw); ctx.stroke(); }
+    ctx.restore();
+    for (const y of [-hw, hw]) {
+      ctx.lineWidth = 4.4; ctx.strokeStyle = 'rgba(20,24,28,0.45)'; ctx.setLineDash([]);
+      ctx.beginPath(); ctx.moveTo(s0, y); ctx.lineTo(s1, y); ctx.stroke();
+      ctx.lineWidth = 2.8;
+      ctx.strokeStyle = live ? '#ff5a4a' : '#f2b33d'; ctx.setLineDash([12, 8]); ctx.lineDashOffset = -t * 30;
+      ctx.beginPath(); ctx.moveTo(s0, y); ctx.lineTo(s1, y); ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    // chevrons down the middle, the way they'll fly
+    ctx.strokeStyle = live ? 'rgba(255,200,190,0.8)' : 'rgba(242,179,61,0.85)'; ctx.lineWidth = 2.4; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    for (let s = s0 + 30 + ((t * 40) % 70); s < s1 - 10; s += 70) {
+      ctx.beginPath(); ctx.moveTo(s - 7, -8); ctx.lineTo(s, 0); ctx.lineTo(s - 7, 8); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   let vignetteCache = null;
   function vignette(ctx, night) {
     if (!vignetteCache || vignetteCache.night !== night) {
@@ -1237,6 +1625,7 @@ const Art = (() => {
     COLORS, mulberry32, buildTerrain, sprite, icon, aircraft, aircraftShadow, approach, route, trail,
     incoming, storm, stormSprite, sky, updateSky, cloudLayer, snowfall, updateSnow, drawSnow, effect,
     nightTheme, snowTheme, rainfall, updateRain, drawRain, fog, bounds: () => Object.assign({}, B),
-    foam, vignette, designator, hexA, glyph, setBoost,
+    foam, vignette, designator, hexA, glyph, setBoost, holdFix, droneZone, obstacle, opsVan, tag,
+    balloon, balloonShadow, balloonBubble, driftLine, displayJet, smoke, corridor, BALLOON_LOOKS,
   };
 })();
