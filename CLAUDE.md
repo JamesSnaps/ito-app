@@ -59,6 +59,8 @@ problem.
   missing from memory is looked for there first.
 - Each game is a blueprint under `games/<id>/`, listed in
   `games/registry.py`. Adding a game shouldn't touch `app.py` at all.
+  `GameSpec.native_app` says the iOS app has its own screen for it; leave it
+  False for a web game and the app lists it from `/api/games` by itself.
 - Not every game needs rooms, and the two halves are independent.
   `GameSpec.host_endpoint` is "the hub tile starts a room" (`starts_rooms`,
   ito only); `player_endpoint` is "a code resolves here at `/join`"
@@ -548,6 +550,9 @@ games' records, ito hosting (since app 1.4.0) and its
 topic display, and player profiles. Rules pages, ito's
 stats, the Flip 7 scorekeeper and a scorekeeper's spectator board open the
 server's own pages in an in-app Safari sheet rather than being rebuilt.
+Games with no screen of their own here (Final Approach, and whatever the
+registry gains) are played full screen as their web page (app 1.16.0, see
+"Web games in the app" below).
 
 - **Score a real game is the web scorekeeper** (app 1.12.0; `/flip7/score`
   since app 1.15.0): the Flip 7 tile's second choice opens it in the Safari
@@ -655,7 +660,9 @@ server's own pages in an in-app Safari sheet rather than being rebuilt.
   games against the computer; v1.12.0+ for app 1.6.0's records against the
   computer; v1.15.0+ for app 1.9.0's games without hints, which an older
   server deals with hints on — the app holds offline computer games back until the server's
-  stats carry `computer_leaderboard`; v1.17.0+ for app 1.11.0's Wildwood) before a build goes out.
+  stats carry `computer_leaderboard`; v1.17.0+ for app 1.11.0's Wildwood;
+  v1.33.1+ for app 1.16.0's web games — an older server 404s `/api/games`
+  and the hub simply shows no web tiles) before a build goes out.
 - **`.dockerignore` keeps `ios/` out of the server image.**
 - **QR codes are scanned in the app** (`ScanSheet`, VisionKit's
   `DataScannerViewController`, QR only), from the hub's toolbar and the Join
@@ -666,6 +673,69 @@ server's own pages in an in-app Safari sheet rather than being rebuilt.
   `/wildwood/play`, `/ito/play`, `/join?code=` and `/me/link`. Claiming a path sends it to every
   installed version of the app, so claim a new one only once a build that
   handles it is on TestFlight.
+
+### Web games in the app (app 1.16.0, server 1.33.1)
+
+- **The server lists its games; the app decides which are its own.**
+  `GET /api/games` (app.py) is the hub's menu as JSON: `id`, `name`,
+  `tagline`, `accent`, `path` (the game's landing page), `action` (the web
+  tile's call to action) and `native_app`, from `GameSpec.native_app`
+  (True for Flip 7, Fugitive, Wildwood and ito; False by default, so a game
+  added to the registry is a web game in the app with no app update). The app
+  keeps its four tiles and adds one per game whose id isn't in
+  `WebGames.native` — its own list, not `native_app`: a game a later build
+  makes native is still only a web page to this one. A game marked
+  `available=False` is in neither the hub nor the list.
+- **The last list is kept** (UserDefaults `webGames.last`), so the tiles are
+  there at launch and with no signal; if the server has never answered there
+  are none. Refreshed whenever the hub comes back into view.
+- **Tiles**: the web hub's title, tagline and accent, in the same `GameTile`
+  and the same layout (column on a phone; two to a row in the iPad's Grid,
+  an empty cell beside an odd one). Final Approach's art is the web's SVG
+  drawn in SwiftUI (`FinalApproachArt`); any other web game gets its
+  initials on a screen in its colour (`WebGameArt`) until it earns its own.
+- **`WebGameScreen` is a WKWebView, full screen** (a `fullScreenCover`),
+  not the Safari sheet: no browser chrome, status bar hidden, home indicator
+  hidden (`persistentSystemOverlays`), edge swipes deferred so a route drawn
+  off the bottom doesn't go home, kept awake (`.keepsScreenAwake()`, the
+  counted one), audio without a tap (`mediaTypesRequiringUserActionForPlayback
+  = []`, inline playback), the default persistent website data store (the
+  game's own localStorage — Final Approach's save, settings and outbox —
+  survives; it's the app's own, apart from Safari's, the home-screen web
+  app's and the Safari sheet's), and no automatic content inset
+  (`contentInsetAdjustmentBehavior = .never`) so the safe area reaches the
+  page's `env(safe-area-inset-*)`. The app already allows every orientation
+  (`project.yml`), so the screen turns with the device; Final Approach asks
+  for sideways itself. A failed first load shows "Couldn't reach the Game
+  Night server" with Try again; a killed web process reloads.
+- **The way out is a grabber at the top centre** — the games' HUDs use the
+  corners (Final Approach: plates top left, strikes and pause top right;
+  Final Vector's concept: strips down the left, push-to-talk bottom right).
+  Pull it down to close, or tap it for a "Close game" button that goes away
+  after four seconds, so a stray touch mid-shift doesn't end it. VoiceOver
+  reads it as a "Close game" button.
+- **Signed in as the app's profile.** A `WKUserScript` at document start,
+  main frame only, writes `Me.current` into localStorage `gamenight:me` as
+  the web stores it (`{id, name, photo, token}`, `photo` null when there's
+  none — me.html's shape), or removes it when the app is signed out, so the
+  page's own scripts (`GN.me.get()`, `X-Profile-Token`) see the app's
+  profile: records, the child/grown-up rules and the guest prompt follow the
+  app. The script checks `location.origin` is the server's before touching
+  anything, and the values go in as JSON string literals (`WebSignIn`, in
+  API/WebGames.swift, tested on Linux). It runs on every page load, so
+  signing in or out on the web's own "You" page inside the game lasts only
+  until the next page: the app's profile is the one that counts. The token
+  isn't logged or sent anywhere else. (`HeldMe`/`Me` moved from Faces.swift
+  to Profiles.swift so this builds without SwiftUI.)
+- **Links** (`WebGameLinks`): anything on the server's origin stays in the
+  screen — records, Final Approach's link to another game; other
+  hosts and other schemes (mailto:) open in the system browser; frames
+  inside a page load what they like. A `target=_blank` link follows the
+  same rule in the one window.
+  The server's front page (`/`, a game's "Game Night" button) is the
+  exception: it closes the game (`closeToHub`), since the app's hub is home.
+- **Not tried on a device from here**: the screen is UI code written on
+  Linux; the model, script and link rules are what the Linux tests cover.
 
 ### Fugitive on a phone held sideways (app 1.8.1)
 
@@ -1705,9 +1775,9 @@ it current when you do (its "Current state" and roadmap especially).
   its files and the level data's shape, and visual changes are checked by
   driving the page in a headless browser at desktop and phone-landscape
   sizes (the playbook has the routine).
-- **Not in the iOS app.** The native hub's tiles are its own; the cheap way
-  in is a tile opening `/final-approach/` in the Safari sheet, like Keep
-  score (playbook roadmap).
+- **In the iOS app as its web page** (app 1.16.0): a hub tile from
+  `/api/games` opens `/final-approach/` full screen in a WKWebView, signed
+  in as the app's profile — see "Web games in the app".
 
 ## Player profiles (added v1.8.0)
 
