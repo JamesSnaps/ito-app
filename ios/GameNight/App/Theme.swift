@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// Flip 7's felt and gold, the same values as static/flip7.css. The display
-/// face is the system rounded design — what the web page's `--font-display`
-/// falls back to (`ui-rounded`) when Baloo 2 isn't there.
+/// face is the web's `--font-display`, Bricolage Grotesque, bundled as five
+/// static weights cut from the same variable file (Fonts/).
 enum Theme {
     static let feltDark = Color(hex: 0x0F2E24)
     static let felt = Color(hex: 0x164A38)
@@ -24,8 +24,22 @@ enum Theme {
             .ignoresSafeArea()
     }
 
+    /// Fixed size, as `.system(size:)` was: the layouts were drawn around
+    /// these sizes, and `.custom(_:size:)` would scale them with Dynamic Type.
     static func display(_ size: CGFloat, weight: Font.Weight = .heavy) -> Font {
-        .system(size: size, weight: weight, design: .rounded)
+        .custom(displayFace(weight), fixedSize: size)
+    }
+
+    /// The bundled weight nearest the one asked for: 400–800 are bundled, so
+    /// lighter falls to Regular and black to ExtraBold.
+    private static func displayFace(_ weight: Font.Weight) -> String {
+        switch weight {
+        case .heavy, .black: "BricolageGrotesque-ExtraBold"
+        case .bold: "BricolageGrotesque-Bold"
+        case .semibold: "BricolageGrotesque-SemiBold"
+        case .medium: "BricolageGrotesque-Medium"
+        default: "BricolageGrotesque-Regular"
+        }
     }
 
     static func mono(_ size: CGFloat, weight: Font.Weight = .bold) -> Font {

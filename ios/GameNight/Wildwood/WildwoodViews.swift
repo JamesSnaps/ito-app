@@ -32,9 +32,9 @@ enum Woods {
         .ignoresSafeArea()
     }
 
-    /// Baloo 2 on the web; the system's rounded face here, as the rest of the app.
+    /// The app's display face, as on the web.
     static func display(_ size: CGFloat, weight: Font.Weight = .heavy) -> Font {
-        .system(size: size, weight: weight, design: .rounded)
+        Theme.display(size, weight: weight)
     }
 }
 

@@ -420,7 +420,7 @@ struct NoirButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 17, weight: .bold, design: .rounded))
+            .font(Theme.display(17, weight: .bold))
             .frame(maxWidth: .infinity)
             .padding(.vertical, 13)
             .padding(.horizontal, 12)

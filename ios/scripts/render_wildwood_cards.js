@@ -30,11 +30,11 @@ const page = `<!doctype html><html><head><meta charset="utf-8">
 <style>
   /* Only the shared sheet's typeface, not its page. */
   @font-face {
-    font-family: "Baloo 2";
-    src: url("file://${root}/static/fonts/baloo2-variable.woff2") format("woff2-variations");
-    font-weight: 400 800;
+    font-family: "Bricolage Grotesque";
+    src: url("file://${root}/static/fonts/bricolage-grotesque-latin-wght.woff2") format("woff2-variations");
+    font-weight: 200 800;
   }
-  :root { --font-display: "Baloo 2", ui-rounded, sans-serif; }
+  :root { --font-display: "Bricolage Grotesque", sans-serif; }
   html, body { margin: 0; background: transparent; }
   .card { width: ${WIDTH}px; height: ${WIDTH * 1.4}px; }
   .card .ww-art { filter: none; width: 100%; height: 100%; display: block; }
