@@ -1439,7 +1439,9 @@ it current when you do (its "Current state" and roadmap especially).
   show: a toggle needs its teaching airport cleared (`TEACHES`: jets 2,
   helicopters 3, heavies 8, fuel 5, storms 6, wind 7, emergencies 11) unless
   this airport has the feature itself, and an aircraft type needs somewhere
-  to land. `freeChoices(L)` reads `save.free[id]` and resets anything no
+  to land. Disruptions (v1.29.0) are taught by Holding Pattern (12); the
+  server's `parse_free` also takes a shift without the `disruptions` key
+  (an older page's outbox) as "off". `freeChoices(L)` reads `save.free[id]` and resets anything no
   longer allowed. With `L.free`, `finish()` awards no stars or Endless bests,
   the result hides stars, Next and medals, and offers Change. The shift
   carries `free` (the choices); the server's `parse_free` checks it against
@@ -1498,6 +1500,70 @@ it current when you do (its "Current state" and roadmap especially).
   painting. Weather particles, clouds and fog cover `B`; diverting aircraft
   leave at `B` + 40. `drawBoundary` dims beyond the airspace and draws the
   dashed amber edge with "<CODE> CONTROL ZONE" (the airport's three letters, by choice).
+- **Holding** (v1.29.0). Every airport in levels.js has `holds`: two or
+  three `{ fix, x, y }`, where `fix` is a key into **`HOLD_FIXES`** (levels.js:
+  BOV Bovingdon, OCK Ockham, LAM Lambourne, BIG Biggin, WIL Willo, TIM
+  Timba). **One shared pool of names, repeated across airports, on purpose:
+  spoken lines will be recorded per name**, so a new name means new
+  recordings; read the list from that constant. `S.fixes` is the airport's
+  holds when `holdingOn(L)` (Holding Pattern or later on the board, or
+  Holding Pattern cleared), else empty. A route is caught by a fix only when
+  it's *let go* near one (`endDraw` → `holdAt`, within `HOLD_CATCH` or 22
+  CSS px), never while drawing past it, so a route along an edge can't snag.
+  `p.hold = { fix, slot, on }`: a slot (0–3, `HOLD_MAX` 4) is reserved at
+  once; the aircraft flies its route and joins (`enterHold`) when it reaches
+  its ring (`holdR(slot)` = 22 + 10·slot) or the route's end. `holdStep`
+  orbits clockwise at `HOLD_TURN` rad/s, the whole stack a quarter turn apart
+  (phase-locked to `S.time`, so they never bunch), easing to its ring; fuel
+  burns as normal. Drawn out: the first route point clears `p.hold` (a tap
+  alone doesn't). `stacked(a, b)` (same fix, both on or among its rings)
+  skips conflicts and collisions between them; nothing else is exempt.
+  `track()` predicts holds too (checked within ~3 units over 5 s), so
+  arrival safety keeps arrivals off stacks. A hold-bound route draws locked
+  (no handle); State One can't hold. Fixes are drawn live by `Art.holdFix`
+  (not baked into the terrain, so no airport's seeded painting moved), sized
+  by `markK()` to stay readable on a phone; they say HOLD at Holding Pattern
+  until `save.heldOnce`.
+- **Holding Pattern** (HLD, **id 12**, third on the board) teaches holding
+  and runway obstructions. Ids are stable keys for saves and records; the
+  board numbers by position. **`isUnlocked`** opens an airport when the one
+  before it, it, or any later non-endless airport is cleared, so inserting
+  an airport never locks anyone out. `TEACHES.disruptions` is 12.
+- **Disruptions** (v1.29.0): `disruptions: { kinds, every, first }` on a
+  level ('runway', 'drone', 'wave'); free play builds one from its
+  Disruptions toggle (`DIS_RATE` some/lots, all kinds). `disruptionTick`
+  waits for `emergencyBusy()` (an emergency flying, pending, rolling out, a
+  closure, police, or 8 s after one ended) and `S.time ≥ 20`, then
+  `startDisruption` plans one (`planObstruction`, `planDrone`, `planWave`;
+  null if it can't, and another kind or a retry in 3 s). `S.dis` runs
+  `warn` (8 s, a wave 10 s: toast, chime, the `#hud-dis` countdown plate)
+  then `on`. Emergencies wait for `S.dis` and `S.disQuiet` in turn, so the
+  two never overlap. The first of each kind per device (`save.disSeen`)
+  pauses on the `#explain` card (screen `explain`, "Got it" resumes);
+  later ones get a one-line `#notice` under the toast.
+  - **Runway**: an obstacle (`deer`, `dog`, `cart`) walks on while it's
+    announced; then a closure `{ runway, until: Infinity, obstruction }` in
+    `S.closures` (so `isClosed`/`landingFor` refuse it and its lights go out),
+    `goAround(runway)` for anyone on approach, and the ops van
+    (`drawObstruction`, `Art.obstacle`, `Art.opsVan`). 20 s, then
+    `reopenRunway`. `isClosed(r)` with no aircraft now counts every closure
+    (it used to miss ordinary ones, so a closed runway's lights showed).
+  - **Drone**: `S.dis` carries `{x, y, r: 46, at, until}`, placed behind an
+    active approach (or round a pad), clear of runways, pads, fixes, storms,
+    the HUD's corners and anyone predicted to be inside when it closes.
+    `clearOfStorms` refuses arrival paths through it from `at − 1` to
+    `until + 1` (so `queueArrival` and `admit` honour it like a storm);
+    flying into it while `on` diverts ('Drone', a strike). 30 s.
+  - **Wave**: `planWave` takes 3–5 (4–5 at Lots), capped by what's left of
+    the target; normal arrivals pause during it, and on `on` it queues one
+    arrival every 1.1 s through `queueArrival` (every safety rule applies; the
+    traffic cap doesn't). Its name is another of our airports.
+  - Radio: only lines that fit (`tower_closed_1` as a runway closes,
+    `tower_open` after); a divert speaks only for a storm or fuel now (it said
+    "out of fuel" for every other reason). No new recordings; the chime is
+    synthesised.
+  - Hooks: `__finalApproach.disrupt(kind)` starts one now; also `holdAt`,
+    `fixNear`, `stacked`, `planDrone`, `loadLevel`, `isUnlocked`, `HOLD_FIXES`.
 - **`window.__finalApproach`** exposes the state for Playwright checks,
   plus `update` (step the simulation, e.g. ten minutes in a loop),
   `queueArrival`, `clearOfStorms`, `stormAt`, `clearOfTraffic`, `track`,

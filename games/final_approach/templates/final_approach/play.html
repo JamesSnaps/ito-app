@@ -21,6 +21,11 @@
         <div class="plate-label">Wind shift</div>
         <div id="hud-wind-flaps"></div>
       </div>
+      {# A disruption's countdown (game.js updateHud): to when it starts, then to when it ends. #}
+      <div class="plate hidden" id="hud-dis">
+        <div class="plate-label" id="hud-dis-label"></div>
+        <div id="hud-dis-flaps"></div>
+      </div>
     </div>
     <div class="plate hud-center">
       <div class="plate-label" id="hud-landed-label">Landed</div>
@@ -35,6 +40,7 @@
     </div>
   </div>
   <div id="toast" class="hidden"><div id="toast-flaps"></div></div>
+  <div id="notice" class="hidden" role="status"></div>
 
   <div id="menu" class="overlay">
     <div class="housing">
@@ -114,6 +120,18 @@
           <button id="btn-pause-settings" class="btn ghost">Settings</button>
           <button id="btn-resume" class="btn primary">Resume</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  {# The first runway obstruction, drone or diversion wave on a device pauses
+     here to say what it is and what to do (game.js explain). #}
+  <div id="explain" class="overlay hidden">
+    <div class="housing compact">
+      <div class="board">
+        <div id="explain-flaps" class="big"></div>
+        <p class="guest-text" id="explain-text"></p>
+        <div class="buttons"><button id="btn-explain-ok" class="btn primary">Got it</button></div>
       </div>
     </div>
   </div>
@@ -210,6 +228,7 @@
           <div class="set-row" id="free-storms-row"><span class="set-label">Storms</span><div class="seg dark" data-k="storms"><button data-v="0">Off</button><button data-v="1">1</button><button data-v="2">2</button><button data-v="3">3</button></div></div>
           <div class="set-row" id="free-wind-row"><span class="set-label">Wind shifts</span><div class="seg dark" data-k="wind"><button data-v="false">Off</button><button data-v="true">On</button></div></div>
           <div class="set-row" id="free-emergencies-row"><span class="set-label">Emergencies</span><div class="seg dark" data-k="emergencies"><button data-v="off">Off</button><button data-v="some">Some</button><button data-v="lots">Lots</button></div></div>
+          <div class="set-row" id="free-disruptions-row"><span class="set-label">Disruptions</span><div class="seg dark" data-k="disruptions"><button data-v="off">Off</button><button data-v="some">Some</button><button data-v="lots">Lots</button></div></div>
         </div>
         <div class="buttons"><button id="btn-free-back" class="btn ghost">Back</button><button id="btn-free-start" class="btn primary">Start</button></div>
       </div>

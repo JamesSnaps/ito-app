@@ -304,7 +304,9 @@
     warn:      () => { tone(1046, 0.09, { type: 'square', vol: 0.035 }); tone(784, 0.11, { type: 'square', vol: 0.035, delay: 0.1 }); },
     spawn:     () => tone(520, 0.1, { type: 'triangle', vol: 0.035 }),
     divert:    p => {
-      say(p.divertedBy === 'Storm' ? 'say_divert_storm' : 'say_divert_fuel', p, { priority: true });
+      // Only the lines that fit: a storm, or an empty tank.
+      if (p.divertedBy === 'Storm') say('say_divert_storm', p, { priority: true });
+      else if (p.divertedBy === 'Out of fuel') say('say_divert_fuel', p, { priority: true });
       return playSound('divert', { vol: 0.6, pan: panOf(p.x) }) || tone(500, 0.4, { type: 'sawtooth', vol: 0.05, slide: -300 });
     },
     crash:     () => playSound('collision') || (noise(1, 0.5), tone(140, 0.7, { type: 'sawtooth', vol: 0.12, slide: -90 })),
@@ -313,6 +315,8 @@
     lose:      () => playSound('chime_fail', { vol: 0.7 }) || [392, 330, 262].forEach((f, i) => tone(f, 0.3, { type: 'triangle', vol: 0.1, delay: i * 0.15 })),
     wind:      () => playSound('wind_shift', { vol: 0.7 }) || tone(260, 0.5, { type: 'triangle', vol: 0.08, slide: 240 }),
     rattle:    () => playSound('flap_rattle', { vol: 0.35 }),
+    // An airport announcement chime for disruptions: two soft notes, down.
+    chime:     () => { tone(659, 0.5, { vol: 0.09 }); tone(523, 0.7, { vol: 0.09, delay: 0.32 }); },
     // A rubber stamp coming down on the passport.
     thunk:     () => { noise(0.07, 0.4, 260, 'lowpass'); tone(95, 0.14, { vol: 0.16, slide: -45 }); },
     flap:      () => {
@@ -439,12 +443,15 @@
       landed: 0, lives: MAX_LIVES, time: 0, spawnTimer: 1,
       flipped: false, windTimer: level.windShift || 0, windWarned: false,
       drawing: null, overTimer: 0, outcome: null, warnCooldown: 0, shiftId: null, assisted: false,
-      medals: 0, emgPending: null, emgLast: null, closures: [],
+      medals: 0, emgPending: null, emgLast: null, closures: [], police: null,
+      fixes: holdingOn(level) ? (level.holds || []) : [], dis: null, disLast: null, disQuiet: 0, emgQuiet: 0,
       sky: Art.sky(th, level.id * 31), snow: th.snowfall ? Art.snowfall(140) : [],
     });
     paintTerrain();
+    notice('');
     const plan = emergencyPlan(level);
     S.emgTimer = plan ? plan.first + Math.random() * 6 : Infinity;
+    S.disTimer = level.disruptions ? level.disruptions.first + Math.random() * 6 : Infinity;
     const rng = Art.mulberry32(level.id * 977);
     for (let i = 0; i < (level.storms || 0); i++) S.storms.push(makeStorm(level, rng));
   }
@@ -521,6 +528,10 @@
         const at = stormAt(st, lead + t);
         if (dist(px, py, at.x, at.y) < st.r * 0.8 + 30) return false;
       }
+      // A drone zone, from the moment it's announced until it's gone.
+      const z = S.dis && S.dis.kind === 'drone' ? S.dis : null;
+      const when = S.time + lead + t;
+      if (z && when >= z.at - 1 && when <= z.until + 1 && dist(px, py, z.x, z.y) < z.r + 30) return false;
     }
     return true;
   }
@@ -534,8 +545,18 @@
     const out = [];
     let x = p.x, y = p.y, h = p.heading, i = 0, entered = p.entered;
     const step = p.T.speed * (p.speedK || 1) * TRACK_STEP;
+    // Holding (or on the way to a fix): round its ring once it gets there.
+    const hold = p.hold && !(p.hold.on && p.path.length) ? Object.assign({}, p.hold) : null;
+    const join = () => { hold.on = true; hold.a = Math.atan2(y - hold.fix.y, x - hold.fix.x); hold.r = Math.max(8, dist(x, y, hold.fix.x, hold.fix.y)); };
     for (let t = 0; t <= secs + 1e-6; t += TRACK_STEP) {
       out.push({ x, y });
+      if (hold && !hold.on && (i >= p.path.length || dist(x, y, hold.fix.x, hold.fix.y) <= holdR(hold.slot) + 2)) join();
+      if (hold && hold.on) {
+        const q = { x, y, heading: h };
+        holdStep(q, hold, TRACK_STEP, S.time + t);
+        x = q.x; y = q.y; h = q.heading;
+        continue;
+      }
       let left = step;
       while (left > 0 && i < p.path.length) {
         const q = p.path[i], d = dist(x, y, q.x, q.y);
@@ -719,7 +740,7 @@
   // earned or ranked. A toggle only shows once the airport that teaches it
   // has been cleared (or this airport has it anyway).
   const cleared = id => (save.stars[id] || 0) > 0;
-  const TEACHES = { jet: 2, heli: 3, heavy: 8, fuel: 5, storms: 6, wind: 7, emergencies: 11 };
+  const TEACHES = { jet: 2, heli: 3, heavy: 8, fuel: 5, storms: 6, wind: 7, emergencies: 11, disruptions: 12 };
   const TYPE_WEIGHT = { prop: 1, jet: 1, heavy: 0.6, heli: 0.8 };
   const LANDS_ON = { prop: 'short', jet: 'long', heavy: 'long', heli: 'pad' };
   const FREE_TRAFFIC = { light: { gap: 1.35, cap: -1 }, normal: { gap: 1, cap: 0 }, rush: { gap: 0.75, cap: 2 } };
@@ -730,6 +751,7 @@
       length: 'shift', traffic: 'normal', types: Object.keys(L.traffic.types),
       fuel: L.traffic.fuel < 60, storms: L.storms || 0, wind: !!L.windShift,
       emergencies: L.emergencies ? (L.emergencies.every[0] < EMG_RATE.lots[1] ? 'lots' : 'some') : 'off',
+      disruptions: L.disruptions ? (L.disruptions.every[0] < DIS_RATE.lots[1] ? 'lots' : 'some') : 'off',
     };
   }
   // What can be changed at this airport, for this player.
@@ -742,6 +764,7 @@
       storms: !!L.storms || cleared(TEACHES.storms),
       wind: !!L.windShift || cleared(TEACHES.wind),
       emergencies: !!L.emergencies || cleared(TEACHES.emergencies),
+      disruptions: !!L.disruptions || cleared(TEACHES.disruptions),
     };
   }
   // The remembered choices, with anything not (or no longer) allowed reset.
@@ -752,10 +775,11 @@
     if (!(c.traffic in FREE_TRAFFIC)) c.traffic = d.traffic;
     c.types = (Array.isArray(c.types) ? c.types : []).filter(t => opts.types.includes(t));
     if (!c.types.length) c.types = d.types;
-    for (const k of ['fuel', 'storms', 'wind', 'emergencies']) if (!opts[k]) c[k] = d[k];
+    for (const k of ['fuel', 'storms', 'wind', 'emergencies', 'disruptions']) if (!opts[k]) c[k] = d[k];
     c.fuel = !!c.fuel; c.wind = !!c.wind;
     c.storms = clamp(Math.round(+c.storms) || 0, 0, 3);
     if (!['off', 'some', 'lots'].includes(c.emergencies)) c.emergencies = d.emergencies;
+    if (!['off', 'some', 'lots'].includes(c.disruptions)) c.disruptions = d.disruptions;
     return c;
   }
   function freePlayLevel(L, c) {
@@ -766,6 +790,7 @@
       base: L, free: Object.assign({}, c, { types: c.types.slice() }), endless: c.length === 'endless',
       storms: c.storms, windShift: c.wind ? (L.windShift || FREE_WIND) : 0,
       emergencies: c.emergencies === 'off' ? undefined : { every: EMG_RATE[c.emergencies], first: 25 },
+      disruptions: c.disruptions === 'off' ? undefined : { kinds: DIS_KINDS.slice(), every: DIS_RATE[c.disruptions], first: 30 },
       traffic: Object.assign({}, t, {
         types,
         interval: t.interval.map(v => v * tr.gap),
@@ -782,6 +807,7 @@
     if (c.wind) bits.push('wind shifts');
     if (c.fuel) bits.push('low fuel');
     if (c.emergencies !== 'off') bits.push(c.emergencies === 'lots' ? 'lots of emergencies' : 'emergencies');
+    if (c.disruptions && c.disruptions !== 'off') bits.push(c.disruptions === 'lots' ? 'lots of disruptions' : 'disruptions');
     if (c.length === 'endless') bits.push('endless');
     const s = bits.join(' · ');
     return s ? s[0].toUpperCase() + s.slice(1) : 'As usual';
@@ -818,7 +844,7 @@
   function emergencyTick(dt) {
     if (S.emgTimer === Infinity || S.time < 8) return;
     if (!S.emgPending) S.emgTimer -= dt;
-    if (S.emgTimer > 0 || S.emgPending || emergencyActive()) return;
+    if (S.emgTimer > 0 || S.emgPending || emergencyActive() || S.dis || S.time < (S.disQuiet || 0)) return;
     if (grownUpOK() && S.emgLast !== 'birdstrike' && Math.random() < 0.2 && birdStrike()) return;
     const choices = emergencyChoices();
     S.emgPending = choices[Math.floor(Math.random() * choices.length)];
@@ -843,6 +869,253 @@
     say(EMG.birdstrike.call, q, { priority: true });
     return true;
   }
+
+  // ---------- holding ----------
+  // Each airport has two or three hold fixes: beacons near the edges, named
+  // from one shared pool (HOLD_FIXES in levels.js, keyed BOV, OCK, …). A
+  // route let go at one (within HOLD_CATCH) sends the aircraft there to circle,
+  // burning fuel, until it's drawn out again. Up to HOLD_MAX stack on a fix,
+  // each on its own ring (its own height, really), so aircraft in the same
+  // stack never count as a conflict with each other. Taught by Holding
+  // Pattern: shown from there on in the career, and everywhere once it's
+  // cleared.
+  const HOLD_TAUGHT = TEACHES.disruptions;
+  const HOLD_CATCH = 30, HOLD_MAX = 4, HOLD_TURN = 0.7;   // rad/s round the fix
+  const holdR = slot => 22 + slot * 10;
+  const HOLD_OUTER = holdR(HOLD_MAX - 1);
+  function holdingOn(L) {
+    const base = L.base || L;
+    return LEVELS.indexOf(base) >= LEVELS.findIndex(l => l.id === HOLD_TAUGHT) || cleared(HOLD_TAUGHT);
+  }
+  const stackOf = fix => S.planes.filter(p => p.state === 'fly' && p.hold && p.hold.fix === fix);
+  function freeSlot(fix, self) {
+    const used = new Set(stackOf(fix).filter(p => p !== self).map(p => p.hold.slot));
+    for (let k = 0; k < HOLD_MAX; k++) if (!used.has(k)) return k;
+    return -1;
+  }
+  function fixNear(x, y) {
+    const reach = Math.max(HOLD_CATCH, 22 / view.scale);
+    let best = null, bestD = reach;
+    for (const f of S.fixes) {
+      const d = dist(x, y, f.x, f.y);
+      if (d < bestD) { best = f; bestD = d; }
+    }
+    return best;
+  }
+  // A route let go at a fix: the aircraft will hold there.
+  function holdAt(p) {
+    const end = p.path[p.path.length - 1];
+    const fix = end && fixNear(end.x, end.y);
+    if (!fix) return false;
+    if (p.bubble) { addText(end.x, end.y - 22, 'State One can\'t hold', '#ffffff', 13); return false; }
+    const slot = freeSlot(fix, p);
+    if (slot < 0) { addText(fix.x, fix.y - 30, 'Stack full', '#ffffff', 13); return false; }
+    p.hold = { fix, slot, on: false };
+    S.effects.push({ kind: 'ring', x: fix.x, y: fix.y, color: '#f3ead2', t: 0, life: 0.6 });
+    addText(fix.x, fix.y - holdR(HOLD_MAX - 1) - 6, `Hold · ${HOLD_FIXES[fix.fix] || fix.fix}`, '#f3ead2', 12);
+    tone(880, 0.06, { type: 'triangle', vol: 0.045 }); tone(660, 0.09, { type: 'triangle', vol: 0.04, delay: 0.07 });
+    buzz(12);
+    say('say_turn', p, { chance: 0.6 });
+    return true;
+  }
+  function enterHold(p) {
+    const h = p.hold;
+    h.on = true;
+    h.a = Math.atan2(p.y - h.fix.y, p.x - h.fix.x);
+    h.r = Math.max(8, dist(p.x, p.y, h.fix.x, h.fix.y));
+    p.path = [];
+    if (!save.heldOnce) { save.heldOnce = true; persist(); }
+  }
+  // One step round the orbit (clockwise on screen: right-hand turns, as real
+  // holds fly), easing out or in to the slot's ring. The whole stack turns
+  // together, a quarter turn apart, so it stays spread out: each aircraft
+  // drifts round to its slot's place after joining. Works on a copy for
+  // predictions (track, `now` in the future) as well as the real aircraft.
+  function holdStep(q, h, dt, now) {
+    h.r += clamp(holdR(h.slot) - h.r, -14 * dt, 14 * dt);
+    const want = now * HOLD_TURN + h.fix.x * 0.01 + h.slot * Math.PI / 2;
+    h.a += (HOLD_TURN + clamp(angDiff(h.a, want) * 0.8, -0.35, 0.35)) * dt;
+    const nx = h.fix.x + Math.cos(h.a) * h.r, ny = h.fix.y + Math.sin(h.a) * h.r;
+    q.heading = Math.atan2(ny - q.y, nx - q.x);
+    q.x = nx; q.y = ny;
+  }
+  // In a fix's stack: holding there, or on its way in and already among the rings.
+  const inStack = p => p.hold && (p.hold.on || dist(p.x, p.y, p.hold.fix.x, p.hold.fix.y) < HOLD_OUTER + 14);
+  const stacked = (a, b) => inStack(a) && inStack(b) && a.hold.fix === b.hold.fix;
+
+  // ---------- disruptions ----------
+  // Things that happen to the whole airport: a runway obstruction, a drone
+  // closing a patch of sky, a wave of diverted arrivals. Always announced on
+  // the board with a countdown before anything changes; temporary; one at a
+  // time; never during an emergency (nor an emergency during one) and never
+  // in a shift's first seconds. Holding Pattern teaches them; the first of
+  // each kind on a device explains itself.
+  const DIS_RATE = { some: [70, 100], lots: [40, 60] };
+  const DIS_KINDS = ['runway', 'drone', 'wave'];
+  const DIS_WARN = { runway: 8, drone: 8, wave: 10 };
+  const DIS_FOR = { runway: 20, drone: 30 };
+  const DRONE_R = 46;
+  const OBSTACLES = {
+    deer: 'A deer is heading for runway',
+    dog: 'A dog is loose near runway',
+    cart: 'A runaway luggage trolley is rolling toward runway',
+  };
+  // The first of each kind on a device pauses the game on a card that says
+  // what's happening and what to do (the countdown waits for "Got it").
+  const DIS_TITLE = { runway: 'Runway closing', drone: 'Drone sighted', wave: 'Diversions' };
+  const DIS_HOW = {
+    runway: 'In 8 seconds the runway closes for about 20 while a van clears it. Hold arrivals at a beacon, or land them on another runway of the same colour. The countdown is at the top left.',
+    drone: 'In 8 seconds that patch of sky closes for about 30: anything that flies into the red circle diverts, like a storm. Route round it, or hold until it\'s gone.',
+    wave: 'Park them at the hold beacons and bring them in one at a time.',
+  };
+  function emergencyBusy() {
+    return emergencyActive() || !!S.emgPending || S.planes.some(p => p.emg && p.state === 'land') ||
+      S.closures.length > 0 || (S.police && S.time < S.police.until) || S.time < (S.emgQuiet || 0);
+  }
+  function disruptionTick(dt) {
+    if (S.dis) return stepDisruption(dt);
+    const plan = S.level.disruptions;
+    if (!plan) return;
+    S.disTimer -= dt;
+    if (S.disTimer > 0 || S.time < 20 || emergencyBusy()) return;
+    if (!startDisruption(plan)) S.disTimer = 3;
+  }
+  function startDisruption(plan, only) {
+    let kinds = (only ? [only] : plan.kinds).filter(k => k !== 'wave' || S.fixes.length);
+    if (!only && kinds.length > 1) kinds = kinds.filter(k => k !== S.disLast);
+    kinds = kinds.slice().sort(() => Math.random() - 0.5);
+    for (const kind of kinds) {
+      const d = { runway: planObstruction, drone: planDrone, wave: planWave }[kind]();
+      if (!d) continue;
+      Object.assign(d, { kind, phase: 'warn', at: S.time + DIS_WARN[kind] });
+      d.until = d.at + (DIS_FOR[kind] || 0);
+      S.dis = d;
+      S.disLast = kind;
+      announceDisruption(d);
+      return true;
+    }
+    return false;
+  }
+  function planObstruction() {
+    const open = S.level.runways.filter(r => r.kind !== 'pad' && !S.closures.some(c => c.runway === r));
+    if (!open.length) return null;
+    const r = open[Math.floor(Math.random() * open.length)];
+    const a = r.angle * Math.PI / 180;
+    const mid = { x: r.x + Math.cos(a) * r.length * 0.5, y: r.y + Math.sin(a) * r.length * 0.5 };
+    // The van comes from the side nearer the middle of the map, so it's on screen.
+    let nx = -Math.sin(a), ny = Math.cos(a);
+    if (nx * (W / 2 - mid.x) + ny * (H / 2 - mid.y) < 0) { nx = -nx; ny = -ny; }
+    const what = pick(Object.keys(OBSTACLES));
+    const end = runwayEnd(r);
+    return { runway: r, mid, nx, ny, a, what, number: Art.designator(end.angle * 180 / Math.PI), since: S.time };
+  }
+  // Near an approach, but never over a runway, a pad, a hold fix or anyone
+  // who'd be inside it when it closes.
+  function planDrone() {
+    const cands = [];
+    const ends = S.level.runways.map(runwayEnd);
+    for (const end of ends) {
+      // A pad is approached from anywhere: try all round it.
+      const angs = end.angle == null ? [0, 1, 2, 3, 4, 5, 6, 7].map(i => i * Math.PI / 4) : [end.angle];
+      for (const ang of angs) {
+        for (const d of [175, 200, 160, 225]) {
+          for (const side of [0, 30, -30]) {
+            cands.push({ x: end.x - Math.cos(ang) * d - Math.sin(ang) * side, y: end.y - Math.sin(ang) * d + Math.cos(ang) * side, pad: end.kind === 'pad' });
+          }
+        }
+      }
+    }
+    const R = DRONE_R, warn = DIS_WARN.drone;
+    const fine = c => {
+      if (c.x < R + 30 || c.x > W - R - 30 || c.y < R + 70 || c.y > H - R - 30) return false;
+      if ((c.x < 220 || c.x > 740) && c.y < 165) return false;     // clear of the HUD's corners
+      for (const r of S.level.runways) {
+        if (r.kind === 'pad') { if (dist(c.x, c.y, r.x, r.y) < R + 40) return false; continue; }
+        const a = r.angle * Math.PI / 180;
+        if (segDist(c.x, c.y, r.x, r.y, r.x + Math.cos(a) * r.length, r.y + Math.sin(a) * r.length) < R + 30) return false;
+      }
+      if (S.fixes.some(f => dist(c.x, c.y, f.x, f.y) < R + HOLD_OUTER + 16)) return false;
+      if (S.storms.some(st => dist(c.x, c.y, st.x, st.y) < R + st.r)) return false;
+      return true;
+    };
+    const nobodyInside = c => S.planes.every(p => {
+      if (p.state !== 'fly') return true;
+      const at = track(p, warn + 1);
+      return at.every((q, i) => !q || i * TRACK_STEP < warn - 3 || dist(q.x, q.y, c.x, c.y) > R + 25);
+    });
+    const ok = cands.filter(fine).sort(() => Math.random() - 0.5).sort((a, b) => a.pad - b.pad);
+    const spot = ok.find(nobodyInside) || null;
+    return spot && { x: spot.x, y: spot.y, r: R, seed: Math.random() * 100 };
+  }
+  function planWave() {
+    const L = S.level;
+    const lots = L.disruptions && L.disruptions.every[0] < DIS_RATE.lots[1];
+    let n = (lots ? 4 : 3) + (Math.random() < 0.5 ? 1 : 0);
+    if (!L.endless) {
+      const airborne = S.planes.filter(p => p.state === 'fly').length + S.incoming.length;
+      n = Math.min(n, L.target - S.landed - airborne);
+    }
+    if (n < 2) return null;
+    const others = LEVELS.filter(l => !l.endless && l !== (L.base || L));
+    return { left: n, n, gap: 0, from: pick(others).name };
+  }
+  function segDist(px, py, ax, ay, bx, by) {
+    const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy || 1;
+    const t = clamp(((px - ax) * dx + (py - ay) * dy) / l2, 0, 1);
+    return dist(px, py, ax + t * dx, ay + t * dy);
+  }
+  function announceDisruption(d) {
+    const first = !(save.disSeen || {})[d.kind];
+    save.disSeen = Object.assign({}, save.disSeen, { [d.kind]: true });
+    persist();
+    let line;
+    if (d.kind === 'runway') { toast(`Rwy ${d.number} closing`); line = `${OBSTACLES[d.what]} ${d.number}!`; }
+    if (d.kind === 'drone') { toast('Drone sighted'); line = 'A drone has been spotted near an approach!'; }
+    if (d.kind === 'wave') { toast(`${d.n} diversions`); line = `${d.from} is closed: ${d.n} diversions inbound in 10 seconds.`; }
+    sfx.chime();
+    buzz([30, 40, 30]);
+    if (first) explain(DIS_TITLE[d.kind], `${line} ${DIS_HOW[d.kind]}`);
+    else notice(line, 5);
+  }
+  function stepDisruption(dt) {
+    const d = S.dis;
+    if (d.phase === 'warn' && S.time >= d.at) {
+      d.phase = 'on';
+      if (d.kind === 'runway') {
+        S.closures.push({ runway: d.runway, until: Infinity, since: S.time, obstruction: d });
+        goAround(d.runway);
+        toast(`Runway ${rwyNumber(d)} closed`);
+        say('tower_closed_1', null, { priority: true });
+      }
+      if (d.kind === 'drone') {
+        toast('No-fly zone on');
+        for (const p of S.planes) if (p.state === 'fly' && p.entered && inDrone(p)) divert(p, 'Drone');
+      }
+      if (d.kind === 'wave') toast('Inbound now');
+    }
+    if (d.phase !== 'on') return;
+    if (d.kind === 'wave') {
+      d.gap -= dt;
+      if (d.gap <= 0) {
+        if (queueArrival()) { d.left--; d.gap = 1.1; } else d.gap = 0.4;
+      }
+      if (d.left <= 0) endDisruption();
+    } else if (S.time >= d.until) {
+      if (d.kind === 'runway') {
+        const c = S.closures.find(x => x.obstruction === d);
+        if (c) reopenRunway(c);
+      } else toast('Drone gone');
+      endDisruption();
+    }
+  }
+  function endDisruption() {
+    S.dis = null;
+    const plan = S.level.disruptions;
+    S.disTimer = plan ? lerp(plan.every[0], plan.every[1], Math.random()) : Infinity;
+    S.disQuiet = S.time + 8;          // a breather before any emergency
+  }
+  const rwyNumber = d => Art.designator(runwayEnd(d.runway).angle * 180 / Math.PI);
+  const inDrone = p => S.dis && S.dis.kind === 'drone' && S.dis.phase === 'on' && dist(p.x, p.y, S.dis.x, S.dis.y) < S.dis.r;
 
   function queueArrival() {
     const pending = S.emgPending;
@@ -933,6 +1206,9 @@
 
     // arrivals
     S.spawnTimer -= dt;
+    // A diversion wave brings its own arrivals: the usual ones wait for it.
+    const wave = S.dis && S.dis.kind === 'wave';
+    if (S.spawnTimer <= 0 && wave) S.spawnTimer = 1;
     if (S.spawnTimer <= 0) {
       const airborne = S.planes.filter(p => p.state === 'fly').length + S.incoming.length;
       const needed = L.endless || S.landed + airborne < L.target;
@@ -964,6 +1240,7 @@
     }
 
     emergencyTick(dt);
+    disruptionTick(dt);
     for (const c of S.closures.slice()) {
       if (c.reservedFor) {
         const q = c.reservedFor;
@@ -1000,7 +1277,14 @@
     p.age += dt;
     p.fuel -= dt;
     let step = p.T.speed * (p.speedK || 1) * dt;
-    if (p.turnRate) {
+    // Holding: drawn out the moment a new route has a point; joins its ring
+    // as it reaches it (or its route's end).
+    if (p.hold && p.hold.on && p.path.length) p.hold = null;
+    if (p.hold && !p.hold.on && dist(p.x, p.y, p.hold.fix.x, p.hold.fix.y) <= holdR(p.hold.slot) + 2) enterHold(p);
+    if (p.hold && p.hold.on) {
+      holdStep(p, p.hold, dt, S.time);
+      step = 0;
+    } else if (p.turnRate) {
       // A damaged aircraft can't turn sharply: it steers toward the route at
       // a limited rate and lets go of points it can no longer make. Missing
       // the runway that way means going around: it needs a long, straight
@@ -1048,10 +1332,11 @@
       }
       if (!p.path.length && p.landing) return beginLanding(p);
     }
+    if (p.hold && !p.hold.on && !p.path.length) enterHold(p);
     if (step > 0) move(p, step);
 
     if (!p.entered && p.x > EDGE && p.x < W - EDGE && p.y > EDGE && p.y < H - EDGE) p.entered = true;
-    if (p.entered) {
+    if (p.entered && !(p.hold && p.hold.on)) {
       const c = Math.cos(p.heading), s = Math.sin(p.heading);
       if ((p.x < EDGE && c < 0) || (p.x > W - EDGE && c > 0)) p.heading = Math.PI - p.heading;
       if ((p.y < EDGE && s < 0) || (p.y > H - EDGE && s > 0)) p.heading = -p.heading;
@@ -1085,6 +1370,7 @@
     if (tank < 0.15 && !p.saidMayday) { p.saidMayday = true; say('say_mayday', p, { priority: true }); }
     if (p.fuel <= 0) return divert(p, 'Out of fuel');
     if (p.entered && S.storms.some(st => dist(p.x, p.y, st.x, st.y) < st.r * 0.8)) return divert(p, 'Storm');
+    if (p.entered && inDrone(p)) return divert(p, 'Drone');
   }
 
   function beginLanding(p) {
@@ -1099,6 +1385,7 @@
     S.landed++;
     sfx.land();
     if (S.level.id === 1 && !save.taught) { save.taught = true; persist(); }
+    if (p.emg) S.emgQuiet = S.time + 8;
     if (p.emg) {
       S.medals++;
       addText(end.x, end.y - 44, 'Medal!', '#f2b33d', 18);
@@ -1153,6 +1440,7 @@
     p.path = [];
     p.landing = null;
     S.lives -= p.emg ? 2 : 1;
+    if (p.emg) S.emgQuiet = S.time + 8;
     if (S.drawing && S.drawing.plane === p) S.drawing = null;
     if (p.emg) addText(p.x, p.y - 36, 'Emergency lost: two strikes', '#ff8a7a', 13);
     // head for the nearest edge
@@ -1180,6 +1468,7 @@
     for (let i = 0; i < fly.length; i++) {
       for (let j = i + 1; j < fly.length; j++) {
         const a = fly[i], b = fly[j];
+        if (stacked(a, b)) continue;        // one stack, different heights
         const d = dist(a.x, a.y, b.x, b.y), r = a.T.radius + b.T.radius;
         if (d < r) return crash(a, b);
         if (d < r * 2.6) { a.warn = b.warn = true; S.conflicts.push([a, b]); }
@@ -1417,7 +1706,9 @@
   // After a damaged aircraft lands, fire engines close its runway for a few
   // seconds. Anyone on approach to it goes around.
   const CLOSED_FOR = 8;
-  const isClosed = (r, p) => S.closures.some(c => c.runway === r && c.reservedFor !== p);
+  // Closed to everyone, or (a foam reservation) to everyone but the aircraft it's kept for.
+  // With no aircraft given (drawing the lights), any closure counts.
+  const isClosed = (r, p) => S.closures.some(c => c.runway === r && (!c.reservedFor || c.reservedFor !== p));
   // A belly landing: once its route locks on, foam goes down and the runway
   // is kept for it alone; anyone else on approach goes around.
   function reserveForGear(p) {
@@ -1432,6 +1723,16 @@
     }
     say('tower_foam', null, { priority: true });
   }
+  // Anyone on approach to a runway that's closing goes around (no strike).
+  function goAround(runway) {
+    for (const q of S.planes) {
+      if (q.state === 'fly' && q.landing && q.landing.runway === runway) {
+        q.landing = null; q.path = [];
+        addText(q.x, q.y - 22, 'Go around', '#ffffff', 13);
+        if (S.drawing && S.drawing.plane === q) S.drawing = null;
+      }
+    }
+  }
   function closeRunway(end, p, secs = CLOSED_FOR) {
     const roll = end.length * 0.8;
     const stop = { x: end.x + Math.cos(end.angle) * roll, y: end.y + Math.sin(end.angle) * roll };
@@ -1440,12 +1741,7 @@
       runway: end.runway, until: S.time + secs, since: S.time, stop, angle: end.angle,
       from: [{ x: stop.x + nx * 70, y: stop.y + ny * 70 }, { x: stop.x - nx * 70 - Math.cos(end.angle) * 30, y: stop.y - ny * 70 - Math.sin(end.angle) * 30 }],
     });
-    for (const q of S.planes) {
-      if (q.state === 'fly' && q.landing && q.landing.runway === end.runway) {
-        q.landing = null; q.path = [];
-        addText(q.x, q.y - 22, 'Go around', '#ffffff', 13);
-      }
-    }
+    goAround(end.runway);
     toast('Runway closed');
     playSound('siren', { vol: 0.5, fadeOut: 1.2 });
     say('tower_closed', null, { priority: true });
@@ -1521,7 +1817,7 @@
       if (d < bestD) { best = { plane: p, end: null }; bestD = d; }
     }
     for (const p of S.planes) {
-      if (p.state !== 'fly' || p.landing || !p.path.length) continue;
+      if (p.state !== 'fly' || p.landing || p.hold || !p.path.length) continue;
       const e = p.path[p.path.length - 1];
       const d = dist(e.x, e.y, w.x, w.y);
       if (d < bestD - 4) { best = { plane: p, end: e }; bestD = d; }
@@ -1540,6 +1836,9 @@
     if (!pick.end) {
       p.path = [];
       p.landing = null;
+      // On its way to a fix: a new route cancels that. Already holding: it
+      // stays in the hold until the new route has a point (a tap is no harm).
+      if (p.hold && !p.hold.on) p.hold = null;
     }
     const from = pick.end || { x: p.x, y: p.y };
     S.drawing = { plane: p, pointerId: e.pointerId, last: { x: from.x, y: from.y }, done: false, extending: !!pick.end };
@@ -1553,7 +1852,9 @@
   const endDraw = e => {
     const d = S.drawing;
     if (!d || d.pointerId !== e.pointerId) return;
-    if (!d.done && d.plane.path.length > 4) say('say_turn', d.plane, { chance: 0.3 });
+    // Let go at a hold fix: the aircraft holds there.
+    const held = !d.done && d.plane.path.length && holdAt(d.plane);
+    if (!held && !d.done && d.plane.path.length > 4) say('say_turn', d.plane, { chance: 0.3 });
     S.drawing = null;
   };
   canvas.addEventListener('pointerup', endDraw);
@@ -1671,13 +1972,16 @@
     }
     for (const c of S.closures) drawClosure(c, t);
     if (S.police) drawPolice(t);
+    drawObstruction(t);
     drawBoundary(Bd, t);
+    drawFixes(t);
 
     const landing = S.planes.filter(p => p.state === 'land');
     const air = S.planes.filter(p => p.state !== 'land');
     for (const p of landing) Art.aircraftShadow(ctx, p);
     for (const p of landing) Art.aircraft(ctx, p, p.t, night);
     for (const st of S.storms) Art.storm(ctx, st, t);
+    if (S.dis && S.dis.kind === 'drone') Art.droneZone(ctx, S.dis, t, S.dis.phase === 'on', markK());
     // Route-end handles at least 22 CSS pixels across, like the markers.
     const handleR = Math.max(6.5, 11 / view.scale);
     for (const p of air) if (p.state === 'fly') Art.route(ctx, p, p.T.color, t, S.drawing && S.drawing.plane === p, handleR);
@@ -1712,6 +2016,63 @@
     for (const e of S.effects) Art.effect(ctx, e);
     Art.vignette(ctx, night);
     ctx.restore();
+  }
+
+  // Marks on the map stay readable on a phone: at least their designed size
+  // in CSS pixels.
+  const markK = () => Math.max(1, 0.85 / view.scale);
+
+  // ---------- hold fixes ----------
+  function drawFixes(t) {
+    if (!S.fixes.length) return;
+    const d = S.drawing && !S.drawing.done ? S.drawing : null;
+    const last = d && d.plane.path.length ? d.plane.path[d.plane.path.length - 1] : null;
+    const near = last && !d.plane.bubble ? fixNear(last.x, last.y) : null;
+    // Until someone has held an aircraft, Holding Pattern's beacons say "HOLD".
+    const teach = !save.heldOnce && S.level.id === HOLD_TAUGHT && S.screen === 'play';
+    for (const f of S.fixes) {
+      Art.holdFix(ctx, f, t, {
+        k: markK(), ring: holdR(1), count: stackOf(f).length, highlight: !!d && !d.plane.bubble, near: near === f,
+        catchR: Math.max(HOLD_CATCH, 22 / view.scale), teach, night: isNight(),
+      });
+    }
+  }
+
+  // ---------- a runway obstruction ----------
+  // While it's announced, the deer (or dog, or trolley) wanders onto the
+  // runway from the far side; once the runway closes the ops van drives out,
+  // the animal is shooed off the way it came (the trolley is towed away), and
+  // the van goes home.
+  function drawObstruction(t) {
+    const d = S.dis;
+    if (!d || d.kind !== 'runway') return;
+    const ease = q => q * (2 - q);
+    const k = markK(), face = Math.atan2(d.ny, d.nx);
+    let o = { x: d.mid.x, y: d.mid.y, a: face, moving: false, alpha: 1 }, van = null;
+    const along = (pt, off) => ({ x: pt.x + Math.cos(d.a) * off, y: pt.y + Math.sin(d.a) * off });
+    if (d.phase === 'warn') {
+      const q = clamp((S.time - d.since) / (d.at - d.since), 0, 1);
+      const off = 46 * (1 - ease(q));
+      o = Object.assign(o, along({ x: d.mid.x - d.nx * off, y: d.mid.y - d.ny * off }, Math.sin(S.time * 0.7) * 5), { moving: q < 1 });
+    } else {
+      const q = clamp((S.time - d.at) / (d.until - d.at), 0, 1);
+      const from = { x: clamp(d.mid.x + d.nx * 120, 20, W - 20), y: clamp(d.mid.y + d.ny * 120, 20, H - 20) };
+      const park = { x: d.mid.x + d.nx * 15, y: d.mid.y + d.ny * 15 };
+      const vk = q < 0.3 ? ease(q / 0.3) : q < 0.8 ? 1 : 1 - ease((q - 0.8) / 0.2);
+      van = { x: lerp(from.x, park.x, vk), y: lerp(from.y, park.y, vk), h: q < 0.8 ? face + Math.PI : face };
+      if (d.what === 'cart') {
+        if (q >= 0.8) o = Object.assign(o, { x: van.x - d.nx * 13, y: van.y - d.ny * 13, moving: true });
+      } else {
+        const g = q < 0.55 ? 0 : ease(Math.min(1, (q - 0.55) / 0.3));
+        o = Object.assign(o, { x: d.mid.x - d.nx * 80 * g, y: d.mid.y - d.ny * 80 * g, a: face + Math.PI, moving: g > 0 && g < 1, alpha: 1 - Math.max(0, (g - 0.6) / 0.4) });
+      }
+    }
+    if (o.alpha > 0) {
+      ctx.save(); ctx.globalAlpha = o.alpha;
+      Art.obstacle(ctx, d.what, o.x, o.y, o.a, t, o.moving, k);
+      ctx.restore();
+    }
+    if (van) Art.opsVan(ctx, van.x, van.y, van.h, t);
   }
 
   // ---------- the edge of the control zone ----------
@@ -1948,7 +2309,7 @@
 
   // ---------- UI ----------
   const show = (id, on) => $(id).classList.toggle('hidden', !on);
-  const overlays = ['menu', 'brief', 'pause', 'result', 'settings', 'free', 'guest', 'passport'];
+  const overlays = ['menu', 'brief', 'pause', 'result', 'settings', 'free', 'guest', 'passport', 'explain'];
   function only(id) { for (const o of overlays) show(o, o === id); }
 
   const boards = {
@@ -1957,6 +2318,7 @@
     code: new Flap.Board($('hud-code'), 3),
     landed: new Flap.Board($('hud-landed'), 5),
     wind: new Flap.Board($('hud-wind-flaps'), 4),
+    dis: new Flap.Board($('hud-dis-flaps'), 4),
     toast: new Flap.Board($('toast-flaps'), 16),
   };
 
@@ -1969,6 +2331,16 @@
       boards.toast.set('', { stagger: 10, maxSteps: 3 });
       setTimeout(() => show('toast', false), 700);
     }, 2800);
+  }
+
+  // A sentence under the toast: what a disruption is, and (the first time) what to do.
+  let noticeTimer = 0;
+  function notice(text, secs = 6) {
+    const el = $('notice');
+    el.textContent = text;
+    show('notice', !!text);
+    clearTimeout(noticeTimer);
+    if (text) noticeTimer = setTimeout(() => show('notice', false), secs * 1000);
   }
 
   const hudState = {};
@@ -1986,6 +2358,22 @@
       const wind = `${Math.floor(s / 60)}:${pad2(s % 60)}`;
       if (hudState.wind !== wind) { hudState.wind = wind; boards.wind.set(wind, { align: 'right', stagger: 0, maxSteps: 2 }); }
       $('hud-wind').classList.toggle('urgent', s <= 5);
+    }
+    // A disruption's countdown: to when it starts, then (runway, drone) to when it ends.
+    const d = S.dis;
+    const on = !!d && (d.phase === 'warn' || d.kind !== 'wave');
+    if (hudState.disOn !== on) { hudState.disOn = on; show('hud-dis', on); }
+    if (on) {
+      const warn = d.phase === 'warn';
+      const rwy = d.kind === 'runway' ? rwyNumber(d) : '';          // follows a wind shift
+      const label = warn ? { runway: `Rwy ${rwy} closes`, drone: 'Drone zone in', wave: 'Diversions in' }[d.kind]
+        : { runway: `Rwy ${rwy} opens`, drone: 'Drone gone in' }[d.kind];
+      if (hudState.disLabel !== label) { hudState.disLabel = label; $('hud-dis-label').textContent = label; }
+      const s = Math.max(0, Math.ceil((warn ? d.at : d.until) - S.time));
+      const text = `${Math.floor(s / 60)}:${pad2(s % 60)}`;
+      if (hudState.dis !== text) { hudState.dis = text; boards.dis.set(text, { align: 'right', stagger: 0, maxSteps: 2 }); }
+      $('hud-dis').classList.toggle('urgent', warn && s <= 3);
+      $('hud-dis').classList.toggle('closed', !warn);
     }
   }
 
@@ -2009,10 +2397,14 @@
   }
   const STAMP_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/></svg>';
 
+  // Open once the airport before it is cleared, or once it (or any airport
+  // after it) has been: inserting a new airport must never close one that a
+  // player has already reached.
   function isUnlocked(L) {
-    if (L.unlock) return (save.stars[L.unlock] || 0) > 0;
+    if (L.unlock) return cleared(L.unlock);
     const i = LEVELS.indexOf(L);
-    return i === 0 || (save.stars[LEVELS[i - 1].id] || 0) > 0;
+    return i === 0 || cleared(LEVELS[i - 1].id) || cleared(L.id) ||
+      LEVELS.slice(i + 1).some(later => !later.endless && cleared(later.id));
   }
 
   function openMenu() {
@@ -2105,6 +2497,7 @@
     const wx = [];
     // Endless shows its emergencies choice just below, so it isn't repeated here.
     if (L.emergencies && L.emergencies !== 'choice') wx.push('Emergencies');
+    if (L.disruptions) wx.push('Disruptions');
     if (L.storms) wx.push('Storms');
     if (L.windShift) wx.push('Wind shifts');
     if (L.traffic.fuel < 60) wx.push('Low fuel');
@@ -2255,6 +2648,16 @@
     S.screen = 'play';
     only(null);
   }
+  // A card over a paused sky, the first time something new happens.
+  function explain(title, text) {
+    if (S.screen !== 'play') return;
+    S.screen = 'explain';
+    S.drawing = null;
+    $('explain-text').textContent = text;
+    only('explain');
+    new Flap.Board($('explain-flaps'), title.length).set(title, { stagger: 30 });
+  }
+  $('btn-explain-ok').addEventListener('click', resume);
 
   // ---------- free play sheet ----------
   let freeBase = null, freeChoice = null;
@@ -2264,7 +2667,7 @@
     const opts = freeOptions(L);
     for (const btn of document.querySelectorAll('#free-types button')) btn.classList.toggle('hidden', !opts.types.includes(btn.dataset.v));
     show('free-types-row', opts.types.length > 1);
-    for (const k of ['fuel', 'storms', 'wind', 'emergencies']) show(`free-${k}-row`, opts[k]);
+    for (const k of ['fuel', 'storms', 'wind', 'emergencies', 'disruptions']) show(`free-${k}-row`, opts[k]);
     $('free-sub').textContent = `${L.name}, your way. Free play earns no stars and never counts on a leaderboard.`;
     if (S.level !== L) loadLevel(L);
     S.screen = 'free';
@@ -2411,7 +2814,7 @@
   window.addEventListener('keydown', e => {
     if (e.key === 'Escape' || e.key === 'p') {
       if (S.screen === 'play') pause();
-      else if (S.screen === 'pause') resume();
+      else if (S.screen === 'pause' || S.screen === 'explain') resume();
       else if (S.screen === 'settings') closeSettings();
       else if (S.screen === 'free') openBrief(freeBase);
       else if (S.screen === 'passport') closePassport();
@@ -2464,5 +2867,8 @@
     },
     conditionsFor, conditionLevel, conditionLock, CONDITIONS, landingFor, straightIn, openPassport,
     grownUpOK, endlessKey, freeOptions, freeChoices, freePlayLevel, freeSummary, openFree,
+    HOLD_FIXES, isUnlocked, holdingOn, fixNear, holdAt, holdR, stacked, inDrone, planDrone, loadLevel,
+    // Start a disruption now (kind: runway, drone or wave), as the schedule would.
+    disrupt: kind => { S.disTimer = Infinity; return startDisruption(S.level.disruptions || { kinds: DIS_KINDS }, kind); },
     sound: { audio, load, buffers, scape, bus: () => bus } };
 })();
