@@ -1531,8 +1531,9 @@ it current when you do (its "Current state" and roadmap especially).
   board numbers by position. **`isUnlocked`** opens an airport when the one
   before it, it, or any later non-endless airport is cleared, so inserting
   an airport never locks anyone out. `TEACHES.disruptions` is 12.
-- **Disruptions** (v1.29.0): `disruptions: { kinds, every, first }` on a
-  level ('runway', 'drone', 'wave'); free play builds one from its
+- **Disruptions** (v1.29.0; part 2 below): `disruptions: { kinds, every, first }` on a
+  level ('runway', 'drone', 'wave', and since v1.30.0 'balloons', 'display',
+  'cyber'); free play builds one from its
   Disruptions toggle (`DIS_RATE` some/lots, all kinds). `disruptionTick`
   waits for `emergencyBusy()` (an emergency flying, pending, rolling out, a
   closure, police, or 8 s after one ended) and `S.time ≥ 20`, then
@@ -1573,8 +1574,78 @@ it current when you do (its "Current state" and roadmap especially).
     (`tower_drone_1`), never a longer name that starts the same way
     (`tower_drone_gone_1`): before v1.29.0 the drone's announcement could
     play "the drone's gone".
-  - Hooks: `__finalApproach.disrupt(kind)` starts one now; also `holdAt`,
-    `fixNear`, `stacked`, `planDrone`, `loadLevel`, `isUnlocked`, `HOLD_FIXES`.
+  - Hooks: `__finalApproach.disrupt(kind)` starts one now (any of the six
+    kinds; false when it can't, e.g. balloons at night); also `holdAt`,
+    `fixNear`, `stacked`, `planDrone`, `loadLevel`, `isUnlocked`, `HOLD_FIXES`,
+    and for part 2 `inBalloon`, `balloonAt`, `inDisplay`, `displayLead`,
+    `corridorPos`, `shown`, `restoreSystems`, `emergencyBusy`.
+- **Disruptions, part 2** (v1.30.0): three more kinds on the same machinery
+  (`planBalloons`, `planDisplay`, `planCyber` in `startDisruption`; `d.dur`
+  sets `until` for the two whose length is a crossing). Placement:
+  Crossroads `['drone', 'balloons']`, Running on Fumes `['display']`, Heavy
+  Metal `['runway', 'cyber']`, Night Shift adds `'cyber'`; free play's
+  Some/Lots use all six (`DIS_KINDS`). `fairWeather()` keeps balloons and the
+  display out of dusk, night (Night Shift, the Dusk and Night conditions),
+  fog and any shift with storm cells: their planner returns null and another
+  kind is tried. `save.disSeen` keys the first-time card by kind, with
+  `gremlin` apart from `cyber`.
+  - **Balloons**: `S.dis.balloons` is one to three (two or three at Lots),
+    each on its own parallel straight line (`BALLOON_GROUP` offsets: across
+    and behind), at `BALLOON_SPEED` 20 units/s; each reaches the airspace's
+    edge as it comes on, and `until` is when the last has drifted out
+    (~35–60 s). `balloonAt(d, b, when)` is exact for any time (before `at`
+    it's further out, drifting in), so `clearOfStorms` refuses arrival paths
+    within `BALLOON_R` (32) + 30 of where any balloon will be. Flying inside a
+    balloon's 32-unit bubble while `on` diverts ('Balloon', a strike). Lines
+    keep their bubbles clear of every hold stack (`clearOfFixes`) and don't
+    come in from the top edge, under the HUD (`underTopEdge`). Drawn by
+    `drawBalloons` (ground: the dotted drift line `Art.driftLine`, bubbles,
+    soft shadows; sky: `Art.balloon`, upright, striped gores from
+    `Art.BALLOON_LOOKS`, basket, burner flicker; while announced, a marker at
+    each entry point with the countdown filling round it).
+  - **Air display**: the Kestrels (`DISPLAY_TEAM`), five jets (`KESTRELS`
+    formation, `KESTREL_SMOKE` colours) along a straight corridor across the
+    map, half-width `DISPLAY_HW` 34, clear of the fixes, shown from the
+    announcement (10 s). On, the leader is at `displayLead(d, t)` (120
+    units/s from 150 before the edge to 90 past it: 7–10 s); an aircraft
+    inside the band within `DISPLAY_ZONE` (60 behind to 24 ahead of the
+    leader) diverts ('Air display'). Arrival paths may not come within
+    hw + 30 of the line at any time until a second after it ends. The band
+    shows ahead of the formation only; the smoke fades for 5 s after
+    (`S.smokeFade`). `Art.corridor`, `Art.displayJet`, `Art.smoke`.
+  - **Cyber attack / system gremlin**: `planCyber` sets `gremlin:
+    !grownUpOK()` (guests and children's profiles always get the gremlin).
+    5 s' warning ("Network fault"), then 15 s (`DIS_FOR.cyber`):
+    `startCyber` creates `S.radar = { beam, seen }` and shows `#ransom` (a
+    `.plate` inside `#hud`, so `underHud` keeps arrivals from under it; three
+    14-tile boards in `boards.ransom`, scrambled to junk and flipped to
+    `RANSOM.cyber.note` / `RANSOM.gremlin.note`). **Radar fault**:
+    `radarSweep` turns the beam once per `SWEEP` (1 s) round the map's centre
+    and re-blips (`blip`) an aircraft when the beam crosses its bearing;
+    `shown(p)` gives a proxy (`Object.create(p)` with the blip's x, y, rot and
+    route) that render, `drawConflicts` and `pickAt` use, so you grab what
+    you see. The simulation never reads `S.radar`. Landing aircraft are drawn
+    live (the tower can see the runway). **Comms delay**: while `cyberOn()`,
+    pointerdown draws into `S.drawing.into`, a copy (`Object.create(p)` with
+    its own path, landing, hold, `pendingOf`, `flipped`); `endDraw` makes it
+    `p.pend = { q, at }` (`COMMS_DELAY` 2 s, drawn dashed amber with
+    "SENDING" and a filling clock), and `update` calls `applyRoute` when it's
+    due: the runway may have closed or the wind turned meanwhile (then it
+    goes around), and a hold re-takes a free slot. The aircraft flies its old
+    route until then. **Restore backup** (`#btn-restore`) must be held
+    `RESTORE_HOLD` 3 s of real time (`restoreFrame`, from `frame`; pointer
+    or Space/Enter); letting go resets it. `endCyber` clears the radar and
+    flips the note to "Systems restored" / "Gremlin gone, bye bye!".
+    `finish()` and `loadLevel` hide it at once.
+  - **Audio names the code uses** (recorded later; until then `say()` deals
+    nothing and `playSound()` returns false, and the effects fall back to
+    small synth stand-ins in `sfx`): tower lines `tower_balloons`,
+    `tower_balloons_gone`, `tower_display`, `tower_display_clear`,
+    `tower_cyber`, `tower_cyber_restored`, `tower_gremlin`,
+    `tower_gremlin_gone` (each recorded as `<prefix>_1`, `_2`); effects
+    `balloon_burner` (as they come on, then now and then), `display_flypast`,
+    `cyber_glitch` and `gremlin_giggle` (as the board scrambles), and
+    `restore_ok`.
 - **`window.__finalApproach`** exposes the state for Playwright checks,
   plus `update` (step the simulation, e.g. ten minutes in a loop),
   `queueArrival`, `clearOfStorms`, `stormAt`, `clearOfTraffic`, `track`,

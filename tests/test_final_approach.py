@@ -614,8 +614,15 @@ def test_disruptions_are_taught_before_they_turn_up():
     hld = codes.index("HLD")
     assert kinds_at[hld] == ["runway"]
     assert not any(kinds_at[:hld])                             # the first airports stay gentle
-    assert all(k in ("runway", "drone", "wave") for ks in kinds_at for k in ks)
+    assert not kinds_at[codes.index("RTW")]
+    assert all(k in ("runway", "drone", "wave", "balloons", "display", "cyber") for ks in kinds_at for k in ks)
     assert not kinds_at[codes.index("INF")]                    # Endless: not yet
+    # every kind turns up somewhere in the career, after Holding Pattern
+    assert {k for ks in kinds_at for k in ks} == {"runway", "drone", "wave", "balloons", "display", "cyber"}
+    # real balloons and display teams don't fly at night
+    for entry, kinds in zip(entries, kinds_at):
+        if "theme: 'night'" in entry or "storms:" in entry:
+            assert "balloons" not in kinds and "display" not in kinds, entry[:60]
 
 
 def test_free_play_disruptions_are_checked_and_old_pages_still_count():
@@ -648,3 +655,60 @@ def test_the_game_page_has_the_disruption_parts():
     for needle in ('id="hud-dis"', 'id="hud-dis-flaps"', 'id="notice"', 'id="explain"', 'id="btn-explain-ok"',
                    'id="free-disruptions-row"', 'data-k="disruptions"'):
         assert needle in body, needle
+
+
+# --- disruptions, part 2 (v1.30.0) ------------------------------------------------
+
+def test_the_game_page_has_the_ransom_note_and_restore_backup():
+    body = page()
+    for needle in ('id="ransom"', 'id="ransom-1"', 'id="ransom-2"', 'id="ransom-3"', 'id="btn-restore"', 'class="gremlin-face"'):
+        assert needle in body, needle
+    # it's a plate on the HUD, so arrivals are never placed under it
+    assert '<div class="plate hidden" id="ransom"' in body
+
+
+def test_the_cyber_attack_is_a_gremlin_unless_grown_up_and_nothing_scary_for_children():
+    js = (STATIC / "game.js").read_text(encoding="utf-8")
+    assert "gremlin: !grownUpOK()" in js
+    gremlin = js.split("gremlin: { note: [")[1].split("]")[0]
+    assert "Gremlin in" in gremlin and "BTC" not in gremlin and "locked" not in gremlin.lower()
+    assert "'Systems locked', 'Pay 40 BTC', 'To restore'" in js
+    # every note row fits the 14-tile board
+    for row in re.findall(r"'([^']*)'", js.split("const RANSOM = {")[1].split("};")[0]):
+        assert len(row) <= 14, row
+
+
+def test_disruption_part_two_uses_the_agreed_sound_names():
+    """The recordings are made afterwards (tools/final_approach_sounds.py), so
+    the game asks for these exact names and copes while they're missing."""
+    js = (STATIC / "game.js").read_text(encoding="utf-8")
+    for prefix in ("tower_balloons", "tower_balloons_gone", "tower_display", "tower_display_clear",
+                   "tower_cyber", "tower_cyber_restored", "tower_gremlin", "tower_gremlin_gone"):
+        assert f"'{prefix}'" in js, prefix
+    for name in ("balloon_burner", "display_flypast", "cyber_glitch", "restore_ok", "gremlin_giggle"):
+        assert f"playSound('{name}'" in js, name
+    # a missing file is a no-op: playSound says so, and say() deals nothing
+    assert "if (!actx || !buffers[name]) { if (actx) load(name); return false; }" in js
+    assert "if (!AUDIO[name] || !actx) return Promise.resolve(null);" in js
+
+
+def test_every_disruption_kind_is_explained_the_first_time():
+    js = (STATIC / "game.js").read_text(encoding="utf-8")
+    kinds = re.findall(r"'(\w+)'", js.split("const DIS_KINDS = [")[1].split("]")[0])
+    assert kinds == ["runway", "drone", "wave", "balloons", "display", "cyber"]
+    how = js.split("const DIS_HOW = {")[1].split("\n  };")[0]
+    title = js.split("const DIS_TITLE = {")[1].split("\n  };")[0]
+    for key in kinds + ["gremlin"]:
+        assert re.search(rf"\b{key}: '", how), key
+        assert re.search(rf"\b{key}: '", title), key
+
+
+def test_free_play_disruptions_still_take_the_same_three_values():
+    """Part 2 adds kinds, not settings: Some and Lots now mean all six, and a
+    shift from before or after v1.30.0 is checked the same way."""
+    c = client()
+    louis = profile(c, "Louis")
+    for value in ("off", "some", "lots"):
+        assert post(c, louis, shift(free=free(disruptions=value))).status_code == 200, value
+    for bad in ("balloons", "cyber", ["balloons"]):
+        assert post(c, louis, shift(free=free(disruptions=bad))).status_code == 400, bad

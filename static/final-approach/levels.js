@@ -14,9 +14,13 @@
 //                   where the player picks Off / Some / Lots on the boarding pass.
 // disruptions       { kinds, every: [min, max], first } for an airport that has them:
 //                   'runway' (an obstruction closes one), 'drone' (a circle of closed
-//                   airspace near an approach) and 'wave' (a burst of diverted arrivals).
+//                   airspace near an approach), 'wave' (a burst of diverted arrivals),
+//                   'balloons' (hot-air balloons drift across; daytime only), 'display'
+//                   (a display team crosses along a corridor) and 'cyber' (the tower's
+//                   systems are hacked, or a gremlin gets in for children and guests).
 //                   Always announced with a countdown, one at a time, never during an
-//                   emergency. Holding Pattern teaches them.
+//                   emergency. Holding Pattern teaches them; the first of each kind on a
+//                   device explains itself.
 // holds             hold fixes: beacons near the edges, each a key into HOLD_FIXES with
 //                   a position. A route let go at one circles the aircraft there until
 //                   it's drawn out. Shown from Holding Pattern on, and everywhere once
@@ -124,7 +128,7 @@ const LEVELS = [
       { kind: 'short', x: 330, y: 170, angle: 40, length: 200 },
       { kind: 'pad', x: 760, y: 190 },
     ],
-    disruptions: { kinds: ['drone'], every: [70, 95], first: 40 },
+    disruptions: { kinds: ['drone', 'balloons'], every: [70, 95], first: 40 },
     holds: [{ fix: 'BIG', x: 865, y: 500 }, { fix: 'TIM', x: 95, y: 290 }],
     traffic: { types: { prop: 1, jet: 1, heli: 0.8 }, interval: [6, 3.8], maxPlanes: 6, fuel: 85 },
   },
@@ -136,6 +140,7 @@ const LEVELS = [
       { kind: 'short', x: 780, y: 430, angle: 180, length: 180 },
       { kind: 'pad', x: 520, y: 150 },
     ],
+    disruptions: { kinds: ['display'], every: [85, 110], first: 45 },
     holds: [{ fix: 'LAM', x: 865, y: 175 }, { fix: 'OCK', x: 140, y: 505 }],
     traffic: { types: { prop: 1, jet: 1, heli: 0.8 }, interval: [6, 3.8], maxPlanes: 6, fuel: 45 },
   },
@@ -173,7 +178,7 @@ const LEVELS = [
       { kind: 'short', x: 800, y: 470, angle: 180, length: 170 },
       { kind: 'pad', x: 820, y: 250 },
     ],
-    disruptions: { kinds: ['runway'], every: [60, 85], first: 35 },
+    disruptions: { kinds: ['runway', 'cyber'], every: [60, 85], first: 35 },
     holds: [{ fix: 'BOV', x: 90, y: 315 }, { fix: 'TIM', x: 360, y: 510 }],
     traffic: { types: { prop: 1, jet: 1.2, heavy: 1, heli: 0.8 }, interval: [5.5, 3.4], maxPlanes: 7, fuel: 85 },
   },
@@ -186,7 +191,7 @@ const LEVELS = [
       { kind: 'pad', x: 780, y: 470 },
     ],
     storms: 1, windShift: 50,
-    disruptions: { kinds: ['runway', 'drone', 'wave'], every: [50, 70], first: 35 },
+    disruptions: { kinds: ['runway', 'drone', 'wave', 'cyber'], every: [50, 70], first: 35 },
     holds: [{ fix: 'OCK', x: 140, y: 505 }, { fix: 'WIL', x: 480, y: 505 }, { fix: 'LAM', x: 865, y: 300 }],
     traffic: { types: { prop: 1, jet: 1, heavy: 0.6, heli: 0.8 }, interval: [5.5, 3.2], maxPlanes: 7, fuel: 80 },
   },

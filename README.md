@@ -100,6 +100,14 @@ shifts make it harder airport by airport.
   trolley, a drone closing a patch of sky, and a wave of diversions from
   another airport. Each is announced on the board with a countdown, one at a
   time, never during an emergency, and explained the first time it happens.
+- **More disruptions** (v1.30.0): hot-air balloons drifting across
+  (Crossroads; daytime only), the Kestrels display team crossing along a
+  corridor shown in advance (Running on Fumes), and a cyber attack on the
+  tower (Heavy Metal and Night Shift): the board flips to a ransom note,
+  the radar only updates once a second, new routes take two seconds to
+  reach the pilot, and holding Restore backup for three seconds ends it.
+  Children's profiles and guests get a cheeky gremlin in the wires instead.
+  Free play's Disruptions toggle brings all six kinds.
 - **Conditions** on any airport you've cleared: Dusk (an evening rush as
   it gets dark), Night (arrivals seen a second later), Snow (icy runways:
   line up within 45°), Storm (an extra storm cell) and Fog (follow the
