@@ -279,6 +279,8 @@ def test_aircraft_fly_what_they_are_told_at_real_rates():
         return { state: a.state, kinds: s.events.map(e => e.kind), stats: s.stats };
       };
       out.good = ils(300, 3000, -4); out.steep = ils(340, 3000, -4); out.high = ils(240, 7000, 3);
+      // Already lined up when cleared: on the centreline, or just beside it and parallel.
+      out.onLine = ils(270, 2500, 0); out.beside = ils(270, 2500, 0.2);
       // Head on at the same level: the alert comes a minute before the loss.
       s = Sim.create();
       s.spawn({ cs: 'SKY412', type: 'A320', x: 25, y: 0, hdg: 270, alt: 5000, ias: 220 });
@@ -306,6 +308,8 @@ def test_aircraft_fly_what_they_are_told_at_real_rates():
     assert out["good"]["kinds"][0] == "established" and "glideslope" in out["good"]["kinds"] and "through" not in out["good"]["kinds"]
     assert out["steep"]["state"] != "landed" and "through" in out["steep"]["kinds"]
     assert out["high"]["state"] != "landed" and "through" in out["high"]["kinds"]
+    for lined_up in ("onLine", "beside"):
+        assert out[lined_up]["state"] == "landed" and out[lined_up]["kinds"][0] == "established", lined_up
     kinds = [k for k, _ in out["conflict"]]
     assert kinds == ["stca", "los"]
     assert 55 <= out["conflict"][1][1] - out["conflict"][0][1] <= 65

@@ -244,7 +244,11 @@
       const radius = tas(ac.ias, ac.alt) / 3600 / (ac.T.turn * RAD);
       const lead = radius * (1 - Math.cos(Math.min(cut, 90) * RAD)) + 0.03;
       const crossed = prevY !== null && Math.sign(prevY) !== Math.sign(ac.y) && prevY !== 0;
-      if ((converging && Math.abs(ac.y) <= lead) || crossed) {
+      // Already lined up: on (or all but on) the centreline, pointing down it.
+      // It neither closes on the line nor crosses it, so it would otherwise
+      // never capture and fly on through the airport.
+      const aligned = Math.abs(ac.y) <= 0.3 && cut <= 15;
+      if ((converging && Math.abs(ac.y) <= lead) || crossed || aligned) {
         const high = ac.alt > World.gsAlt(ac.x) + 150;
         if (cut <= 30.5 && !high && Math.abs(ac.y) < 1) {
           ac.loc = true; ac.mode = 'loc'; ac.thdg = null; ac.dir = null; ac.thru = false;
