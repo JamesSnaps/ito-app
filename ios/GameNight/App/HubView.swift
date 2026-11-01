@@ -135,9 +135,12 @@ struct HubView: View {
         .sheet(item: $pairs.request) { request in PairApprovalSheet(request: request) }
         .task(id: watchingPairs) {
             guard watchingPairs else { return }
+            // Wait first: closing the scanner turns watching back on while
+            // its link is still opening, and a game may be about to appear.
             while !Task.isCancelled {
-                await pairs.check()
                 try? await Task.sleep(for: .seconds(4))
+                if Task.isCancelled { return }
+                await pairs.check()
             }
         }
         .alert("Couldn’t open that link", isPresented: Binding(get: { linkError != nil }, set: { if !$0 { linkError = nil } })) {

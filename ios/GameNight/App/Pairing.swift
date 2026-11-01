@@ -20,6 +20,10 @@ final class PairWatcher {
     func check() async {
         guard request == nil, let me = Faces.shared.me else { return }
         guard let waiting = try? await AppSettings.client.pairRequests(token: me.token) else { return }
+        // Watching may have stopped while this was asked (a game opened, and
+        // the hub cancelled the poll), or a scanned request may be up now:
+        // show nothing over either.
+        guard !Task.isCancelled, request == nil else { return }
         if let next = waiting.first(where: { !seen.contains($0.code) }) { show(next) }
     }
 
