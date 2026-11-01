@@ -469,3 +469,54 @@ def test_profiles_can_be_made_anywhere_and_shifts_say_where(monkeypatch):
 def test_the_game_page_asks_whos_playing():
     body = page()
     assert 'id="guest"' in body and 'id="btn-guest-ok"' in body and "/me?back=" in body
+
+
+# --- conditions and stamps (v1.27.0) --------------------------------------------
+
+def test_each_airport_offers_the_conditions_that_differ_from_it():
+    from games.final_approach import game
+    offered = {a["code"]: game.conditions_for(a) for a in game.airports().values()}
+    assert offered["MDS"] == ("dusk", "night", "snow", "storm", "fog")
+    assert offered["XRD"] == ("dusk", "night", "storm", "fog")          # desert: no snow
+    assert offered["WVN"] == ("dusk", "night", "storm", "fog")          # already snow
+    assert offered["NGT"] == ("snow", "storm", "fog")                   # already night
+    assert offered["INF"] == ()
+    assert sum(len(v) for v in offered.values()) == 45
+
+
+def test_a_condition_earns_a_stamp_not_airport_stars():
+    c = client()
+    louis = profile(c, "Louis")
+    post(c, louis, shift(condition="night", strikes=1))
+    post(c, louis, shift(condition="night", strikes=0))                 # better: stars rise, date stays
+    post(c, louis, shift(condition="fog", outcome="crash", landed=3))   # no stamp for a lost shift
+    data = c.get("/final-approach/api/stats").get_json()
+    player = data["players"][0]
+    assert player["stars"] == {} and player["total_stars"] == 0
+    assert set(player["stamps"]) == {"1"} and player["stamps"]["1"]["night"]["stars"] == 3
+    assert player["total_stamps"] == 1
+    first = data["recent"][-1]
+    assert first["condition"] == "night" and first["condition_at"] == "at night"
+    body = c.get("/final-approach/stats").get_data(as_text=True)
+    assert "cleared at night" in body and "?passport=Louis" in body and "in fog" in body
+
+
+def test_conditions_are_checked_against_the_airport():
+    c = client()
+    louis = profile(c, "Louis")
+    for bad in (
+        shift(condition="sandstorm"),
+        shift(level=4, landed=16, condition="snow"),                    # Crossroads has no snow
+        shift(level=9, landed=24, condition="night"),                   # Night Shift is already night
+        shift(level=10, outcome="crash", landed=3, duration=300, condition="fog"),   # nor Endless
+        shift(condition="fog", free=free()),                            # free play has no conditions
+    ):
+        assert post(c, louis, bad).status_code == 400, bad
+    assert post(c, louis, shift(level=9, landed=24, condition="snow")).status_code == 200
+
+
+def test_the_game_page_has_the_passport():
+    body = page()
+    for needle in ('id="passport"', 'id="btn-passport"', 'id="pass-conds"', 'id="result-stamp"',
+                   'final-approach/passport.js', 'id="fa-ink"'):
+        assert needle in body, needle

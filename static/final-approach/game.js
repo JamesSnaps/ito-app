@@ -40,7 +40,7 @@
       stars: {}, best: 0, bestCalm: 0, muted: false,
       vol: { sfx: 0.8, voice: 0.9, music: 0.8 },
       large: false, haptics: true, calm: false, taught: false, outbox: [],
-      emergencies: 'some', bestBy: {}, grownUp: true, free: {},
+      emergencies: 'some', bestBy: {}, grownUp: true, free: {}, stamps: {}, passportNew: false,
     };
     let saved = {};
     try { saved = JSON.parse(localStorage.getItem(SAVE_KEY)) || {}; } catch { /* fresh start */ }
@@ -313,6 +313,8 @@
     lose:      () => playSound('chime_fail', { vol: 0.7 }) || [392, 330, 262].forEach((f, i) => tone(f, 0.3, { type: 'triangle', vol: 0.1, delay: i * 0.15 })),
     wind:      () => playSound('wind_shift', { vol: 0.7 }) || tone(260, 0.5, { type: 'triangle', vol: 0.08, slide: 240 }),
     rattle:    () => playSound('flap_rattle', { vol: 0.35 }),
+    // A rubber stamp coming down on the passport.
+    thunk:     () => { noise(0.07, 0.4, 260, 'lowpass'); tone(95, 0.14, { vol: 0.16, slide: -45 }); },
     flap:      () => {
       if (!actx || actx.currentTime - lastFlap < 0.03) return;
       lastFlap = actx.currentTime;
@@ -337,7 +339,9 @@
     const now = actx.currentTime;
     const playing = S.screen === 'play' || S.screen === 'ending';
 
-    const bedName = 'bed_' + S.level.theme;
+    // Conditions bring their own background: night and snow have one each.
+    const c = S.level.condition;
+    const bedName = 'bed_' + (c === 'night' || (c === 'dusk' && S.duskK > 0.6) ? 'night' : c === 'snow' ? 'snow' : S.level.theme);
     if (scape.bedName !== bedName) {
       if (scape.bed) scape.bed.stop(1.5);
       scape.bedName = bedName;
@@ -388,6 +392,7 @@
     canvas.style.width = w + 'px';
     canvas.style.height = h + 'px';
     view.scale = Math.min(w / W, h / H);
+    view.w = w; view.h = h;
     view.x = (w - W * view.scale) / 2;
     view.y = (h - H * view.scale) / 2;
     clearTimeout(terrainTimer);
@@ -410,12 +415,26 @@
   function paintTerrain() {
     if (!S.level) return;
     const px = Math.min(3, Math.max(1, view.scale * view.dpr));
-    S.terrain = Art.buildTerrain(S.level, THEMES[S.level.theme], px, Art.COLORS.heli.main);
+    // Paint past the airspace to the edges of the screen: the airspace stays
+    // 960 x 600 on every device, the landscape fills whatever is around it.
+    const bleed = {
+      x: Math.ceil(Math.max(0, (view.w / view.scale - W) / 2)) + 6,
+      y: Math.ceil(Math.max(0, (view.h / view.scale - H) / 2)) + 6,
+    };
+    S.terrain = Art.buildTerrain(S.level, S.theme, px, Art.COLORS.heli.main, bleed);
+    // Dusk fades into a second, after-dark painting of the same airport.
+    S.terrainNight = S.duskTheme ? Art.buildTerrain(S.level, S.duskTheme, px, Art.COLORS.heli.main, bleed) : null;
+    S.bounds = S.terrain.bounds;
+    // Weather spreads over the whole painting.
+    if (S.snow.length) S.snow = Art.snowfall(140);
+    if (S.rain.length) S.rain = Art.rainfall(220);
   }
 
   function loadLevel(level) {
-    const th = THEMES[level.theme];
+    const th = themeFor(level);
     Object.assign(S, {
+      theme: th, duskTheme: level.condition === 'dusk' ? Art.nightTheme(th) : null, duskK: 0,
+      rain: level.condition === 'storm' ? Art.rainfall(220) : [],
       level, planes: [], storms: [], effects: [], incoming: [], conflicts: [],
       landed: 0, lives: MAX_LIVES, time: 0, spawnTimer: 1,
       flipped: false, windTimer: level.windShift || 0, windWarned: false,
@@ -469,7 +488,8 @@
   }
   function spawnInterval() {
     const [a, b] = S.level.traffic.interval;
-    return lerp(a, b, progress()) * (0.85 + Math.random() * 0.3);
+    const rush = S.level.rushFrom != null && progress() >= S.level.rushFrom ? 0.8 : 1;
+    return lerp(a, b, progress()) * rush * (0.85 + Math.random() * 0.3);
   }
   function pickType() {
     const entries = Object.entries(S.level.traffic.types);
@@ -640,6 +660,59 @@
     }
     return L.emergencies || null;
   }
+  // ---------- conditions ----------
+  // A cleared airport again, harder: each condition changes how it looks and
+  // one rule. Fixed per condition, so they're comparable and earn a stamp
+  // (best stars kept per condition, apart from the airport's own stars).
+  const CONDITIONS = {
+    dusk:  { name: 'Dusk', wx: 'Dusk', ink: '#c0582a', at: 'at dusk',
+             rule: 'Evening rush: in the last third, arrivals come closer together.' },
+    night: { name: 'Night', wx: 'Night', ink: '#2d4f8f', at: 'at night',
+             rule: 'Seen late: each arrival shows a second later than usual.' },
+    snow:  { name: 'Snow', wx: 'Snow · icy runways', ink: '#2f86a6', at: 'in the snow',
+             rule: 'Icy runways: line up within 45° of the runway, or the approach won\'t lock on.' },
+    storm: { name: 'Storm', wx: 'Storms', ink: '#6b3f93', at: 'in a storm',
+             rule: 'Storm cells: at least two, one more than usual. Fly round them.' },
+    fog:   { name: 'Fog', wx: 'Fog · low visibility', ink: '#55666b', at: 'in fog',
+             rule: 'Low visibility: follow the approach lights all the way in, from the runway sign.' },
+  };
+  const STORMS_TAUGHT = 6;
+  const FOG_FINAL = 80;
+  function conditionsFor(L) {
+    if (L.endless) return [];
+    const out = [];
+    if (L.theme !== 'night') out.push('dusk', 'night');
+    if (L.theme !== 'snow' && L.theme !== 'desert') out.push('snow');
+    out.push('storm', 'fog');
+    return out;
+  }
+  // Why a condition can't be played yet, or null when it can.
+  function conditionLock(L, c) {
+    if (!cleared(L.id)) return `Clear ${L.name} first`;
+    if (c === 'storm' && !cleared(STORMS_TAUGHT)) return `Clear ${LEVELS.find(l => l.id === STORMS_TAUGHT).name} first`;
+    return null;
+  }
+  function conditionLevel(L, c) {
+    const lv = Object.assign({}, L, { base: L, condition: c });
+    if (c === 'dusk') lv.rushFrom = 2 / 3;
+    if (c === 'night') lv.traffic = Object.assign({}, L.traffic, { warning: Math.max(1, (L.traffic.warning || 2) - 1) });
+    if (c === 'snow') lv.alignMax = Math.PI / 4;
+    if (c === 'storm') lv.storms = Math.max(2, (L.storms || 0) + 1);
+    if (c === 'fog') lv.finalMin = FOG_FINAL;
+    return lv;
+  }
+  function themeFor(level) {
+    let th = THEMES[level.theme];
+    if (level.condition === 'snow') th = Art.snowTheme(th, THEMES.snow);
+    if (level.condition === 'night' || (level.condition === 'snow' && th.night)) th = Art.nightTheme(th);
+    if (level.condition === 'storm') th = Object.assign({}, th, { stormy: true });
+    return th;
+  }
+  // Dusk: day until a third of the way, dark by 85%.
+  const duskAt = k => clamp((k - 0.3) / 0.55, 0, 1);
+  const isNight = () => (S.duskTheme ? S.duskK > 0.55 : !!(S.theme && S.theme.night));
+  const stampsCount = () => Object.values(save.stamps || {}).reduce((n, st) => n + Object.keys(st).length, 0);
+
   // ---------- free play ----------
   // Any cleared airport, your way. The toggles build a new level object from
   // the airport, which runs like any other; `free` on it means nothing is
@@ -843,6 +916,8 @@
     if (S.level) {
       Art.updateSky(S.sky, dt);
       if (S.snow.length) Art.updateSnow(S.snow, dt, clock);
+      if (S.rain.length) Art.updateRain(S.rain, dt);
+      if (S.duskTheme) S.duskK = duskAt(progress());
     }
 
     if (S.screen === 'ending') {
@@ -1094,7 +1169,8 @@
     move(p, p.T.speed * 1.2 * dt);
     p.rot += angDiff(p.rot, p.heading) * Math.min(1, dt * 4);
     p.alpha = Math.max(0.25, p.alpha - dt * 0.4);
-    if (p.x < -40 || p.x > W + 40 || p.y < -40 || p.y > H + 40) p.state = 'gone';
+    const Bd = S.bounds || { x0: 0, y0: 0, x1: W, y1: H };
+    if (p.x < Bd.x0 - 40 || p.x > Bd.x1 + 40 || p.y < Bd.y0 - 40 || p.y > Bd.y1 + 40) p.state = 'gone';
   }
 
   function checkSeparation(dt) {
@@ -1158,8 +1234,16 @@
     S.overTimer = delay;
     $('btn-pause').disabled = true;
     const L = S.level;
+    S.newStamp = false;
     if (L.free) {
       S.newBest = false;          // free play: nothing to earn
+    } else if (L.condition) {
+      if (outcome === 'win') {
+        const book = save.stamps[L.id] = save.stamps[L.id] || {};
+        const had = book[L.condition];
+        book[L.condition] = { stars: Math.max(had ? had.stars : 0, S.lives), at: had ? had.at : new Date().toISOString() };
+        if (!had) { S.newStamp = true; save.passportNew = true; }
+      }
     } else if (L.endless) {
       if (S.assisted) {
         S.newBest = S.landed > (save.bestCalm || 0);
@@ -1183,6 +1267,7 @@
       medals: S.medals,
       emergencies: L.emergencies === 'choice' ? (S.endlessKey || endlessKey()) : undefined,
       free: L.free ? Object.assign({}, L.free, { types: L.free.types.slice() }) : undefined,
+      condition: L.condition || undefined,
     });
   }
 
@@ -1303,6 +1388,15 @@
         if (n > (save.bestBy[v] || 0)) { save.bestBy[v] = n; changed = true; }
       }
       if (player.endless_best_calm > (save.bestCalm || 0)) { save.bestCalm = player.endless_best_calm; changed = true; }
+      for (const [id, book] of Object.entries(player.stamps || {})) {
+        for (const [c, got] of Object.entries(book)) {
+          const mine = (save.stamps[id] || {})[c];
+          if (!mine || got.stars > mine.stars) {
+            save.stamps[id] = Object.assign({}, save.stamps[id], { [c]: { stars: Math.max(got.stars, mine ? mine.stars : 0), at: mine ? mine.at : got.at } });
+            changed = true;
+          }
+        }
+      }
       if (changed) persist();
     }
     if (S.screen === 'menu') {
@@ -1478,7 +1572,12 @@
       const pt = { x: lerp(from.x, x, i / n), y: lerp(from.y, y, i / n) };
       p.path.push(pt);
       d.last = pt;
+      landingMiss = null;
       const end = landingFor(p, pt);
+      if (!end && landingMiss && !d.missShown) {
+        d.missShown = true;
+        addText(pt.x, pt.y - 20, landingMiss, '#ffffff', 13);
+      }
       if (end) {
         p.path.push({ x: end.x, y: end.y });
         p.landing = end;
@@ -1504,9 +1603,33 @@
       if (dist(pt.x, pt.y, zx, zy) > 26) continue;
       const back = p.path.length >= 4 ? p.path[p.path.length - 4] : { x: p.x, y: p.y };
       const dir = dist(back.x, back.y, pt.x, pt.y) > 2 ? Math.atan2(pt.y - back.y, pt.x - back.x) : p.heading;
-      if (Math.abs(angDiff(dir, end.angle)) < 1.2) return end;
+      const off = Math.abs(angDiff(dir, end.angle));
+      if (off >= 1.2) continue;
+      // Snow: icy runways need a straighter approach.
+      if (S.level.alignMax && off >= S.level.alignMax) { landingMiss = 'Icy runway: line up straighter'; continue; }
+      // Fog: the last stretch has to follow the approach lights in.
+      if (S.level.finalMin && !straightIn(p, end, S.level.finalMin)) { landingMiss = 'Fog: follow the lights in'; continue; }
+      return end;
     }
     return null;
+  }
+  let landingMiss = null;
+  // Does the route's last `len` units (back from the threshold) stay on the
+  // runway's extended centre line? The aircraft's own position counts as the
+  // route's start, so one already on final passes.
+  function straightIn(p, end, len) {
+    const ux = Math.cos(end.angle), uy = Math.sin(end.angle);
+    const pts = [{ x: p.x, y: p.y }].concat(p.path);
+    let run = 0;
+    for (let i = pts.length - 1; i >= 0; i--) {
+      const q = pts[i];
+      const along = (q.x - end.x) * ux + (q.y - end.y) * uy;
+      const side = Math.abs(-(q.x - end.x) * uy + (q.y - end.y) * ux);
+      if (side > 14 || along > 6) return false;
+      if (i < pts.length - 1) run += dist(q.x, q.y, pts[i + 1].x, pts[i + 1].y);
+      if (run >= len) return true;
+    }
+    return false;
   }
 
   // ---------- rendering ----------
@@ -1518,26 +1641,42 @@
     if (!S.level || !S.terrain) return;
     const k = view.dpr * view.scale;
     ctx.setTransform(k, 0, 0, k, view.dpr * view.x, view.dpr * view.y);
+    const Bd = S.bounds || { x0: 0, y0: 0, x1: W, y1: H };
+    const BW = Bd.x1 - Bd.x0, BH = Bd.y1 - Bd.y0;
     ctx.save();
-    ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
+    ctx.beginPath(); ctx.rect(Bd.x0, Bd.y0, BW, BH); ctx.clip();
 
-    const th = THEMES[S.level.theme];
-    ctx.drawImage(S.terrain, 0, 0, W, H);
+    const th = S.theme;
+    const night = isNight();
+    ctx.drawImage(S.terrain, Bd.x0, Bd.y0, BW, BH);
+    if (S.terrainNight && S.duskK > 0) {
+      ctx.globalAlpha = S.duskK;
+      ctx.drawImage(S.terrainNight, Bd.x0, Bd.y0, BW, BH);
+      ctx.globalAlpha = 1;
+      // golden light on the way down
+      const gold = Math.sin(Math.PI * Math.min(1, S.duskK * 1.4)) * 0.16;
+      if (gold > 0.01) { ctx.fillStyle = `rgba(255,140,60,${gold})`; ctx.fillRect(Bd.x0, Bd.y0, BW, BH); }
+    }
+    if (th.stormy) { ctx.fillStyle = 'rgba(20,28,40,0.28)'; ctx.fillRect(Bd.x0, Bd.y0, BW, BH); }
     if (th.sea) Art.foam(ctx, t);
+    ctx.globalAlpha = S.duskTheme ? 1 - S.duskK * 0.8 : 1;
     Art.cloudLayer(ctx, S.sky, true);
+    ctx.globalAlpha = 1;
+    if (S.level.condition === 'fog') Art.fog(ctx, t);
 
     const drawingKind = S.drawing && !S.drawing.done ? S.drawing.plane.T.kind : null;
     for (const r of S.level.runways) {
       if (isClosed(r)) continue;
-      Art.approach(ctx, runwayEnd(r), KINDS[r.kind].color, t, r.kind === drawingKind, th.night);
+      Art.approach(ctx, runwayEnd(r), KINDS[r.kind].color, t, r.kind === drawingKind, night, S.level.finalMin ? 9 : 6);
     }
     for (const c of S.closures) drawClosure(c, t);
     if (S.police) drawPolice(t);
+    drawBoundary(Bd, t);
 
     const landing = S.planes.filter(p => p.state === 'land');
     const air = S.planes.filter(p => p.state !== 'land');
     for (const p of landing) Art.aircraftShadow(ctx, p);
-    for (const p of landing) Art.aircraft(ctx, p, p.t, th.night);
+    for (const p of landing) Art.aircraft(ctx, p, p.t, night);
     for (const st of S.storms) Art.storm(ctx, st, t);
     // Route-end handles at least 22 CSS pixels across, like the markers.
     const handleR = Math.max(6.5, 11 / view.scale);
@@ -1546,7 +1685,7 @@
     for (const p of air) Art.aircraftShadow(ctx, p);
     for (const p of air) {
       if (p.state === 'fly') drawStatus(p, t, 'under');
-      Art.aircraft(ctx, p, p.t, th.night);
+      Art.aircraft(ctx, p, p.t, night);
       if (p.state === 'fly') drawStatus(p, t, 'over');
       if (p.state === 'fly' && p.emg) drawEmergency(p, t);
     }
@@ -1565,12 +1704,45 @@
       }
     }
     drawGhost(t);
+    ctx.globalAlpha = S.duskTheme ? 1 - S.duskK * 0.8 : 1;
     Art.cloudLayer(ctx, S.sky, false);
+    ctx.globalAlpha = 1;
     if (S.snow.length) Art.drawSnow(ctx, S.snow);
+    if (S.rain.length) Art.drawRain(ctx, S.rain);
     for (const e of S.effects) Art.effect(ctx, e);
-    Art.vignette(ctx, !!th.night);
+    Art.vignette(ctx, night);
     ctx.restore();
   }
+
+  // ---------- the edge of the control zone ----------
+  // Outside the airspace the landscape carries on, a little dimmer, behind a
+  // dashed amber line labelled with the airport's code ("THD CONTROL ZONE").
+  // Only drawn where the screen shows past the airspace.
+  function drawBoundary(Bd, t) {
+    if (Bd.x0 >= 0 && Bd.y0 >= 0 && Bd.x1 <= W && Bd.y1 <= H) return;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(Bd.x0, Bd.y0, Bd.x1 - Bd.x0, Bd.y1 - Bd.y0);
+    ctx.rect(0, 0, W, H);
+    ctx.fillStyle = 'rgba(10,14,18,0.34)';
+    ctx.fill('evenodd');
+    ctx.strokeStyle = 'rgba(242,179,61,0.9)'; ctx.lineWidth = 1.6;
+    ctx.setLineDash([10, 6]); ctx.lineDashOffset = -t * 4;
+    ctx.strokeRect(0, 0, W, H);
+    ctx.setLineDash([]);
+    ctx.font = '600 9px Oswald, "Arial Narrow", sans-serif';
+    ctx.letterSpacing = '2px';
+    ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(242,179,61,0.95)';
+    const label = `${S.level.code} CONTROL ZONE`;
+    if (Bd.x0 < -14) {
+      ctx.save(); ctx.translate(-9, H / 2); ctx.rotate(-Math.PI / 2); ctx.fillText(label, 0, 0); ctx.restore();
+      ctx.save(); ctx.translate(W + 9, H / 2); ctx.rotate(Math.PI / 2); ctx.fillText(label, 0, 0); ctx.restore();
+    }
+    if (Bd.y0 < -14) { ctx.fillText(label, W / 2, -9); ctx.fillText(label, W / 2, H + 9); }
+    ctx.restore();
+  }
+
 
   // The first airport teaches without words: until the first landing, a
   // ghost finger drags from the arriving plane along the approach lights.
@@ -1776,7 +1948,7 @@
 
   // ---------- UI ----------
   const show = (id, on) => $(id).classList.toggle('hidden', !on);
-  const overlays = ['menu', 'brief', 'pause', 'result', 'settings', 'free', 'guest'];
+  const overlays = ['menu', 'brief', 'pause', 'result', 'settings', 'free', 'guest', 'passport'];
   function only(id) { for (const o of overlays) show(o, o === id); }
 
   const boards = {
@@ -1817,7 +1989,8 @@
     }
   }
 
-  const hudName = L => L.name + (L.free ? ' · free play' : '') + (save.calm ? ' · calm skies' : '');
+  const hudName = L => L.name + (L.condition ? ' · ' + CONDITIONS[L.condition].at : '') +
+    (L.free ? ' · free play' : '') + (save.calm ? ' · calm skies' : '');
   function setupHud(L) {
     for (const k in hudState) delete hudState[k];
     boards.code.set(L.code, { stagger: 60 });
@@ -1829,6 +2002,12 @@
 
   const STAR = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.6l2.85 6.05 6.65.82-4.9 4.58 1.28 6.58L12 17.35 6.12 20.63l1.28-6.58-4.9-4.58 6.65-.82z"/></svg>';
   const stars = (n, cls = '') => `<span class="stars ${cls}">${[0, 1, 2].map(i => `<i class="${i < n ? 'on' : ''}">${STAR}</i>`).join('')}</span>`;
+
+  function rowStamps(L) {
+    const n = Object.keys(save.stamps[L.id] || {}).length;
+    return n ? `<span class="row-stamps" title="${n} condition stamp${n === 1 ? '' : 's'}">${STAMP_ICON}${n}</span>` : '';
+  }
+  const STAMP_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/></svg>';
 
   function isUnlocked(L) {
     if (L.unlock) return (save.stars[L.unlock] || 0) > 0;
@@ -1851,7 +2030,7 @@
       row.className = 'row ' + tone;
       row.disabled = !unlocked;
       row.innerHTML = `<span class="c-flt"></span><span class="c-name"></span><span class="c-status"></span>` +
-        `<span class="c-rating">${L.endless ? '<span class="best"></span>' : stars(save.stars[L.id] || 0)}</span>` +
+        `<span class="c-rating">${L.endless ? '<span class="best"></span>' : stars(save.stars[L.id] || 0) + rowStamps(L)}</span>` +
         `<span class="lamp ${tone === 'amber' ? 'blink' : ''}"></span>`;
       row.addEventListener('click', () => openBrief(L));
       if (L.endless) row.dataset.endless = '1';
@@ -1863,7 +2042,10 @@
     });
     const total = LEVELS.reduce((s, L) => s + (save.stars[L.id] || 0), 0);
     const max = LEVELS.filter(L => !L.endless).length * 3;
-    $('star-total').innerHTML = `${STAR}<span>${total} / ${max}</span>`;
+    const stamps = stampsCount();
+    $('star-total').innerHTML = `${STAR}<span>${total} / ${max}</span>` +
+      (stamps ? `<span class="stamp-total">${stamps} stamp${stamps === 1 ? '' : 's'}</span>` : '');
+    $('btn-passport').classList.toggle('dot', !!save.passportNew);
     refreshEndlessRow();
     updateController();
     only('menu');
@@ -1931,8 +2113,10 @@
     return wx.length ? wx.join(' · ') : 'Clear skies';
   }
 
-  function openBrief(L) {
-    loadLevel(L);
+  function openBrief(L, cond) {
+    L = L.base || L;
+    S.briefCond = cond && !conditionLock(L, cond) ? cond : null;
+    loadLevel(S.briefCond ? conditionLevel(L, S.briefCond) : L);
     S.screen = 'brief';
     show('hud', false);
     const flt = L.endless ? 'FA∞' : 'FA' + pad2(LEVELS.indexOf(L) + 1);
@@ -1945,8 +2129,10 @@
     $('pass-name').textContent = L.name;
     $('pass-target').textContent = L.endless ? '∞' : L.target;
     $('pass-hint').textContent = L.hint;
-    $('stub-wx').textContent = weather(L);
-    show('btn-free', canFree(L));
+    $('stub-wx').textContent = S.briefCond ? CONDITIONS[S.briefCond].wx : weather(L);
+    if (S.briefCond) $('pass-hint').textContent = CONDITIONS[S.briefCond].rule;
+    show('btn-free', canFree(L) && !S.briefCond);
+    showConditions(L);
     const legend = $('pass-legend');
     legend.textContent = '';
     for (const type of Object.keys(L.traffic.types)) {
@@ -1970,6 +2156,43 @@
     }
     $('barcode').style.background = `linear-gradient(90deg, ${stops.join(',')})`;
     only('brief');
+  }
+
+  // The strip of stamps on the boarding pass: Day, then each condition this
+  // airport offers. Shown once the airport is cleared.
+  function showConditions(L) {
+    const strip = $('pass-conds');
+    strip.textContent = '';
+    const offered = conditionsFor(L);
+    const pass = document.querySelector('#brief .pass');
+    pass.dataset.cond = S.briefCond || '';
+    show('pass-conds', !!offered.length && cleared(L.id));
+    if (!offered.length || !cleared(L.id)) return;
+    for (const c of [null].concat(offered)) {
+      const b = document.createElement('button');
+      const lock = c && conditionLock(L, c);
+      const got = c && (save.stamps[L.id] || {})[c];
+      b.className = 'cond' + ((S.briefCond || null) === c ? ' on' : '') + (lock ? ' locked' : '') + (got ? ' got' : '');
+      b.disabled = !!lock;
+      b.title = lock || (c ? CONDITIONS[c].rule : 'The airport as usual');
+      b.innerHTML = Passport.icon(c || 'day') + `<span>${c ? CONDITIONS[c].name : 'Day'}</span>` +
+        (got ? `<i>${'★'.repeat(got.stars)}</i>` : '');
+      if (c) b.style.setProperty('--ink', CONDITIONS[c].ink);
+      b.addEventListener('click', () => openBrief(L, c));
+      strip.appendChild(b);
+    }
+  }
+
+  // A new stamp lands on the result screen with a thunk.
+  function showStamp(L) {
+    const el = $('result-stamp');
+    el.textContent = '';
+    show('result-stamp', !!L);
+    if (!L) return;
+    const got = save.stamps[L.id][L.condition];
+    el.innerHTML = Passport.stamp(L.condition, CONDITIONS[L.condition], L.code, got.at, got.stars, L.id);
+    el.classList.remove('thunk'); void el.offsetWidth; el.classList.add('thunk');
+    setTimeout(() => { if (actx) sfx.thunk(); buzz(40); }, 380);
   }
 
   function play() {
@@ -2004,6 +2227,7 @@
     if (L.free && L.endless) text = `You landed ${S.landed}.`;
     else if (L.free && win) text = S.lives === MAX_LIVES ? 'Every arrival down safely.' : `All down, with ${MAX_LIVES - S.lives} diverted.`;
     else if (L.endless) text = `You landed ${S.landed}. ${S.newBest ? 'A new best!' : `Your best is ${best || S.landed}.`}`;
+    else if (win && L.condition) text = `Cleared ${CONDITIONS[L.condition].at}${S.lives === MAX_LIVES ? ', every arrival down safely' : `, with ${MAX_LIVES - S.lives} diverted`}. ${S.newStamp ? 'A new stamp for your passport!' : 'Your stamp keeps your best stars.'}`;
     else if (win) text = S.lives === MAX_LIVES ? 'Every arrival down safely. A perfect shift.' : `All down, with ${MAX_LIVES - S.lives} diverted. Fewer diversions earn more stars.`;
     else if (S.outcome === 'crash') text = `Two aircraft got too close. You landed ${S.landed} of ${L.target}.`;
     else text = `Three aircraft diverted. You landed ${S.landed} of ${L.target}.`;
@@ -2011,9 +2235,10 @@
     if (L.free) text += ` Free play: ${freeSummary(L.free).toLowerCase()}.`;
     $('result-text').textContent = text;
     const next = LEVELS[LEVELS.indexOf(L) + 1];
-    const canNext = win && !L.free && next && !next.endless && isUnlocked(next);
+    const canNext = win && !L.free && !L.condition && next && !next.endless && isUnlocked(next);
     show('btn-next', canNext);
     show('btn-result-free', !!L.free);
+    showStamp(S.newStamp ? L : null);
     showRecordLine();
     $('btn-retry').textContent = win ? 'Replay' : 'Try again';
     $('btn-retry').className = 'btn ' + (canNext ? 'ghost' : 'primary');
@@ -2075,13 +2300,52 @@
       });
     }
   }
-  $('btn-free').addEventListener('click', () => openFree(S.level));
+  $('btn-free').addEventListener('click', () => openFree(S.level.base || S.level));
   $('btn-free-back').addEventListener('click', () => openBrief(freeBase));
   $('btn-free-start').addEventListener('click', () => {
     loadLevel(freePlayLevel(freeBase, freeChoice));
     play();
   });
   $('btn-result-free').addEventListener('click', () => openFree(S.level.base || S.level));
+
+  // ---------- the Passport ----------
+  // Yours (this device's stamps, merged with your profile's), or someone
+  // else's from the records, read-only (the records page links here).
+  function passportModel(book, title, readOnly) {
+    return {
+      title, readOnly, conditions: CONDITIONS,
+      airports: LEVELS.filter(L => conditionsFor(L).length).map(L => ({
+        id: L.id, code: L.code, name: L.name, offered: conditionsFor(L), got: book[L.id] || {},
+        lock: Object.fromEntries(conditionsFor(L).map(c => [c, readOnly ? null : conditionLock(L, c)])),
+      })),
+    };
+  }
+  async function openPassport(name, airportId) {
+    const mine = me();
+    let book = save.stamps, title = mine ? `${mine.name}'s passport` : 'Your passport', readOnly = false;
+    if (name && !(mine && GN.fold(mine.name) === GN.fold(name))) {
+      readOnly = true; title = `${name}'s passport`; book = {};
+      try {
+        const data = await (await fetch('/final-approach/api/stats')).json();
+        const pl = (data.players || []).find(q => GN.fold(q.name) === GN.fold(name));
+        book = (pl && pl.stamps) || {};
+      } catch { /* offline: an empty book */ }
+    }
+    if (S.screen !== 'passport') S.passportFrom = S.screen;
+    S.screen = 'passport';
+    only('passport');
+    const m = passportModel(book, title, readOnly);
+    const at = m.airports.findIndex(a => a.id === airportId);
+    Passport.open($('passport'), m, at >= 0 ? at + 1 : 0);
+    if (!readOnly && save.passportNew) { save.passportNew = false; persist(); $('btn-passport').classList.remove('dot'); }
+  }
+  function closePassport() {
+    if (S.passportFrom === 'result') { S.screen = 'result'; only('result'); }
+    else openMenu();
+  }
+  Passport.bind($('passport'), closePassport);
+  $('btn-passport').addEventListener('click', () => openPassport());
+  $('result-stamp').addEventListener('click', () => openPassport(null, S.level.id));
 
   // ---------- settings ----------
   function openSettings() {
@@ -2150,6 +2414,7 @@
       else if (S.screen === 'pause') resume();
       else if (S.screen === 'settings') closeSettings();
       else if (S.screen === 'free') openBrief(freeBase);
+      else if (S.screen === 'passport') closePassport();
     }
   });
 
@@ -2177,6 +2442,9 @@
     loadLevel(LEVELS[0]);
     openMenu();
     GN.profiles.load().then(() => { updateController(); refreshEndlessRow(); });
+    // The records page links to someone's passport: /final-approach/?passport=Louis
+    const wanted = new URLSearchParams(location.search).get('passport');
+    if (wanted) openPassport(wanted);
     syncProgress();
     flushOutbox();
     boards.title.set('Final Approach', { stagger: 45, maxSteps: 10, delay: 200 });
@@ -2194,6 +2462,7 @@
       S.emgPending = emergencyChoices().find(([k]) => k === kind) || [kind, types[kind] || null];
       S.emgTimer = 0; S.spawnTimer = 0;
     },
+    conditionsFor, conditionLevel, conditionLock, CONDITIONS, landingFor, straightIn, openPassport,
     grownUpOK, endlessKey, freeOptions, freeChoices, freePlayLevel, freeSummary, openFree,
     sound: { audio, load, buffers, scape, bus: () => bus } };
 })();

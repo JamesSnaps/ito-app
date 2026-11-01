@@ -102,6 +102,12 @@ shifts make it harder airport by airport.
   rush traffic, which aircraft, low fuel, 0–3 storms, wind shifts and
   emergencies. A toggle only appears once the airport that teaches it is
   cleared. Free play earns no stars and never ranks; the records tag it.
+- **Conditions** on any airport you've cleared: Dusk (an evening rush as
+  it gets dark), Night (arrivals seen a second later), Snow (icy runways:
+  line up within 45°), Storm (an extra storm cell) and Fog (follow the
+  approach lights all the way in). Each one cleared earns a **stamp** for
+  your **Passport**, a page per airport, synced with your profile; the
+  records page links to everyone's.
 - A browser with no profile is asked once: add yourself, or play as a
   guest. Guests' finished shifts are kept anonymously (a random tag per
   browser, "Guest 3F1A") for the owner's **Activity page**
@@ -112,6 +118,10 @@ shifts make it harder airport by airport.
 - Settings: volumes, large aircraft, vibration, and **calm skies** (three-
   quarter speed, for when it gets too much; calm shifts are marked and never
   ranked).
+- The landscape fills any screen, phone or tablet: the airspace is the
+  same 960 × 600 everywhere (so the game is equally hard on every device),
+  and the scenery carries on past it, dimmed behind the control zone's
+  dashed amber edge.
 - The menu is a split-flap arrivals board and each briefing is a boarding
   pass. Every airport is painted in code; there are no image files.
 - Its playbook (what it is, how it's built, where it's going) is

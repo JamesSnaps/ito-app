@@ -1465,6 +1465,41 @@ it current when you do (its "Current state" and roadmap especially).
   `last_at`; the records page shows them and `guests_week`. A browser
   with no profile is asked once (`askWhoIsPlaying`, the `#guest` card;
   `save.guestOk` remembers "Play as a guest").
+- **Conditions and the Passport** (v1.27.0): a cleared airport replayed
+  harder, chosen on the boarding pass's strip (`#pass-conds`; the terrain
+  behind repaints to match). `conditionsFor(L)` offers what differs from
+  the airport (no Night/Dusk at Night Shift, no Snow at snowy or desert
+  airports, none for Endless; Storm also needs Thunderheads cleared:
+  `conditionLock`). `conditionLevel(L, c)` returns a level object with one
+  rule each: dusk `rushFrom` (gaps ×0.8 from two thirds on), night
+  `traffic.warning` −1, snow `alignMax` (45°, checked in `landingFor`), storm
+  `storms` (at least 2, one more than usual), fog `finalMin` (`straightIn`:
+  the route's last 80 units within 14 of the centre line; the approach
+  lights run to 9 bars). A route refused by snow or fog says why
+  (`landingMiss`). Looks: `themeFor` builds the painted theme with
+  `Art.nightTheme` (every colour dimmed toward a night blue, `night` on)
+  and `Art.snowTheme` (the snow theme's ground colours on the same layout);
+  dusk paints a second, night terrain and cross-fades by progress
+  (`S.duskK`); fog is `Art.fog` under the lights and aircraft; storm adds
+  rain and a tint. A win earns a stamp: `save.stamps[id][c] = {stars, at}`
+  (best stars, first date), never the airport's stars; the server checks
+  the condition against `conditions_for()` (the same offer, from the
+  theme in levels.js) and keeps `stamps` per player (`total_stamps`).
+  `passport.js` draws the icons, the stamps (one outline per condition,
+  inked through the `#fa-ink` SVG filter, a seeded tilt) and the book; the
+  records page links to `/final-approach/?passport=<name>`, read-only.
+- **Filling the screen** (v1.28.0): the airspace stays 0..960 × 0..600 (all
+  rules, spawns and edges), but `paintTerrain` asks `Art.buildTerrain` for a
+  `bleed` that reaches the screen's edges, and the canvas carries
+  `bounds` (`S.bounds`, Art's `B`). Inside the airspace the painting must
+  stay identical: anything outside it uses its own random sequence (`brng`;
+  fields culled past the old ±60 margin, extra copses, rocks, scrub,
+  dunes), roads and rivers carry on along the same curve (`pts.full`, houses
+  only on the airspace part), and the grain is aligned to the airspace's
+  corner. A pixel check found every airport within 0.25% of its old
+  painting. Weather particles, clouds and fog cover `B`; diverting aircraft
+  leave at `B` + 40. `drawBoundary` dims beyond the airspace and draws the
+  dashed amber edge with "<CODE> CONTROL ZONE" (the airport's three letters, by choice).
 - **`window.__finalApproach`** exposes the state for Playwright checks,
   plus `update` (step the simulation, e.g. ten minutes in a loop),
   `queueArrival`, `clearOfStorms`, `stormAt`, `clearOfTraffic`, `track`,
@@ -1479,7 +1514,7 @@ it current when you do (its "Current state" and roadmap especially).
   in is a tile opening `/final-approach/` in the Safari sheet, like Keep
   score (playbook roadmap).
 
-## Picnic Raid (added v1.27.0)
+## Picnic Raid (added v1.29.0)
 
 Our own game, made for the family the way Wildwood was: fill a picnic
 basket, pack it up to bank the points, and hide traps (Ants, Wasp, Seagull,
