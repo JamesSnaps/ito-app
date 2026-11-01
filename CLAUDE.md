@@ -14,17 +14,19 @@ clear which it is:
   for nights without the box (Flip 7's Play mode, Fugitive).
 - **Games of our own** — designed here, not copies of published games:
   their own names, rules and art (*Wildwood*, *Final Approach*,
-  *Picnic Raid*).
+  *Picnic Raid*, *Final Vector*).
 
-It holds six: *ito* (cooperative, secret-number ordering game),
+It holds seven: *ito* (cooperative, secret-number ordering game),
 *Flip 7* (push-your-luck card game), *Fugitive* (two-player
 hidden-movement card game, played entirely on the app, against a person or
 the computer — see its section), *Wildwood* (our own Crazy Eights-style
 card game for the family, two to four, also played entirely on the app),
 *Final Approach* (our own solo air-traffic game, all client-side; its
-playbook is `docs/final-approach/PLAYBOOK.md`) and *Picnic Raid* (our own
-set-a-trap card game, two to four, web only so far). `/` is the menu — it
-used to redirect straight to ito when ito was the only game.
+playbook is `docs/final-approach/PLAYBOOK.md`), *Picnic Raid* (our own
+set-a-trap card game, two to four, a web game in the app too) and *Final
+Vector* (Final Approach's grown-up sibling, radar approach control; a
+prototype since v1.34.0, see its section). `/` is the menu — it used to
+redirect straight to ito when ito was the only game.
 
 The ito app itself: The owner has the German edition, whose
 topic prompts come as a printed booklet rather than cards, which isn't
@@ -61,6 +63,8 @@ problem.
   missing from memory is looked for there first.
 - Each game is a blueprint under `games/<id>/`, listed in
   `games/registry.py`. Adding a game shouldn't touch `app.py` at all.
+  `GameSpec.native_app` says the iOS app has its own screen for it; leave it
+  False for a web game and the app lists it from `/api/games` by itself.
 - Not every game needs rooms, and the two halves are independent.
   `GameSpec.host_endpoint` is "the hub tile starts a room" (`starts_rooms`,
   ito only); `player_endpoint` is "a code resolves here at `/join`"
@@ -550,6 +554,9 @@ games' records, ito hosting (since app 1.4.0) and its
 topic display, and player profiles. Rules pages, ito's
 stats, the Flip 7 scorekeeper and a scorekeeper's spectator board open the
 server's own pages in an in-app Safari sheet rather than being rebuilt.
+Games with no screen of their own here (Final Approach, and whatever the
+registry gains) are played full screen as their web page (app 1.16.0, see
+"Web games in the app" below).
 
 - **Score a real game is the web scorekeeper** (app 1.12.0; `/flip7/score`
   since app 1.15.0): the Flip 7 tile's second choice opens it in the Safari
@@ -657,7 +664,9 @@ server's own pages in an in-app Safari sheet rather than being rebuilt.
   games against the computer; v1.12.0+ for app 1.6.0's records against the
   computer; v1.15.0+ for app 1.9.0's games without hints, which an older
   server deals with hints on — the app holds offline computer games back until the server's
-  stats carry `computer_leaderboard`; v1.17.0+ for app 1.11.0's Wildwood) before a build goes out.
+  stats carry `computer_leaderboard`; v1.17.0+ for app 1.11.0's Wildwood;
+  v1.33.1+ for app 1.16.0's web games — an older server 404s `/api/games`
+  and the hub simply shows no web tiles) before a build goes out.
 - **`.dockerignore` keeps `ios/` out of the server image.**
 - **QR codes are scanned in the app** (`ScanSheet`, VisionKit's
   `DataScannerViewController`, QR only), from the hub's toolbar and the Join
@@ -668,6 +677,69 @@ server's own pages in an in-app Safari sheet rather than being rebuilt.
   `/wildwood/play`, `/ito/play`, `/join?code=` and `/me/link`. Claiming a path sends it to every
   installed version of the app, so claim a new one only once a build that
   handles it is on TestFlight.
+
+### Web games in the app (app 1.16.0, server 1.33.1)
+
+- **The server lists its games; the app decides which are its own.**
+  `GET /api/games` (app.py) is the hub's menu as JSON: `id`, `name`,
+  `tagline`, `accent`, `path` (the game's landing page), `action` (the web
+  tile's call to action) and `native_app`, from `GameSpec.native_app`
+  (True for Flip 7, Fugitive, Wildwood and ito; False by default, so a game
+  added to the registry is a web game in the app with no app update). The app
+  keeps its four tiles and adds one per game whose id isn't in
+  `WebGames.native` — its own list, not `native_app`: a game a later build
+  makes native is still only a web page to this one. A game marked
+  `available=False` is in neither the hub nor the list.
+- **The last list is kept** (UserDefaults `webGames.last`), so the tiles are
+  there at launch and with no signal; if the server has never answered there
+  are none. Refreshed whenever the hub comes back into view.
+- **Tiles**: the web hub's title, tagline and accent, in the same `GameTile`
+  and the same layout (column on a phone; two to a row in the iPad's Grid,
+  an empty cell beside an odd one). Final Approach's art is the web's SVG
+  drawn in SwiftUI (`FinalApproachArt`); any other web game gets its
+  initials on a screen in its colour (`WebGameArt`) until it earns its own.
+- **`WebGameScreen` is a WKWebView, full screen** (a `fullScreenCover`),
+  not the Safari sheet: no browser chrome, status bar hidden, home indicator
+  hidden (`persistentSystemOverlays`), edge swipes deferred so a route drawn
+  off the bottom doesn't go home, kept awake (`.keepsScreenAwake()`, the
+  counted one), audio without a tap (`mediaTypesRequiringUserActionForPlayback
+  = []`, inline playback), the default persistent website data store (the
+  game's own localStorage — Final Approach's save, settings and outbox —
+  survives; it's the app's own, apart from Safari's, the home-screen web
+  app's and the Safari sheet's), and no automatic content inset
+  (`contentInsetAdjustmentBehavior = .never`) so the safe area reaches the
+  page's `env(safe-area-inset-*)`. The app already allows every orientation
+  (`project.yml`), so the screen turns with the device; Final Approach asks
+  for sideways itself. A failed first load shows "Couldn't reach the Game
+  Night server" with Try again; a killed web process reloads.
+- **The way out is a grabber at the top centre** — the games' HUDs use the
+  corners (Final Approach: plates top left, strikes and pause top right;
+  Final Vector's concept: strips down the left, push-to-talk bottom right).
+  Pull it down to close, or tap it for a "Close game" button that goes away
+  after four seconds, so a stray touch mid-shift doesn't end it. VoiceOver
+  reads it as a "Close game" button.
+- **Signed in as the app's profile.** A `WKUserScript` at document start,
+  main frame only, writes `Me.current` into localStorage `gamenight:me` as
+  the web stores it (`{id, name, photo, token}`, `photo` null when there's
+  none — me.html's shape), or removes it when the app is signed out, so the
+  page's own scripts (`GN.me.get()`, `X-Profile-Token`) see the app's
+  profile: records, the child/grown-up rules and the guest prompt follow the
+  app. The script checks `location.origin` is the server's before touching
+  anything, and the values go in as JSON string literals (`WebSignIn`, in
+  API/WebGames.swift, tested on Linux). It runs on every page load, so
+  signing in or out on the web's own "You" page inside the game lasts only
+  until the next page: the app's profile is the one that counts. The token
+  isn't logged or sent anywhere else. (`HeldMe`/`Me` moved from Faces.swift
+  to Profiles.swift so this builds without SwiftUI.)
+- **Links** (`WebGameLinks`): anything on the server's origin stays in the
+  screen — records, Final Approach's link to another game; other
+  hosts and other schemes (mailto:) open in the system browser; frames
+  inside a page load what they like. A `target=_blank` link follows the
+  same rule in the one window.
+  The server's front page (`/`, a game's "Game Night" button) is the
+  exception: it closes the game (`closeToHub`), since the app's hub is home.
+- **Not tried on a device from here**: the screen is UI code written on
+  Linux; the model, script and link rules are what the Linux tests cover.
 
 ### Fugitive on a phone held sideways (app 1.8.1)
 
@@ -1707,18 +1779,111 @@ it current when you do (its "Current state" and roadmap especially).
   its files and the level data's shape, and visual changes are checked by
   driving the page in a headless browser at desktop and phone-landscape
   sizes (the playbook has the routine).
-- **Not in the iOS app.** The native hub's tiles are its own; the cheap way
-  in is a tile opening `/final-approach/` in the Safari sheet, like Keep
-  score (playbook roadmap).
+- **In the iOS app as its web page** (app 1.16.0): a hub tile from
+  `/api/games` opens `/final-approach/` full screen in a WKWebView, signed
+  in as the app's profile — see "Web games in the app".
 
-## Picnic Raid (added v1.34.0)
+## Final Vector (added v1.34.0, a prototype)
+
+Radar approach control for grown-ups, Final Approach's sibling. **Read
+`docs/final-vector/CONCEPT.md` first**: the design, the decisions (section
+13) and what the prototype built and what's next (section 15). Grown-up in
+difficulty, never in content: kids see the hub.
+
+- **All client-side, one page** (`games/final_vector/game.py` serves
+  `/final-vector/` and the records API). Scripts in `static/final-vector/`,
+  plain globals under `window.FV`, loaded in this order:
+  `command.js` (the grammar and phrases), `sim.js` (the airport, types and
+  simulation), `radio.js` (readback audio), `scope.js` (the canvas),
+  `lessons.js` (the Academy), `game.js` (everything on the page). Its own
+  stylesheet; Oswald and Barlow are Final Approach's, by URL
+  (`../final-approach/fonts/`), not copied.
+- **Real units.** `sim.js`: nautical miles, feet, knots, seconds; x east
+  and y north of runway 27's threshold at (0, 0). Ambleford (`FV.World`)
+  is fictional: one runway (27, localiser course 270, a 3° glideslope =
+  318 ft/nm), two stacks (DNK Dunnock and LNT Linnet, right-hand holds),
+  arrival routes into them, a sector edge, QNH and wind. Types (`FV.TYPES`:
+  A320, B738, E190, DH8D, B77W, A333, BE20; wake L/M/H) each have a turn
+  rate (3°/s, 2.5 for heavies), climb/descent rates, an assignable speed
+  range and an approach speed. Pilots start to comply 2.5 s after an
+  instruction (`RESPOND`); the tag's cleared level changes at once, as a
+  controller writes it down.
+- **The ILS rule** (`intercept`): cleared ILS, an aircraft captures the
+  localiser only when it reaches the turn-on point with a cut of 30° or
+  less **and** no more than 150 ft above the glideslope; otherwise it flies
+  straight through (`through` event, once per pass). Established, it tracks
+  the centreline, captures the glideslope from below, slows to its
+  approach speed inside 6 nm and lands at the threshold. Contact tower is
+  only accepted once established; by 7.5 nm is on time, later is late, and
+  still yours inside 4 nm is a missed handoff (the tower takes it).
+  Any heading cancels the approach.
+- **Separation** (`check`): every airborne pair, 3 nm or 1,000 ft (25 ft
+  slack for levelling). The short-term conflict alert predicts 60 s ahead
+  in 5 s steps, straight on and toward the cleared level, and fires once
+  per episode (`stca`); a loss is `los` (counted once per episode); `clear`
+  when a pair is apart again. Pairs on the tower's frequency still count.
+  Numbers shown are rounded *down* (2.97 nm never reads 3.0).
+- **One command grammar** (`command.js`, pure, runs under node): `parse(text,
+  ctx)` reads typed codes and spoken phraseology alike (number words become
+  numbers: "four thousand", "three zero zero", "two hundred and ten",
+  "one one eight decimal five"; telephony names become designators). Voice
+  control will hand it a transcript. Nothing is acted on unless all of it
+  parsed. Grammar: callsign (or a unique prefix, or "Skylark 412"), then any
+  of `L270`/`R270`/`H270` (H = the shorter way), `D40`/`C50`/`A40` (hundreds
+  of feet below 1,000; feet above), `FL110`, `S210`, `ILS`, `TWR`,
+  `HOLD DNK`, or the words. The same file builds every line said: the
+  controller's (`controllerKeys`), the readback (`readbackKeys`), check-ins,
+  "established", "unable", as lists of clip keys; `text()` makes the log
+  line and `clips()` the recordings (a number's last digit takes the falling
+  variant, `e4` not `d4`).
+- **Voices** (`tools/final_vector_voice.py`): two pilots (George, Alice;
+  ElevenLabs `eleven_multilingual_v2`, mp3 22 kHz 32 kbps, with
+  `previous_text`/`next_text` so a piece is said as it sits in a readback).
+  The script reads `CLIPS` from command.js, so a new word means adding it
+  there and running the script. 57 pieces each, 114 files, about 0.5 MB.
+  `radio.js` trims each piece's silence on decode and schedules them back to
+  back through Final Approach's radio filter (band-pass and soft clip, a
+  squelch either side), one transmission at a time. The controller's line
+  is text only. Muted or missing pieces: the line still shows on the same
+  beat.
+- **Lessons** (`lessons.js`): `setup(g)` spawns the scenario; each task has
+  `done(g, ev)` (asked on every event and each frame), Ann's `coach` line,
+  optional `praise` and a `hint` drawn on the scope; `fail(g, ev)` ends a
+  lesson (flying out of the sector, a loss in lesson 4, a missed handoff in
+  lesson 5) but never once the check has started. Events: sim events plus
+  `select`, `strip`, `type`, `dial`, `instruction` (with `source` dial or
+  line). The panel lives in the left column above the strips, not on the
+  scope.
+- **The shift** (`SHIFT` in game.js): 8 arrivals alternating Dunnock and
+  Linnet, 75–105 s apart, each joining the top of its stack's levels;
+  ends when the last is down (or at 25 min). The debrief's delay is time
+  flown less an unhindered track at 210 kt.
+- **Records**: `POST /final-vector/api/lessons` (`{lesson}`, a profile token,
+  in order: lesson n needs 1..n-1 on the record) and `POST
+  /final-vector/api/shifts` (whole numbers checked against each other, an
+  id counted once, only after all five lessons); `GET /api/stats`. The page
+  queues posts in an outbox in `final-vector:save` and merges lessons from
+  the server on load, so progress follows the profile. Guests keep progress
+  on the device only.
+- **`window.__finalVector`** for browser checks: `step(seconds)` advances
+  the sim and handles its events (lessons see them), `command(text)` is the
+  command line, `openDial(cs)`, `setDial({turn, alt, spd, ils, twr, hold})`,
+  `sendDial()`, `startLesson(n)`, `answer(i)`, `startShift()`,
+  `endShift()`, `setSpeed()`, `sim`, `log`, `radio` (loaded, spoken, said),
+  `save`. Python tests run the parser and the sim through node when node is
+  installed (`tests/test_final_vector.py`).
+- **Final Approach links to it** in one quiet line under the arrivals board
+  (`.board-tail`).
+
+## Picnic Raid (added v1.35.0)
 
 Our own game, made for the family the way Wildwood was: fill a picnic
 basket, pack it up to bank the points, and hide traps (Ants, Wasp, Seagull,
 Dog) under everyone else's blanket; Shoo! sends one back, Umbrella stops it.
 First to 20 with the round played out. **Built exactly the way Wildwood is**
 — game.py is its game.py function for function, minus the offline replay —
-so read that section first. Web only: no iOS screens, no AASA path.
+so read that section first. No iOS screens of its own and no AASA path: the
+app shows it as a web game (see "Web games in the app").
 
 - **The rules came out of a playtest, and engine.py's docstring says why
   each one is there** — don't change one without re-running the harness

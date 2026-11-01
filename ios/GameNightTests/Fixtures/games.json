@@ -1,0 +1,49 @@
+{
+  "games": [
+    {
+      "accent": "#4f8cff",
+      "action": "Start a room",
+      "id": "ito",
+      "name": "ito",
+      "native_app": true,
+      "path": "/ito/",
+      "tagline": "Rank your secret numbers without saying them out loud."
+    },
+    {
+      "accent": "#d9a94e",
+      "action": "Play or keep score",
+      "id": "flip7",
+      "name": "Flip 7",
+      "native_app": true,
+      "path": "/flip7/",
+      "tagline": "Push your luck, bank your cards — first to 200 takes it."
+    },
+    {
+      "accent": "#5fb3c9",
+      "action": "Play",
+      "id": "fugitive",
+      "name": "Fugitive",
+      "native_app": true,
+      "path": "/fugitive/",
+      "tagline": "One runs, one hunts. Lay a trail of hideouts to 42 — or find them all."
+    },
+    {
+      "accent": "#e0873a",
+      "action": "Play",
+      "id": "wildwood",
+      "name": "Wildwood",
+      "native_app": true,
+      "path": "/wildwood/",
+      "tagline": "Match the colour or the creature, call “Last card!”, and empty your hand first."
+    },
+    {
+      "accent": "#e8553f",
+      "action": "Play",
+      "id": "final-approach",
+      "name": "Final Approach",
+      "native_app": false,
+      "path": "/final-approach/",
+      "tagline": "Draw their routes down, match the runways, keep the sky clear."
+    }
+  ]
+}

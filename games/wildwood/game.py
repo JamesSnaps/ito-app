@@ -715,4 +715,5 @@ GAME = GameSpec(
     host_endpoint=None,
     player_endpoint="wildwood.play_view",
     hub_action="Play",
+    native_app=True,
 )

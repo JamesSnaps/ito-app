@@ -1,0 +1,1 @@
+../../../GameNightTests/WebGamesTests.swift

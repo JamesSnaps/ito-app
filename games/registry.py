@@ -31,6 +31,11 @@ class GameSpec:
     # The tile's call to action when it doesn't start a room.
     hub_action: str = "Open"
     available: bool = True
+    # The iOS app has a screen of its own for this game. Games without one
+    # are still in the app: /api/games lists them, and the app opens their
+    # web page full screen (app 1.16.0) — so a new web game reaches the app
+    # with no app update.
+    native_app: bool = False
 
     @property
     def has_rooms(self):
@@ -45,13 +50,14 @@ class GameSpec:
 
 def all_games():
     from games.final_approach.game import GAME as FINAL_APPROACH
+    from games.final_vector.game import GAME as FINAL_VECTOR
     from games.flip7.game import GAME as FLIP7
     from games.fugitive.game import GAME as FUGITIVE
     from games.ito.game import GAME as ITO
     from games.picnic.game import GAME as PICNIC
     from games.wildwood.game import GAME as WILDWOOD
 
-    return [ITO, FLIP7, FUGITIVE, WILDWOOD, FINAL_APPROACH, PICNIC]
+    return [ITO, FLIP7, FUGITIVE, WILDWOOD, FINAL_APPROACH, PICNIC, FINAL_VECTOR]
 
 
 def playable_games():
