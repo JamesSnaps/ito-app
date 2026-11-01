@@ -645,8 +645,9 @@ registry gains) are played full screen as their web page (app 1.16.0, see
   `project.yml`, automatic signing, bundle `uk.collco.gamenight`. A test
   checks `project.yml` and `app.py`'s `IOS_APP_ID` agree.
 - **`ios/scripts/testflight.sh`** is Brief's script adapted: archive and
-  upload with the Xcode-signed-in account, build number = UTC time,
-  archives outside the repo.
+  upload signed with the team's App Store Connect key (`~/.appstoreconnect/gamenight.env`),
+  build number = UTC time, archives outside the repo. It runs on the Mac's
+  runner on every iOS merge ("Deploying the iOS app to TestFlight").
 - **Required for any upload**: `PrivacyInfo.xcprivacy` (no tracking;
   since 1.2.0 a profile's name and photo declared as collected for app
   functionality; UserDefaults declared with reason CA92.1) and
@@ -2145,6 +2146,25 @@ read a stale `/healthz` on the evening of a merge as a broken deploy.
 - There's a test asserting `/healthz` and the UI agree, so a stale
   version in one place fails the suite — but nothing forces the bump
   itself. That part is on you.
+
+## Deploying the iOS app to TestFlight
+
+Builds run on James's Mac, a GitHub Actions self-hosted runner for this repo:
+`.github/workflows/testflight.yml` runs `ios/scripts/testflight.sh`, signed with the team's
+App Store Connect key from `~/.appstoreconnect/gamenight.env` on the Mac. Nothing secret
+is in GitHub.
+
+- **Automatic:** a merge to main that changes `ios/` (not only Markdown) builds and
+  uploads it.
+- **By hand**, e.g. to rebuild: `gh workflow run testflight.yml -R JamesSnaps/ito-app`
+  (`-f upload=false` archives without uploading), then
+  `gh run watch -R JamesSnaps/ito-app $(gh run list -R JamesSnaps/ito-app -w TestFlight -L 1 --json databaseId -q '.[0].databaseId')`.
+- The Mac must be on and awake; a queued build waits for it (GitHub drops it after
+  24 h). The build number is the UTC time, so every upload is newer; the version
+  is `MARKETING_VERSION` in `project.yml`.
+- Never add a `pull_request` trigger to that workflow: PRs mustn't run code on the Mac.
+- Signing failures (`errSecInternalComponent`, "No Accounts") and setting up the
+  runner: news-hub's `ios/RUNBOOK.md`, "TestFlight from GitHub".
 
 ## Deployment
 
