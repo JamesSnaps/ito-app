@@ -392,6 +392,7 @@
     canvas.style.width = w + 'px';
     canvas.style.height = h + 'px';
     view.scale = Math.min(w / W, h / H);
+    view.w = w; view.h = h;
     view.x = (w - W * view.scale) / 2;
     view.y = (h - H * view.scale) / 2;
     clearTimeout(terrainTimer);
@@ -414,9 +415,19 @@
   function paintTerrain() {
     if (!S.level) return;
     const px = Math.min(3, Math.max(1, view.scale * view.dpr));
-    S.terrain = Art.buildTerrain(S.level, S.theme, px, Art.COLORS.heli.main);
+    // Paint past the airspace to the edges of the screen: the airspace stays
+    // 960 x 600 on every device, the landscape fills whatever is around it.
+    const bleed = {
+      x: Math.ceil(Math.max(0, (view.w / view.scale - W) / 2)) + 6,
+      y: Math.ceil(Math.max(0, (view.h / view.scale - H) / 2)) + 6,
+    };
+    S.terrain = Art.buildTerrain(S.level, S.theme, px, Art.COLORS.heli.main, bleed);
     // Dusk fades into a second, after-dark painting of the same airport.
-    S.terrainNight = S.duskTheme ? Art.buildTerrain(S.level, S.duskTheme, px, Art.COLORS.heli.main) : null;
+    S.terrainNight = S.duskTheme ? Art.buildTerrain(S.level, S.duskTheme, px, Art.COLORS.heli.main, bleed) : null;
+    S.bounds = S.terrain.bounds;
+    // Weather spreads over the whole painting.
+    if (S.snow.length) S.snow = Art.snowfall(140);
+    if (S.rain.length) S.rain = Art.rainfall(220);
   }
 
   function loadLevel(level) {
@@ -1158,7 +1169,8 @@
     move(p, p.T.speed * 1.2 * dt);
     p.rot += angDiff(p.rot, p.heading) * Math.min(1, dt * 4);
     p.alpha = Math.max(0.25, p.alpha - dt * 0.4);
-    if (p.x < -40 || p.x > W + 40 || p.y < -40 || p.y > H + 40) p.state = 'gone';
+    const Bd = S.bounds || { x0: 0, y0: 0, x1: W, y1: H };
+    if (p.x < Bd.x0 - 40 || p.x > Bd.x1 + 40 || p.y < Bd.y0 - 40 || p.y > Bd.y1 + 40) p.state = 'gone';
   }
 
   function checkSeparation(dt) {
@@ -1629,21 +1641,23 @@
     if (!S.level || !S.terrain) return;
     const k = view.dpr * view.scale;
     ctx.setTransform(k, 0, 0, k, view.dpr * view.x, view.dpr * view.y);
+    const Bd = S.bounds || { x0: 0, y0: 0, x1: W, y1: H };
+    const BW = Bd.x1 - Bd.x0, BH = Bd.y1 - Bd.y0;
     ctx.save();
-    ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
+    ctx.beginPath(); ctx.rect(Bd.x0, Bd.y0, BW, BH); ctx.clip();
 
     const th = S.theme;
     const night = isNight();
-    ctx.drawImage(S.terrain, 0, 0, W, H);
+    ctx.drawImage(S.terrain, Bd.x0, Bd.y0, BW, BH);
     if (S.terrainNight && S.duskK > 0) {
       ctx.globalAlpha = S.duskK;
-      ctx.drawImage(S.terrainNight, 0, 0, W, H);
+      ctx.drawImage(S.terrainNight, Bd.x0, Bd.y0, BW, BH);
       ctx.globalAlpha = 1;
       // golden light on the way down
       const gold = Math.sin(Math.PI * Math.min(1, S.duskK * 1.4)) * 0.16;
-      if (gold > 0.01) { ctx.fillStyle = `rgba(255,140,60,${gold})`; ctx.fillRect(0, 0, W, H); }
+      if (gold > 0.01) { ctx.fillStyle = `rgba(255,140,60,${gold})`; ctx.fillRect(Bd.x0, Bd.y0, BW, BH); }
     }
-    if (th.stormy) { ctx.fillStyle = 'rgba(20,28,40,0.28)'; ctx.fillRect(0, 0, W, H); }
+    if (th.stormy) { ctx.fillStyle = 'rgba(20,28,40,0.28)'; ctx.fillRect(Bd.x0, Bd.y0, BW, BH); }
     if (th.sea) Art.foam(ctx, t);
     ctx.globalAlpha = S.duskTheme ? 1 - S.duskK * 0.8 : 1;
     Art.cloudLayer(ctx, S.sky, true);
@@ -1657,6 +1671,7 @@
     }
     for (const c of S.closures) drawClosure(c, t);
     if (S.police) drawPolice(t);
+    drawBoundary(Bd, t);
 
     const landing = S.planes.filter(p => p.state === 'land');
     const air = S.planes.filter(p => p.state !== 'land');
@@ -1696,6 +1711,78 @@
     if (S.rain.length) Art.drawRain(ctx, S.rain);
     for (const e of S.effects) Art.effect(ctx, e);
     Art.vignette(ctx, night);
+    ctx.restore();
+  }
+
+  // ---------- the edge of the control zone ----------
+  // Outside the airspace the landscape carries on, a little dimmer, behind
+  // a boundary line. Three looks while we choose (?edge=zone|radar|chart).
+  const EDGE_STYLE = new URLSearchParams(location.search).get('edge') || 'zone';
+  function drawBoundary(Bd, t) {
+    if (Bd.x0 >= 0 && Bd.y0 >= 0 && Bd.x1 <= W && Bd.y1 <= H) return;
+    const outside = () => {
+      ctx.beginPath();
+      ctx.rect(Bd.x0, Bd.y0, Bd.x1 - Bd.x0, Bd.y1 - Bd.y0);
+      ctx.rect(0, 0, W, H);
+    };
+    const code = S.level.code;
+    ctx.save();
+    ctx.font = `600 9px Oswald, "Arial Narrow", sans-serif`; ctx.letterSpacing = "2px";
+    ctx.textBaseline = 'middle';
+    if (EDGE_STYLE === 'radar') {
+      // A radar scope's limit: darker beyond, a glowing teal edge, corner brackets.
+      outside(); ctx.fillStyle = 'rgba(6,14,18,0.5)'; ctx.fill('evenodd');
+      ctx.strokeStyle = 'rgba(159,211,199,0.85)'; ctx.lineWidth = 1.4;
+      ctx.shadowColor = 'rgba(159,211,199,0.7)'; ctx.shadowBlur = 6;
+      ctx.strokeRect(0, 0, W, H);
+      ctx.shadowBlur = 0;
+      ctx.lineWidth = 3;
+      for (const [x, y, dx, dy] of [[0, 0, 1, 1], [W, 0, -1, 1], [0, H, 1, -1], [W, H, -1, -1]]) {
+        ctx.beginPath(); ctx.moveTo(x + dx * 26, y); ctx.lineTo(x, y); ctx.lineTo(x, y + dy * 26); ctx.stroke();
+      }
+      ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(159,211,199,0.55)';
+      for (let x = 40; x < W; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, -5); ctx.moveTo(x, H); ctx.lineTo(x, H + 5); ctx.stroke(); }
+      for (let y = 40; y < H; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(-5, y); ctx.moveTo(W, y); ctx.lineTo(W + 5, y); ctx.stroke(); }
+      ctx.fillStyle = 'rgba(159,211,199,0.9)';
+      ctx.textAlign = 'right'; ctx.fillText(`${code} RADAR · LIMIT OF CONTROL`, -10, H - 12);
+      ctx.textAlign = 'left'; ctx.fillText('LIMIT OF CONTROL', W + 10, 14);
+    } else if (EDGE_STYLE === 'chart') {
+      // An aeronautical chart's control zone: a blue band, hatched inside, and
+      // a label box. No dimming: the map just carries on.
+      ctx.strokeStyle = 'rgba(46,92,160,0.55)'; ctx.lineWidth = 7;
+      ctx.strokeRect(-3.5, -3.5, W + 7, H + 7);
+      ctx.save();
+      ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.rect(9, 9, W - 18, H - 18); ctx.clip('evenodd');
+      ctx.strokeStyle = 'rgba(46,92,160,0.45)'; ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      for (let k = -H; k < W + H; k += 7) { ctx.moveTo(k, 0); ctx.lineTo(k + H, H); }
+      ctx.stroke();
+      ctx.restore();
+      const box = (x, y, lines, align) => {
+        const w = 92, h = 12 * lines.length + 8;
+        const bx = align === 'right' ? x - w : x;
+        ctx.fillStyle = 'rgba(245,240,226,0.92)'; ctx.fillRect(bx, y, w, h);
+        ctx.strokeStyle = 'rgba(46,92,160,0.9)'; ctx.lineWidth = 1.2; ctx.strokeRect(bx, y, w, h);
+        ctx.fillStyle = '#2e5ca0'; ctx.textAlign = 'center';
+        lines.forEach((l, i) => ctx.fillText(l, bx + w / 2, y + 10 + i * 12));
+      };
+      box(-14, H - 70, [`${code} CTR`, 'CLASS D', 'SFC – 2500 FT'], 'right');
+      box(W + 14, 30, [`${code} CTR`, 'CLASS D', 'SFC – 2500 FT'], 'left');
+    } else {
+      // The control zone: dimmer beyond, a dashed amber line with ticks, and
+      // the zone's name along it.
+      outside(); ctx.fillStyle = 'rgba(10,14,18,0.34)'; ctx.fill('evenodd');
+      ctx.strokeStyle = 'rgba(242,179,61,0.9)'; ctx.lineWidth = 1.6;
+      ctx.setLineDash([10, 6]); ctx.lineDashOffset = -t * 4;
+      ctx.strokeRect(0, 0, W, H);
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(242,179,61,0.95)';
+      const label = `${code} CONTROL ZONE`;
+      ctx.textAlign = 'right';
+      ctx.save(); ctx.translate(-9, H / 2); ctx.rotate(-Math.PI / 2); ctx.textAlign = 'center'; ctx.fillText(label, 0, 0); ctx.restore();
+      ctx.save(); ctx.translate(W + 9, H / 2); ctx.rotate(Math.PI / 2); ctx.textAlign = 'center'; ctx.fillText(label, 0, 0); ctx.restore();
+      if (Bd.y0 < -14) { ctx.textAlign = 'center'; ctx.fillText(label, W / 2, -9); ctx.fillText(label, W / 2, H + 9); }
+    }
     ctx.restore();
   }
 

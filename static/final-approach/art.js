@@ -304,6 +304,19 @@ const Art = (() => {
   }
 
   // ---------- landscape ----------
+  // The airspace is always 0..W x 0..H. The painting can run further, to fill
+  // a screen that's wider or taller than it: B is the painted area. Anything
+  // outside the airspace uses its own random sequence (brng), so the scenery
+  // inside is exactly what it was before the painting grew.
+  let B = { x0: 0, y0: 0, x1: W, y1: H };
+  const inAirspace = (x, y, pad = 0) => x > -pad && x < W + pad && y > -pad && y < H + pad;
+  function bleedPoint(rng) {
+    for (let k = 0; k < 40; k++) {
+      const x = B.x0 + rng() * (B.x1 - B.x0), y = B.y0 + rng() * (B.y1 - B.y0);
+      if (!inAirspace(x, y, 20)) return { x, y };
+    }
+    return null;
+  }
   let noiseTile = null;
   function grain() {
     if (noiseTile) return noiseTile;
@@ -373,7 +386,16 @@ const Art = (() => {
         if (opts.avoid && opts.avoid(pt)) { ok = false; break; }
         pts.push(pt);
       }
-      if (ok) return pts;
+      if (ok) {
+        // The same curve, carried on to the edges of the painting.
+        const at = s => { const c = c0 + Math.sin(s / l1 + p1) * a1 + Math.sin(s / l2) * a2; return vertical ? { x: c, y: s } : { x: s, y: c }; };
+        const lo = vertical ? B.y0 : B.x0, hi = vertical ? B.y1 : B.x1;
+        const before = [], after = [];
+        for (let s = -48; s >= lo - 40; s -= 18) before.unshift(at(s));
+        for (let s = pts.length * 18 - 30; s <= hi + 40; s += 18) after.push(at(s));
+        pts.full = before.concat(pts, after);
+        return pts;
+      }
     }
     return null;
   }
@@ -389,7 +411,8 @@ const Art = (() => {
     }
   }
 
-  function farmland(c, th, rng, level, trees) {
+  function farmland(c, th, rng, level, trees, brng) {
+    const rngIn = rng;
     const ang = (rng() - 0.5) * 0.5, cs = Math.cos(ang), sn = Math.sin(ang);
     const cw = 92, ch = 74, n = 9;
     const P = [];
@@ -406,7 +429,9 @@ const Art = (() => {
     for (let i = 0; i < 2 * n; i++) {
       for (let j = 0; j < 2 * n; j++) {
         const q = [P[i][j], P[i + 1][j], P[i + 1][j + 1], P[i][j + 1]];
-        if (q.every(p => p.x < -60) || q.every(p => p.x > W + 60) || q.every(p => p.y < -60) || q.every(p => p.y > H + 60)) continue;
+        const outside = q.every(p => p.x < -60) || q.every(p => p.x > W + 60) || q.every(p => p.y < -60) || q.every(p => p.y > H + 60);
+        if (outside && (q.every(p => p.x < B.x0 - 60) || q.every(p => p.x > B.x1 + 60) || q.every(p => p.y < B.y0 - 60) || q.every(p => p.y > B.y1 + 60))) continue;
+        const rng = outside ? brng : rngIn;
         let parts = [q];
         if (rng() < 0.35) {
           const t = 0.35 + rng() * 0.3;
@@ -419,7 +444,7 @@ const Art = (() => {
           }
         }
         for (const part of parts) {
-          fields.push({ q: part, color: th.fields[Math.floor(rng() * th.fields.length)], rows: rng() < 0.55, along: rng() < 0.5, hedge: rng() });
+          fields.push({ q: part, color: th.fields[Math.floor(rng() * th.fields.length)], rows: rng() < 0.55, along: rng() < 0.5, hedge: rng(), rng });
         }
       }
     }
@@ -445,6 +470,7 @@ const Art = (() => {
       c.beginPath(); poly(c, f.q.map(p => [p.x, p.y]));
       c.strokeStyle = th.hedge; c.lineWidth = 2.2; c.globalAlpha = 0.85; c.stroke(); c.globalAlpha = 1;
       if (f.hedge > 0.68) {
+        const rng = f.rng;
         const e = Math.floor(rng() * 4), a = f.q[e], b = f.q[(e + 1) % 4];
         const len = dist(a.x, a.y, b.x, b.y);
         for (let s = 0; s < len; s += 6 + rng() * 8) {
@@ -454,30 +480,37 @@ const Art = (() => {
       }
     }
     // a few copses
-    for (let k = 0; k < 5; k++) {
-      const x0 = rng() * W, y0 = rng() * H, rad = 22 + rng() * 34;
+    const copse = (rng, x0, y0) => {
+      const rad = 22 + rng() * 34;
       for (let m = 0; m < rad * rad / 28; m++) {
         const a = rng() * TAU, d = Math.sqrt(rng()) * rad;
         trees.push({ x: x0 + Math.cos(a) * d, y: y0 + Math.sin(a) * d * 0.8, r: 3.4 + rng() * 2.6 });
       }
-    }
+    };
+    for (let k = 0; k < 5; k++) copse(rng, rng() * W, rng() * H);
+    const extra = Math.round(((B.x1 - B.x0) * (B.y1 - B.y0) - W * H) / (W * H) * 5);
+    for (let k = 0; k < extra; k++) { const pt = bleedPoint(brng); if (pt) copse(brng, pt.x, pt.y); }
   }
 
-  function desert(c, th, rng, trees) {
-    for (let k = 0; k < 30; k++) {
-      const y0 = -40 + rng() * (H + 80), amp = 6 + rng() * 16, wl = 90 + rng() * 160, ph = rng() * TAU, thick = 10 + rng() * 22;
+  function desert(c, th, rng, trees, brng) {
+    const dune = (rng, y0) => {
+      const amp = 6 + rng() * 16, wl = 90 + rng() * 160, ph = rng() * TAU, thick = 10 + rng() * 22;
       const top = x => y0 + Math.sin(x / wl + ph) * amp + Math.sin(x / 31 + ph) * 2;
+      const xa = Math.min(-10, B.x0 - 10), xb = Math.max(W + 10, B.x1 + 10);
       c.beginPath();
-      for (let x = -10; x <= W + 10; x += 10) c.lineTo(x, top(x));
-      for (let x = W + 10; x >= -10; x -= 10) c.lineTo(x, top(x) + thick + Math.sin(x / 57) * 4);
+      for (let x = xa; x <= xb; x += 10) c.lineTo(x, top(x));
+      for (let x = xb; x >= xa; x -= 10) c.lineTo(x, top(x) + thick + Math.sin(x / 57) * 4);
       c.closePath();
       c.fillStyle = hexA(th.dune, 0.45); c.fill();
       c.beginPath();
-      for (let x = -10; x <= W + 10; x += 10) c.lineTo(x, top(x));
+      for (let x = xa; x <= xb; x += 10) c.lineTo(x, top(x));
       c.strokeStyle = hexA(th.duneLight, 0.85); c.lineWidth = 1.4; c.stroke();
-    }
-    for (let k = 0; k < 7; k++) {
-      const x = rng() * W, y = rng() * H, rad = 12 + rng() * 22;
+    };
+    for (let k = 0; k < 30; k++) dune(rng, -40 + rng() * (H + 80));
+    const rows = Math.round(((B.y1 - B.y0) - H) / 22);
+    for (let k = 0; k < rows; k++) dune(brng, brng() < 0.5 ? B.y0 + brng() * (-B.y0 - 30) : H + 30 + brng() * (B.y1 - H - 30));
+    const rock = (rng, x, y) => {
+      const rad = 12 + rng() * 22;
       const pts = [];
       const n = 9;
       for (let i = 0; i < n; i++) { const a = (i / n) * TAU; const d = rad * (0.7 + rng() * 0.45); pts.push([x + Math.cos(a) * d, y + Math.sin(a) * d * 0.8]); }
@@ -485,10 +518,14 @@ const Art = (() => {
       c.beginPath(); poly(c, pts); c.fillStyle = th.rockDark; c.fill();
       c.beginPath(); poly(c, pts.map(([px, py]) => [x + (px - x) * 0.78 - 2, y + (py - y) * 0.78 - 2])); c.fillStyle = th.rock; c.fill();
       c.beginPath(); poly(c, pts.map(([px, py]) => [x + (px - x) * 0.45 - 3, y + (py - y) * 0.45 - 3])); c.fillStyle = th.rockLight; c.fill();
-    }
+    };
+    for (let k = 0; k < 7; k++) rock(rng, rng() * W, rng() * H);
     for (let k = 0; k < 220; k++) {
       trees.push({ x: rng() * W, y: rng() * H, r: 1.4 + rng() * 1.8, scrub: true });
     }
+    const more = ((B.x1 - B.x0) * (B.y1 - B.y0) - W * H) / (W * H);
+    for (let k = 0; k < Math.round(more * 7); k++) { const pt = bleedPoint(brng); if (pt) rock(brng, pt.x, pt.y); }
+    for (let k = 0; k < Math.round(more * 220); k++) { const pt = bleedPoint(brng); if (pt) trees.push({ x: pt.x, y: pt.y, r: 1.4 + brng() * 1.8, scrub: true }); }
   }
 
   function drawScrub(c, trees, th) {
@@ -502,9 +539,10 @@ const Art = (() => {
 
   function sea(c, th) {
     const edge = (off, fill) => {
-      c.beginPath(); c.moveTo(W + 5, -5);
-      for (let y = -5; y <= H + 5; y += 6) c.lineTo(shoreX(y) + off, y);
-      c.lineTo(W + 5, H + 5); c.closePath();
+      const ya = Math.min(-5, B.y0 - 5), yb = Math.max(H + 5, B.y1 + 5), xr = Math.max(W, B.x1) + 5;
+      c.beginPath(); c.moveTo(xr, ya);
+      for (let y = ya; y <= yb; y += 6) c.lineTo(shoreX(y) + off, y);
+      c.lineTo(xr, yb); c.closePath();
       c.fillStyle = fill; c.fill();
     };
     edge(-16, th.sand);
@@ -517,7 +555,7 @@ const Art = (() => {
 
   function water(c, pts, th) {
     c.lineCap = 'round'; c.lineJoin = 'round';
-    c.beginPath(); smoothLine(c, pts);
+    c.beginPath(); smoothLine(c, pts.full || pts);
     c.strokeStyle = th.riverEdge; c.lineWidth = 15; c.stroke();
     c.strokeStyle = th.river; c.lineWidth = 10.5; c.stroke();
     c.strokeStyle = 'rgba(255,255,255,0.18)'; c.lineWidth = 2; c.stroke();
@@ -525,7 +563,7 @@ const Art = (() => {
 
   function road(c, pts, th, rng, houses) {
     c.lineCap = 'round'; c.lineJoin = 'round';
-    c.beginPath(); smoothLine(c, pts);
+    c.beginPath(); smoothLine(c, pts.full || pts);
     c.strokeStyle = th.roadEdge; c.lineWidth = 7.5; c.stroke();
     c.strokeStyle = th.road; c.lineWidth = 5.5; c.stroke();
     c.setLineDash([4, 5]); c.strokeStyle = th.night ? 'rgba(255,240,200,0.25)' : 'rgba(255,255,255,0.55)'; c.lineWidth = 0.6; c.stroke();
@@ -710,16 +748,21 @@ const Art = (() => {
     }
   }
 
-  function buildTerrain(level, th, px, heliColor) {
-    const cv = canvas(W * px, H * px);
+  // `bleed` is how far past the airspace to paint ({x, y}, world units).
+  function buildTerrain(level, th, px, heliColor, bleed = { x: 0, y: 0 }) {
+    B = { x0: -bleed.x, y0: -bleed.y, x1: W + bleed.x, y1: H + bleed.y };
+    const cv = canvas((B.x1 - B.x0) * px, (B.y1 - B.y0) * px);
+    cv.bounds = Object.assign({}, B);
     const c = cv.getContext('2d');
     c.scale(px, px);
+    c.translate(-B.x0, -B.y0);
     const rng = mulberry32(level.id * 9301 + 49297);
-    c.fillStyle = th.base; c.fillRect(0, 0, W, H);
+    const brng = mulberry32(level.id * 7919 + 1013);
+    c.fillStyle = th.base; c.fillRect(B.x0, B.y0, B.x1 - B.x0, B.y1 - B.y0);
 
     const trees = [], houses = [];
-    if (th.style === 'farm') farmland(c, th, rng, level, trees);
-    else desert(c, th, rng, trees);
+    if (th.style === 'farm') farmland(c, th, rng, level, trees, brng);
+    else desert(c, th, rng, trees, brng);
     if (th.sea) sea(c, th);
 
     const complex = placeComplex(level, th);
@@ -748,10 +791,12 @@ const Art = (() => {
     for (const r of level.runways) if (r.kind === 'pad') paintPad(c, r, th, px, heliColor);
     if (complex) complexBuildings(c, complex, th, px, rng);
 
+    // The grain lines up with the airspace's corner, whatever the bleed.
     c.save();
-    c.setTransform(1, 0, 0, 1, 0, 0);
+    const gx = ((-B.x0 * px) % 160 + 160) % 160, gy = ((-B.y0 * px) % 160 + 160) % 160;
+    c.setTransform(1, 0, 0, 1, gx, gy);
     c.fillStyle = c.createPattern(grain(), 'repeat');
-    c.fillRect(0, 0, cv.width, cv.height);
+    c.fillRect(-gx, -gy, cv.width, cv.height);
     c.restore();
     return cv;
   }
@@ -997,7 +1042,7 @@ const Art = (() => {
   function updateSky(sk, dt) {
     for (const c of sk.clouds) {
       c.x += c.v * dt;
-      if (c.x - c.cloud.w * c.s > W) { c.x = -c.cloud.w * c.s * 0.5; c.y = Math.random() * H; }
+      if (c.x - c.cloud.w * c.s > B.x1) { c.x = B.x0 - c.cloud.w * c.s * 0.5; c.y = B.y0 + Math.random() * (B.y1 - B.y0); }
     }
   }
   function cloudLayer(ctx, sk, shadows) {
@@ -1053,13 +1098,15 @@ const Art = (() => {
     return Object.assign(out, { snowfall: true, treeSnow: true });
   }
 
+  // Weather particles cover the whole painting (B), in proportion to its area.
+  const area = () => ((B.x1 - B.x0) * (B.y1 - B.y0)) / (W * H);
   function rainfall(n) {
-    return Array.from({ length: n }, () => ({ x: Math.random() * W, y: Math.random() * H, v: 380 + Math.random() * 160, l: 7 + Math.random() * 7 }));
+    return Array.from({ length: Math.round(n * area()) }, () => ({ x: B.x0 + Math.random() * (B.x1 - B.x0), y: B.y0 + Math.random() * (B.y1 - B.y0), v: 380 + Math.random() * 160, l: 7 + Math.random() * 7 }));
   }
   function updateRain(drops, dt) {
     for (const d of drops) {
       d.y += d.v * dt; d.x -= d.v * 0.18 * dt;
-      if (d.y > H + 10) { d.y = -10; d.x = Math.random() * (W + 80); }
+      if (d.y > B.y1 + 10) { d.y = B.y0 - 10; d.x = B.x0 + Math.random() * (B.x1 - B.x0 + 80); }
     }
   }
   function drawRain(ctx, drops) {
@@ -1082,25 +1129,26 @@ const Art = (() => {
     }
     ctx.save();
     ctx.fillStyle = fogCache;
-    ctx.fillRect(0, 0, W, H);
+    ctx.fillRect(B.x0, B.y0, B.x1 - B.x0, B.y1 - B.y0);
     // slow drifting banks
     ctx.globalAlpha = 0.18;
     ctx.fillStyle = '#eef1f2';
+    const span = B.x1 - B.x0 + 400;
     for (let i = 0; i < 5; i++) {
-      const x = ((t * (6 + i * 2) + i * 230) % (W + 400)) - 200, y = 70 + i * 115;
+      const x = B.x0 + ((t * (6 + i * 2) + i * 230) % span) - 200, y = 70 + i * 115;
       ctx.beginPath(); ctx.ellipse(x, y, 190, 34, 0, 0, TAU); ctx.fill();
     }
     ctx.restore();
   }
 
   function snowfall(n) {
-    return Array.from({ length: n }, () => ({ x: Math.random() * W, y: Math.random() * H, r: 0.6 + Math.random() * 1.4, v: 14 + Math.random() * 18, ph: Math.random() * TAU }));
+    return Array.from({ length: Math.round(n * area()) }, () => ({ x: B.x0 + Math.random() * (B.x1 - B.x0), y: B.y0 + Math.random() * (B.y1 - B.y0), r: 0.6 + Math.random() * 1.4, v: 14 + Math.random() * 18, ph: Math.random() * TAU }));
   }
   function updateSnow(flakes, dt, t) {
     for (const f of flakes) {
       f.y += f.v * dt; f.x += (Math.sin(t + f.ph) * 6 + 8) * dt;
-      if (f.y > H + 4) { f.y = -4; f.x = Math.random() * W; }
-      if (f.x > W + 4) f.x = -4;
+      if (f.y > B.y1 + 4) { f.y = B.y0 - 4; f.x = B.x0 + Math.random() * (B.x1 - B.x0); }
+      if (f.x > B.x1 + 4) f.x = B.x0 - 4;
     }
   }
   function drawSnow(ctx, flakes) {
@@ -1186,7 +1234,7 @@ const Art = (() => {
   return {
     COLORS, mulberry32, buildTerrain, sprite, icon, aircraft, aircraftShadow, approach, route, trail,
     incoming, storm, stormSprite, sky, updateSky, cloudLayer, snowfall, updateSnow, drawSnow, effect,
-    nightTheme, snowTheme, rainfall, updateRain, drawRain, fog,
+    nightTheme, snowTheme, rainfall, updateRain, drawRain, fog, bounds: () => Object.assign({}, B),
     foam, vignette, designator, hexA, glyph, setBoost,
   };
 })();
