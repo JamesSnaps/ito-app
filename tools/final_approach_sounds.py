@@ -60,6 +60,12 @@ SOUNDS = {
     "ops_van": ("sfx", 4.0, "A small airport operations van driving across tarmac with an amber beacon beeping, passing by and fading"),
     "drone_buzz": ("sfx", 3.0, "A small quadcopter drone hovering nearby: high whirring propellers buzzing, then drifting away"),
     "dog_bark": ("sfx", 1.5, "A friendly dog barking twice outdoors in the distance"),
+    # disruptions, part 2 (v1.30.0)
+    "balloon_burner": ("sfx", 2.5, "A hot air balloon's gas burner roaring in a short blast, then quiet, outdoors"),
+    "display_flypast": ("sfx", 4.0, "A formation of small jets roaring low overhead at an air show, passing fast and fading away"),
+    "cyber_glitch": ("sfx", 2.0, "Computer system crashing: harsh digital glitch, static bursts and stuttering electronic beeps, then a low error tone"),
+    "restore_ok": ("sfx", 1.5, "A computer system rebooting successfully: a rising soft electronic chime, clean and reassuring"),
+    "gremlin_giggle": ("sfx", 2.0, "A cheeky little cartoon gremlin giggling mischievously over a playful electronic warble, silly not scary"),
     # loops: one bed per landscape, one engine per aircraft family
     "bed_meadow": ("loop", 20, "Peaceful countryside ambience: soft breeze over fields, skylarks and distant birdsong, calm, continuous"),
     "bed_coast": ("loop", 20, "Coastal ambience: gentle waves on a sandy beach, distant seagulls, light sea breeze, continuous"),
@@ -119,7 +125,7 @@ def hold_fixes():
     import re
     levels = (OUT.parent / "levels.js").read_text()
     block = levels.split("const HOLD_FIXES = {")[1].split("};")[0]
-    return dict(re.findall(r"([A-Z]{3}): '([^']+)'", block))
+    return dict(re.findall(r"([A-Z]{3,5}): '([^']+)'", block))
 
 
 def spoken(number):
@@ -224,6 +230,24 @@ def speech_lines():
     for n, word in ((3, "three"), (4, "four"), (5, "five")):
         add(f"tower_wave_{n}", [f"Heads up, all stations. A nearby airport has closed, and {word} diversions are heading our way.",
                                 f"All stations, {word} diversions inbound shortly. Use the holds and bring them in one at a time."], tower)
+    # Disruptions, part 2: balloons, the air display, the cyber attack (grown-ups)
+    # and the system gremlin (children and guests: playful, never scary).
+    add("tower_balloons", ["All stations, hot air balloons drifting across the field. Give them plenty of room.",
+                           "Heads up, balloons are lifting off nearby. Route your traffic round them."], tower)
+    add("tower_balloons_gone", ["The balloons have drifted clear. Thanks, everyone.",
+                                "Balloons are out of our airspace now."], tower)
+    add("tower_display", ["All stations, the Kestrels display team will cross the field shortly. Keep clear of the marked corridor.",
+                          "Air display coming through. Keep everyone out of the corridor until the Kestrels have passed."], tower)
+    add("tower_display_clear", ["Kestrels have passed. The corridor is clear.",
+                                "Display's over. Lovely flying, Kestrels."], tower)
+    add("tower_cyber", ["All stations, we've lost the network. Radar is unreliable, expect delays on the radio.",
+                        "Tower systems are down. Our screens are locked, so fly your routes as given."], tower)
+    add("tower_cyber_restored", ["Systems restored from backup. Radar's back to normal.",
+                                 "We're back up. Radar and radio normal again."], tower)
+    add("tower_gremlin", ["Oh no, a gremlin has got into the computer! The radar's gone a bit jumpy.",
+                          "Uh oh. Something's nibbling the wires. Radar might wobble for a bit."], tower)
+    add("tower_gremlin_gone", ["Gremlin caught! Everything's working again.",
+                               "Got him. The gremlin's gone and the radar's fine."], tower)
     add("tower_foam", ["Foam going down on the runway. It's reserved for the emergency.",
                        "All aircraft, that runway is closed for a foam landing. Use another."], tower)
     add("tower_police", ["Police are on their way to meet the aircraft.",

@@ -14,9 +14,13 @@
 //                   where the player picks Off / Some / Lots on the boarding pass.
 // disruptions       { kinds, every: [min, max], first } for an airport that has them:
 //                   'runway' (an obstruction closes one), 'drone' (a circle of closed
-//                   airspace near an approach) and 'wave' (a burst of diverted arrivals).
+//                   airspace near an approach), 'wave' (a burst of diverted arrivals),
+//                   'balloons' (hot-air balloons drift across; daytime only), 'display'
+//                   (a display team crosses along a corridor) and 'cyber' (the tower's
+//                   systems are hacked, or a gremlin gets in for children and guests).
 //                   Always announced with a countdown, one at a time, never during an
-//                   emergency. Holding Pattern teaches them.
+//                   emergency. Holding Pattern teaches them; the first of each kind on a
+//                   device explains itself.
 // holds             hold fixes: beacons near the edges, each a key into HOLD_FIXES with
 //                   a position. A route let go at one circles the aircraft there until
 //                   it's drawn out. Shown from Holding Pattern on, and everywhere once
@@ -26,11 +30,12 @@
 // not the board's number (the board numbers them by position).
 
 // Hold fix names: one shared pool, used again and again across airports (each
-// airport places two or three of them), named like Heathrow's stacks and easy
-// to say on the radio. Spoken lines will be recorded per name, so a new name
-// here needs its own lines; keep the list short.
+// airport places two or three of them). Real holds with their real
+// identifiers: Heathrow's four stacks (Bovingdon's beacon is BNN) and two of
+// Gatwick's (named points have five letters). Each name has its own spoken
+// readbacks, so a new name here needs its own lines; keep the list short.
 const HOLD_FIXES = {
-  BOV: 'Bovingdon', OCK: 'Ockham', LAM: 'Lambourne', BIG: 'Biggin', WIL: 'Willo', TIM: 'Timba',
+  BNN: 'Bovingdon', OCK: 'Ockham', LAM: 'Lambourne', BIG: 'Biggin', WILLO: 'Willo', TIMBA: 'Timba',
 };
 
 // Landscape palettes. `farm` themes get a patchwork of fields and hedgerows; `desert` gets dunes and rock.
@@ -91,7 +96,7 @@ const LEVELS = [
       { kind: 'long', x: 280, y: 390, angle: 0, length: 320 },
       { kind: 'short', x: 640, y: 190, angle: 180, length: 190 },
     ],
-    holds: [{ fix: 'BOV', x: 95, y: 175 }, { fix: 'TIM', x: 865, y: 500 }],
+    holds: [{ fix: 'BNN', x: 95, y: 175 }, { fix: 'TIMBA', x: 865, y: 500 }],
     traffic: { types: { prop: 1, jet: 1 }, interval: [7, 4.5], maxPlanes: 4, fuel: 90, warning: 3 },
   },
   {
@@ -102,7 +107,7 @@ const LEVELS = [
       { kind: 'short', x: 620, y: 190, angle: 180, length: 190 },
     ],
     disruptions: { kinds: ['runway'], every: [60, 80], first: 30 },
-    holds: [{ fix: 'BOV', x: 100, y: 190 }, { fix: 'OCK', x: 100, y: 490 }, { fix: 'BIG', x: 860, y: 490 }],
+    holds: [{ fix: 'BNN', x: 100, y: 190 }, { fix: 'OCK', x: 100, y: 490 }, { fix: 'BIG', x: 860, y: 490 }],
     traffic: { types: { prop: 1, jet: 1 }, interval: [7, 4.6], maxPlanes: 5, fuel: 95, warning: 3 },
   },
   {
@@ -113,7 +118,7 @@ const LEVELS = [
       { kind: 'short', x: 600, y: 150, angle: 90, length: 170 },
       { kind: 'pad', x: 730, y: 430 },
     ],
-    holds: [{ fix: 'LAM', x: 865, y: 175 }, { fix: 'WIL', x: 95, y: 175 }],
+    holds: [{ fix: 'LAM', x: 865, y: 175 }, { fix: 'WILLO', x: 95, y: 175 }],
     traffic: { types: { prop: 1, jet: 1, heli: 0.9 }, interval: [6.5, 4], maxPlanes: 5, fuel: 90, warning: 3 },
   },
   {
@@ -124,8 +129,8 @@ const LEVELS = [
       { kind: 'short', x: 330, y: 170, angle: 40, length: 200 },
       { kind: 'pad', x: 760, y: 190 },
     ],
-    disruptions: { kinds: ['drone'], every: [70, 95], first: 40 },
-    holds: [{ fix: 'BIG', x: 865, y: 500 }, { fix: 'TIM', x: 95, y: 290 }],
+    disruptions: { kinds: ['drone', 'balloons'], every: [70, 95], first: 40 },
+    holds: [{ fix: 'BIG', x: 865, y: 500 }, { fix: 'TIMBA', x: 95, y: 290 }],
     traffic: { types: { prop: 1, jet: 1, heli: 0.8 }, interval: [6, 3.8], maxPlanes: 6, fuel: 85 },
   },
   {
@@ -136,6 +141,7 @@ const LEVELS = [
       { kind: 'short', x: 780, y: 430, angle: 180, length: 180 },
       { kind: 'pad', x: 520, y: 150 },
     ],
+    disruptions: { kinds: ['display'], every: [85, 110], first: 45 },
     holds: [{ fix: 'LAM', x: 865, y: 175 }, { fix: 'OCK', x: 140, y: 505 }],
     traffic: { types: { prop: 1, jet: 1, heli: 0.8 }, interval: [6, 3.8], maxPlanes: 6, fuel: 45 },
   },
@@ -148,7 +154,7 @@ const LEVELS = [
       { kind: 'pad', x: 700, y: 470 },
     ],
     storms: 2,
-    holds: [{ fix: 'WIL', x: 865, y: 255 }, { fix: 'TIM', x: 95, y: 500 }],
+    holds: [{ fix: 'WILLO', x: 865, y: 255 }, { fix: 'TIMBA', x: 95, y: 500 }],
     traffic: { types: { prop: 1, jet: 1, heli: 0.8 }, interval: [6, 3.6], maxPlanes: 6, fuel: 80 },
   },
   {
@@ -161,7 +167,7 @@ const LEVELS = [
     ],
     windShift: 40,
     disruptions: { kinds: ['wave'], every: [75, 100], first: 45 },
-    holds: [{ fix: 'BIG', x: 865, y: 505 }, { fix: 'WIL', x: 90, y: 360 }],
+    holds: [{ fix: 'BIG', x: 865, y: 505 }, { fix: 'WILLO', x: 90, y: 360 }],
     traffic: { types: { prop: 1, jet: 1, heli: 0.8 }, interval: [6, 3.6], maxPlanes: 6, fuel: 85 },
   },
   {
@@ -173,8 +179,8 @@ const LEVELS = [
       { kind: 'short', x: 800, y: 470, angle: 180, length: 170 },
       { kind: 'pad', x: 820, y: 250 },
     ],
-    disruptions: { kinds: ['runway'], every: [60, 85], first: 35 },
-    holds: [{ fix: 'BOV', x: 90, y: 315 }, { fix: 'TIM', x: 360, y: 510 }],
+    disruptions: { kinds: ['runway', 'cyber'], every: [60, 85], first: 35 },
+    holds: [{ fix: 'BNN', x: 90, y: 315 }, { fix: 'TIMBA', x: 360, y: 510 }],
     traffic: { types: { prop: 1, jet: 1.2, heavy: 1, heli: 0.8 }, interval: [5.5, 3.4], maxPlanes: 7, fuel: 85 },
   },
   {
@@ -186,8 +192,8 @@ const LEVELS = [
       { kind: 'pad', x: 780, y: 470 },
     ],
     storms: 1, windShift: 50,
-    disruptions: { kinds: ['runway', 'drone', 'wave'], every: [50, 70], first: 35 },
-    holds: [{ fix: 'OCK', x: 140, y: 505 }, { fix: 'WIL', x: 480, y: 505 }, { fix: 'LAM', x: 865, y: 300 }],
+    disruptions: { kinds: ['runway', 'drone', 'wave', 'cyber'], every: [50, 70], first: 35 },
+    holds: [{ fix: 'OCK', x: 140, y: 505 }, { fix: 'WILLO', x: 480, y: 505 }, { fix: 'LAM', x: 865, y: 300 }],
     traffic: { types: { prop: 1, jet: 1, heavy: 0.6, heli: 0.8 }, interval: [5.5, 3.2], maxPlanes: 7, fuel: 80 },
   },
   {
@@ -199,7 +205,7 @@ const LEVELS = [
       { kind: 'pad', x: 740, y: 450 },
     ],
     emergencies: { every: [22, 36], first: 10 },
-    holds: [{ fix: 'BOV', x: 95, y: 175 }, { fix: 'LAM', x: 865, y: 175 }],
+    holds: [{ fix: 'BNN', x: 95, y: 175 }, { fix: 'LAM', x: 865, y: 175 }],
     traffic: { types: { prop: 1, jet: 1, heli: 0.8 }, interval: [6.5, 4.4], maxPlanes: 6, fuel: 85, warning: 3 },
   },
   {
@@ -211,7 +217,7 @@ const LEVELS = [
       { kind: 'pad', x: 720, y: 460 },
     ],
     storms: 1, windShift: 60,
-    holds: [{ fix: 'LAM', x: 865, y: 175 }, { fix: 'BOV', x: 95, y: 175 }, { fix: 'BIG', x: 865, y: 505 }],
+    holds: [{ fix: 'LAM', x: 865, y: 175 }, { fix: 'BNN', x: 95, y: 175 }, { fix: 'BIG', x: 865, y: 505 }],
     traffic: { types: { prop: 1, jet: 1, heavy: 0.5, heli: 0.8 }, interval: [6, 2.6], maxPlanes: 9, fuel: 85 },
   },
 ];

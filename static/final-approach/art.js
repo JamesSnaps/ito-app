@@ -1420,6 +1420,195 @@ const Art = (() => {
     ctx.restore();
   }
 
+  // ---------- disruptions, part 2 (v1.30.0) ----------
+  // Hot-air balloons, seen from the tower: upright, so they read as balloons
+  // on a phone. Each has its own pair of colours in curved gores, a wicker
+  // basket and a burner that flickers now and then. `look` picks the colours.
+  const BALLOON_LOOKS = [
+    ['#e0483a', '#f6c84a'],   // red and gold
+    ['#2f6fb3', '#f4f1ea'],   // blue and white
+    ['#3f9a5c', '#f08a3c'],   // green and orange
+    ['#8a4fb0', '#f2a6c4'],   // purple and pink
+    ['#f2b632', '#2a8f9e'],   // sunflower and teal
+  ];
+  function balloonShadow(ctx, x, y, k) {
+    ctx.save();
+    ctx.translate(x + 20 * k, y + 28 * k);
+    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 13 * k);
+    g.addColorStop(0, 'rgba(10,14,18,0.26)'); g.addColorStop(1, 'rgba(10,14,18,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.ellipse(0, 0, 13 * k, 9 * k, 0, 0, TAU); ctx.fill();
+    ctx.restore();
+  }
+  function balloon(ctx, x, y, t, k, look, seed, night) {
+    const [a, b] = BALLOON_LOOKS[look % BALLOON_LOOKS.length];
+    const R = 11 * k, cy = -6 * k;              // envelope centre, above the basket
+    const bob = Math.sin(t * 0.9 + seed) * 1.2 * k;
+    ctx.save();
+    ctx.translate(x, y + bob);
+    // the envelope: a round top narrowing to the mouth
+    const shape = () => {
+      ctx.beginPath();
+      ctx.moveTo(-3 * k, cy + R * 1.55);
+      ctx.bezierCurveTo(-R * 0.75, cy + R * 0.95, -R * 1.02, cy + R * 0.35, -R, cy);
+      ctx.arc(0, cy, R, Math.PI, 0);
+      ctx.bezierCurveTo(R * 1.02, cy + R * 0.35, R * 0.75, cy + R * 0.95, 3 * k, cy + R * 1.55);
+      ctx.closePath();
+    };
+    // ropes and the basket
+    ctx.strokeStyle = 'rgba(40,30,22,0.8)'; ctx.lineWidth = 0.7 * k;
+    ctx.beginPath();
+    ctx.moveTo(-2.6 * k, cy + R * 1.55); ctx.lineTo(-2.6 * k, cy + R * 1.55 + 4.2 * k);
+    ctx.moveTo(2.6 * k, cy + R * 1.55); ctx.lineTo(2.6 * k, cy + R * 1.55 + 4.2 * k);
+    ctx.stroke();
+    const by = cy + R * 1.55 + 4 * k;
+    ctx.fillStyle = '#8a5a2e'; ctx.beginPath(); rrect(ctx, -3.4 * k, by, 6.8 * k, 4.6 * k, 1 * k); ctx.fill();
+    ctx.strokeStyle = '#5e3b1b'; ctx.lineWidth = 0.6 * k;
+    ctx.beginPath(); ctx.moveTo(-3.4 * k, by + 1.6 * k); ctx.lineTo(3.4 * k, by + 1.6 * k); ctx.stroke();
+    // the burner: a small flame at the mouth, now and then a bigger burst
+    const burst = Math.sin(t * 0.7 + seed * 3) > 0.82;
+    const flick = 0.55 + 0.45 * Math.sin(t * 23 + seed * 7) * Math.sin(t * 11 + seed);
+    if (burst || flick > 0.75) {
+      const fr = (burst ? 4.2 : 2.2) * k;
+      ctx.globalCompositeOperation = 'lighter';
+      const g = ctx.createRadialGradient(0, cy + R * 1.45, 0, 0, cy + R * 1.45, fr * (night ? 3 : 1.8));
+      g.addColorStop(0, 'rgba(255,236,150,0.95)'); g.addColorStop(0.45, 'rgba(255,140,40,0.7)'); g.addColorStop(1, 'rgba(255,90,20,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(0, cy + R * 1.45, fr * (night ? 3 : 1.8), 0, TAU); ctx.fill();
+      ctx.globalCompositeOperation = 'source-over';
+    }
+    // gores: concentric upright ellipses in alternating colours, clipped
+    ctx.save();
+    shape(); ctx.clip();
+    ctx.fillStyle = a; ctx.fillRect(-R * 1.2, cy - R * 1.2, R * 2.4, R * 3);
+    for (let i = 1; i < 5; i++) {
+      ctx.fillStyle = i % 2 ? b : a;
+      ctx.beginPath(); ctx.ellipse(0, cy + R * 0.2, R * (1 - i * 0.2), R * 1.6, 0, 0, TAU); ctx.fill();
+    }
+    // light from the top left, shade on the right
+    const sh = ctx.createLinearGradient(-R, cy - R, R, cy + R);
+    sh.addColorStop(0, 'rgba(255,255,255,0.28)'); sh.addColorStop(0.5, 'rgba(255,255,255,0)'); sh.addColorStop(1, 'rgba(20,20,40,0.32)');
+    ctx.fillStyle = sh; ctx.fillRect(-R * 1.2, cy - R * 1.2, R * 2.4, R * 3);
+    ctx.restore();
+    shape();
+    ctx.strokeStyle = 'rgba(30,26,30,0.55)'; ctx.lineWidth = 0.9 * k; ctx.stroke();
+    ctx.restore();
+  }
+  // A balloon's bubble: the circle an aircraft mustn't enter. Dashed amber
+  // while it's on its way, red and white once it counts.
+  function balloonBubble(ctx, x, y, r, t, live) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.fillStyle = live ? 'rgba(232,85,63,0.10)' : 'rgba(242,179,61,0.08)';
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.fill();
+    ctx.lineWidth = 2.2;
+    if (live) { ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.stroke(); }
+    ctx.strokeStyle = live ? '#e8402f' : '#f2b33d';
+    ctx.setLineDash([6, 6]); ctx.lineDashOffset = -t * 8;
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.stroke();
+    ctx.restore();
+  }
+  // Where the balloons will drift: a dotted line with chevrons pointing the
+  // way, from (x0, y0) to (x1, y1).
+  function driftLine(ctx, x0, y0, x1, y1, t, alpha) {
+    const a = Math.atan2(y1 - y0, x1 - x0), len = Math.hypot(x1 - x0, y1 - y0);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(x0, y0); ctx.rotate(a);
+    ctx.lineCap = 'round';
+    ctx.setLineDash([0.01, 10]); ctx.lineDashOffset = -t * 10;
+    ctx.strokeStyle = 'rgba(20,24,28,0.55)'; ctx.lineWidth = 5.6;
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(len, 0); ctx.stroke();
+    ctx.strokeStyle = '#f2b33d'; ctx.lineWidth = 3.4;
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(len, 0); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.lineJoin = 'round';
+    for (let s = 60 + ((t * 18) % 90); s < len - 20; s += 90) {
+      for (const [w, c] of [[4.4, 'rgba(20,24,28,0.55)'], [2.4, '#f2b33d']]) {
+        ctx.lineWidth = w; ctx.strokeStyle = c;
+        ctx.beginPath(); ctx.moveTo(s - 6, -6); ctx.lineTo(s, 0); ctx.lineTo(s - 6, 6); ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
+  // The display team: small swept jets in the team's livery (rust, with a
+  // cream flash), and the smoke they trail.
+  function displayJet(ctx, x, y, a, k) {
+    ctx.save();
+    ctx.translate(x, y); ctx.rotate(a); ctx.scale(k, k);
+    ctx.fillStyle = 'rgba(0,0,0,0.22)';
+    ctx.save(); ctx.translate(6, 8);
+    ctx.beginPath(); ctx.moveTo(9, 0); ctx.lineTo(-2, -8); ctx.lineTo(-6, -8); ctx.lineTo(-4, 0); ctx.lineTo(-6, 8); ctx.lineTo(-2, 8); ctx.closePath(); ctx.fill();
+    ctx.restore();
+    // wings
+    ctx.fillStyle = '#b8522a';
+    ctx.beginPath(); ctx.moveTo(4, 0); ctx.lineTo(-3, -8.5); ctx.lineTo(-6.5, -8.5); ctx.lineTo(-3.5, 0); ctx.lineTo(-6.5, 8.5); ctx.lineTo(-3, 8.5); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#f3ead2';
+    ctx.beginPath(); ctx.moveTo(-1.2, -3); ctx.lineTo(-4.4, -7.6); ctx.lineTo(-5.4, -7.6); ctx.lineTo(-3, -3); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(-1.2, 3); ctx.lineTo(-4.4, 7.6); ctx.lineTo(-5.4, 7.6); ctx.lineTo(-3, 3); ctx.closePath(); ctx.fill();
+    // tailplane
+    ctx.fillStyle = '#b8522a';
+    ctx.beginPath(); ctx.moveTo(-6, 0); ctx.lineTo(-9, -3.6); ctx.lineTo(-10, -3.6); ctx.lineTo(-9, 0); ctx.lineTo(-10, 3.6); ctx.lineTo(-9, 3.6); ctx.closePath(); ctx.fill();
+    // fuselage
+    ctx.fillStyle = '#d9692f';
+    ctx.beginPath(); ctx.ellipse(0, 0, 9.5, 1.9, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#f3ead2'; ctx.fillRect(-7, -0.5, 12, 1);
+    ctx.fillStyle = '#25313a';
+    ctx.beginPath(); ctx.ellipse(4.2, 0, 2.2, 1.1, 0, 0, TAU); ctx.fill();
+    ctx.restore();
+  }
+  // One jet's smoke, from (x0, y0) to the jet at (x1, y1): thicker and
+  // fainter the further back, gone `fade` units behind.
+  function smoke(ctx, x0, y0, x1, y1, color, fade, alpha) {
+    const len = Math.hypot(x1 - x0, y1 - y0);
+    if (len < 2 || alpha <= 0) return;
+    const ux = (x1 - x0) / len, uy = (y1 - y0) / len;
+    const from = Math.max(0, len - fade);
+    ctx.save();
+    ctx.lineCap = 'round';
+    const steps = 10;
+    for (let i = 0; i < steps; i++) {
+      const s0 = from + (len - from) * (i / steps), s1 = from + (len - from) * ((i + 1) / steps);
+      const q = (i + 1) / steps;                      // 1 at the jet
+      ctx.globalAlpha = alpha * q * 0.75;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2.5 + (1 - q) * 9;
+      ctx.beginPath(); ctx.moveTo(x0 + ux * s0, y0 + uy * s0); ctx.lineTo(x0 + ux * s1, y0 + uy * s1); ctx.stroke();
+    }
+    ctx.restore();
+  }
+  // The display corridor: a band along the line (centre `c`, direction `a`,
+  // half-width `hw`) between `s0` and `s1` along it, dashed edges, hatched
+  // amber while it's coming, red once the formation is in it.
+  function corridor(ctx, c, a, hw, s0, s1, t, live) {
+    if (s1 <= s0) return;
+    ctx.save();
+    ctx.translate(c.x, c.y); ctx.rotate(a);
+    ctx.fillStyle = live ? 'rgba(232,85,63,0.14)' : 'rgba(242,179,61,0.17)';
+    ctx.fillRect(s0, -hw, s1 - s0, hw * 2);
+    ctx.save();
+    ctx.beginPath(); ctx.rect(s0, -hw, s1 - s0, hw * 2); ctx.clip();
+    ctx.strokeStyle = live ? 'rgba(232,85,63,0.26)' : 'rgba(242,179,61,0.32)'; ctx.lineWidth = 2.2;
+    const off = (t * 14) % 16;
+    for (let x = s0 - hw * 2 - off; x < s1 + hw * 2; x += 16) { ctx.beginPath(); ctx.moveTo(x, -hw); ctx.lineTo(x + hw * 2, hw); ctx.stroke(); }
+    ctx.restore();
+    for (const y of [-hw, hw]) {
+      ctx.lineWidth = 4.4; ctx.strokeStyle = 'rgba(20,24,28,0.45)'; ctx.setLineDash([]);
+      ctx.beginPath(); ctx.moveTo(s0, y); ctx.lineTo(s1, y); ctx.stroke();
+      ctx.lineWidth = 2.8;
+      ctx.strokeStyle = live ? '#ff5a4a' : '#f2b33d'; ctx.setLineDash([12, 8]); ctx.lineDashOffset = -t * 30;
+      ctx.beginPath(); ctx.moveTo(s0, y); ctx.lineTo(s1, y); ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    // chevrons down the middle, the way they'll fly
+    ctx.strokeStyle = live ? 'rgba(255,200,190,0.8)' : 'rgba(242,179,61,0.85)'; ctx.lineWidth = 2.4; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    for (let s = s0 + 30 + ((t * 40) % 70); s < s1 - 10; s += 70) {
+      ctx.beginPath(); ctx.moveTo(s - 7, -8); ctx.lineTo(s, 0); ctx.lineTo(s - 7, 8); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   let vignetteCache = null;
   function vignette(ctx, night) {
     if (!vignetteCache || vignetteCache.night !== night) {
@@ -1436,6 +1625,7 @@ const Art = (() => {
     COLORS, mulberry32, buildTerrain, sprite, icon, aircraft, aircraftShadow, approach, route, trail,
     incoming, storm, stormSprite, sky, updateSky, cloudLayer, snowfall, updateSnow, drawSnow, effect,
     nightTheme, snowTheme, rainfall, updateRain, drawRain, fog, bounds: () => Object.assign({}, B),
-    foam, vignette, designator, hexA, glyph, setBoost, holdFix, droneZone, obstacle, opsVan,
+    foam, vignette, designator, hexA, glyph, setBoost, holdFix, droneZone, obstacle, opsVan, tag,
+    balloon, balloonShadow, balloonBubble, driftLine, displayJet, smoke, corridor, BALLOON_LOOKS,
   };
 })();
