@@ -2,7 +2,9 @@
 
 What the game is, how it's built, what it wants to be, and how we plan to
 get there. Keep it current: when something here stops being true, change
-it in the same pull request as the code.
+it in the same pull request as the code. Day-to-day work (bugs and ideas as
+GitHub issues, releasing, testing, the release log) is in
+[the runbook](RUNBOOK.md).
 
 ![The arrivals board](img/arrivals-board.jpg)
 

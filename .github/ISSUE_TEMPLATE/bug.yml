@@ -1,0 +1,30 @@
+name: Bug
+description: Something in a game or the app isn't working as it should
+labels: [bug]
+body:
+  - type: dropdown
+    id: where
+    attributes:
+      label: Which game or app
+      options: [Final Approach, Final Vector, The iOS app, The Game Night hub, Another game]
+    validations: { required: true }
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead.
+    validations: { required: true }
+  - type: input
+    id: context
+    attributes:
+      label: Where and on what
+      description: e.g. "Heavy Metal at night, iPad, profile Louis", "Final Vector lesson 4, laptop"
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to make it happen again (if you know)
+  - type: textarea
+    id: shot
+    attributes:
+      label: Screenshot or recording
+      description: Drag one in if you have it.
