@@ -295,10 +295,15 @@ Game Night.
 
 ---
 
-## 5. Current state (v1.27.0)
+## 5. Current state (v1.28.0)
 
 **Done:**
 
+- [x] The landscape fills any screen: painted past the airspace (which
+  stays 960 × 600 and paints exactly as before), weather over all of it,
+  and the edge of the control zone marked with a dashed amber line and the
+  airport's code ("THD CONTROL ZONE"); arrivals seen flying in from beyond it
+  (v1.28.0)
 - [x] Conditions: Dusk, Night, Snow, Storm and Fog on any cleared airport,
   each with its own rule; stamps and the Passport (v1.27.0)
 - [x] Who's playing: a browser without a profile is asked once; guests'
@@ -486,6 +491,24 @@ as a toggle.
 - **Holding patterns:** circle an aircraft in place. Now planned as hold
   fixes on the map (see "Disruptions" in the roadmap), not a tool.
 - **Moving runways:** a carrier's deck sails and turns.
+- **Mountains** (added 1 November 2026). High ground is a fixed no-fly
+  area, like a storm that doesn't move. An aircraft that flies into it pulls
+  up and diverts ("Terrain! Pull up"): a strike, as a storm is. A route
+  drawn across it shows red as you draw. The arrival safety rules that keep
+  new arrivals out of storms for their first five seconds cover terrain
+  too, so it never springs on anyone.
+  - **The puzzle is the valley:** a runway between ridges can only be
+    reached along the valley, so approaches have to be planned from further
+    out, like the real Innsbruck, Paro or Queenstown.
+  - **The look:** a mountain landscape painted like the others, in code:
+    shaded relief, contour lines, snow on the peaks, a lake or two. With the
+    landscape now painted past the airspace (v1.28.0), the range carries on
+    beyond the control zone.
+  - **The map is big enough:** two storm cells fit comfortably today, so a
+    ridge, or two or three peaks, will too.
+  - **Introduced by** a teaching airport in a mountain landscape (a "High
+    Pass"), then in later airports, free play and World Tour (Innsbruck is
+    an obvious real one).
 
 ### Radio dialogue ✅ (v1.21.0)
 
@@ -1124,6 +1147,8 @@ The weather is decoration plus storms today. Make it a system:
 - The roster in section 6, each introduced by an airport in the career.
 - Wake turbulence with the superjumbo; holding patterns (and the Hold
   tool).
+- Mountains: a mountain landscape and a teaching airport (section 6, "New
+  mechanics").
 - ✅ **Emergencies, the everyone set** (section 6; v1.23.0, brought
   forward): fuel, medical, air ambulance, damaged and State One; Lifeline;
   Endless's Off / Some / Lots.
