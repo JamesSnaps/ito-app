@@ -54,6 +54,11 @@
 		<string>BebasNeue-Regular.ttf</string>
 		<string>SpecialElite-Regular.ttf</string>
 		<string>Caveat-Variable.ttf</string>
+		<string>BricolageGrotesque-Regular.ttf</string>
+		<string>BricolageGrotesque-Medium.ttf</string>
+		<string>BricolageGrotesque-SemiBold.ttf</string>
+		<string>BricolageGrotesque-Bold.ttf</string>
+		<string>BricolageGrotesque-ExtraBold.ttf</string>
 	</array>
 	<key>UILaunchScreen</key>
 	<dict>

@@ -138,11 +138,21 @@ problem.
   stops working past a handful; the wheel is native scrolling (flicks
   properly on touch, no drag handling of its own) and stays one row
   tall however many categories exist.
-- **Baloo 2, self-hosted** (`static/fonts/`, OFL, latin subset, one
-  variable file covering 400–800). Deliberately not linked from Google's
-  CDN: the app has to work on a LAN with no internet, and no player's
-  browser should call a third party mid-game. `--font-display` falls
-  back through `ui-rounded` if it ever fails to load.
+- **Bricolage Grotesque, self-hosted** (v1.32.0; `static/fonts/`, OFL,
+  latin subset, one variable file covering 200–800, the 96pt optical
+  size). It replaced Baloo 2, whose round, bubbly look (and SF Rounded on
+  iOS) read young; Bricolage is still lively at heavy weights but
+  grown-up, and sits well beside Fugitive's and Final Approach's own
+  faces. It's `--font-display` only (titles, buttons, cards, numbers);
+  body text stays on the platform's UI face, which is also the fallback.
+  Deliberately not linked from Google's CDN: the app has to work on a LAN
+  with no internet, and no player's browser should call a third party
+  mid-game. **iOS bundles it as five static weights** (400–800,
+  `ios/GameNight/Fonts/BricolageGrotesque-*.ttf`) cut from that same
+  woff2 with fontTools' instancer, so both draw identical letters;
+  `Theme.display` picks the nearest and uses `fixedSize`, as
+  `.system(size:)` didn't follow Dynamic Type either. Wildwood's card
+  PNGs bake the face in: change it → re-render them.
 - **The player view is the display view.** It's sized in vw/vmin so the
   same URL works on a phone and cast to a TV — the topic is the reason
   the app exists, so it gets the whole screen. The host page carries a
@@ -262,8 +272,8 @@ problem.
 - **Its felt-and-gold theme is `static/flip7.css`, scoped under `.flip7`
   on `<body>`**, layered over the shared shell rather than replacing it.
 - **Fonts are the app's own.** The standalone page pulled Fraunces and
-  IBM Plex Mono from Google's CDN; that's out for the same reason ito
-  self-hosts Baloo 2 — LAN with no internet, and no third-party calls
+  IBM Plex Mono from Google's CDN; that's out for the same reason the hub
+  self-hosts its display face — LAN with no internet, and no third-party calls
   mid-game. A test asserts the page and its CSS contain no absolute URLs.
 - **Bust and Freeze are exclusive** — they're how a turn ended. Bust also
   locks the number/modifier chips so a stray tap can't score a bust.
@@ -1012,7 +1022,7 @@ read in full; not in the repo).
 - **Three bundled faces give it its voice**: Bebas Neue (wanted-poster
   capitals — title, card numbers, nameplates), Special Elite (a worn
   typewriter — case tags, notes, stamps, the folder) and Caveat (the
-  Marshal's handwriting). Self-hosted in `static/fonts/` like Baloo 2, latin
+  Marshal's handwriting). Self-hosted in `static/fonts/` like the display face, latin
   subsets only, licences and sources in its README. Body copy stays on the
   system UI face for legibility.
 - **Drawn mugshots when there's no photo.** Each player without one gets a silhouette drawn from a hash of their name (`mugshotSVG()`):

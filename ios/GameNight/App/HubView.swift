@@ -556,7 +556,7 @@ private struct ItoArt: View {
     }
 
     private func dot(_ label: String) -> some View {
-        Text(label).font(.system(size: label.count > 1 ? 10 : 13, weight: .heavy, design: .rounded))
+        Text(label).font(Theme.display(label.count > 1 ? 10 : 13, weight: .heavy))
             .foregroundStyle(.white)
             .frame(width: 28, height: 28)
             .background(Color(hex: 0x45474C), in: Circle())
