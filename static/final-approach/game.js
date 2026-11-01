@@ -887,7 +887,7 @@
 
   // ---------- holding ----------
   // Each airport has two or three hold fixes: beacons near the edges, named
-  // from one shared pool (HOLD_FIXES in levels.js, keyed BOV, OCK, …). A
+  // from one shared pool (HOLD_FIXES in levels.js, keyed BNN, OCK, …). A
   // route let go at one (within HOLD_CATCH) sends the aircraft there to circle,
   // burning fuel, until it's drawn out again. Up to HOLD_MAX stack on a fix,
   // each on its own ring (its own height, really), so aircraft in the same

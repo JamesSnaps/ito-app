@@ -125,7 +125,7 @@ def hold_fixes():
     import re
     levels = (OUT.parent / "levels.js").read_text()
     block = levels.split("const HOLD_FIXES = {")[1].split("};")[0]
-    return dict(re.findall(r"([A-Z]{3}): '([^']+)'", block))
+    return dict(re.findall(r"([A-Z]{3,5}): '([^']+)'", block))
 
 
 def spoken(number):

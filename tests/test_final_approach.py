@@ -136,7 +136,7 @@ def test_every_hold_fix_is_read_back_by_name():
     names = set(sound_list())
     levels = (STATIC / "levels.js").read_text(encoding="utf-8")
     block = levels.split("const HOLD_FIXES = {")[1].split("};")[0]
-    for key in re.findall(r"([A-Z]{3}):", block):
+    for key in re.findall(r"([A-Z]{3,5}):", block):
         assert f"say_hold_{key.lower()}_1" in names and f"say_hold_{key.lower()}_2" in names, key
 
 
@@ -572,12 +572,13 @@ def test_every_airport_has_two_or_three_hold_fixes_clear_of_its_runways():
     name), placed per airport."""
     import math
     levels = (STATIC / "levels.js").read_text(encoding="utf-8")
-    pool = dict(re.findall(r"([A-Z]{3}): '([A-Za-z]+)'", levels.split("const HOLD_FIXES = {")[1].split("};")[0]))
-    assert pool == {"BOV": "Bovingdon", "OCK": "Ockham", "LAM": "Lambourne", "BIG": "Biggin", "WIL": "Willo", "TIM": "Timba"}
+    pool = dict(re.findall(r"([A-Z]{3,5}): '([A-Za-z]+)'", levels.split("const HOLD_FIXES = {")[1].split("};")[0]))
+    # Real identifiers: Bovingdon's beacon is BNN; Gatwick's named points have five letters.
+    assert pool == {"BNN": "Bovingdon", "OCK": "Ockham", "LAM": "Lambourne", "BIG": "Biggin", "WILLO": "Willo", "TIMBA": "Timba"}
     used = set()
     for entry in level_entries():
         code = re.search(r"code: '([A-Z]{3})'", entry).group(1)
-        fixes = re.findall(r"\{ fix: '([A-Z]{3})', x: (\d+), y: (\d+) \}", entry)
+        fixes = re.findall(r"\{ fix: '([A-Z]{3,5})', x: (\d+), y: (\d+) \}", entry)
         assert 2 <= len(fixes) <= 3, code
         assert len({f[0] for f in fixes}) == len(fixes)
         assert all(f[0] in pool for f in fixes), code

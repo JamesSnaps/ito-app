@@ -129,8 +129,8 @@ Every feature should serve at least one of these and harm none.
   minutes). Each airport caps how many can be in the air at once, and stops
   sending arrivals once enough are inbound to reach the target.
 - **Holding** (v1.29.0): every airport has two or three hold fixes, beacons
-  near the edges with a three-letter tag (BOV, OCK, LAM, BIG, WIL, TIM: one
-  shared pool of names). Let a route go within about 30 units of one and the
+  near the edges tagged with its real identifier (BNN, OCK, LAM, BIG, WILLO,
+  TIMBA: one shared pool of names). Let a route go within about 30 units of one and the
   aircraft flies there and circles clockwise, burning fuel, until you draw
   it out again (a tap alone doesn't release it). Up to four stack on a fix,
   each on its own ring (22, 32, 42, 52 units out), turning together a

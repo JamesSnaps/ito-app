@@ -1502,8 +1502,8 @@ it current when you do (its "Current state" and roadmap especially).
   dashed amber edge with "<CODE> CONTROL ZONE" (the airport's three letters, by choice).
 - **Holding** (v1.29.0). Every airport in levels.js has `holds`: two or
   three `{ fix, x, y }`, where `fix` is a key into **`HOLD_FIXES`** (levels.js:
-  BOV Bovingdon, OCK Ockham, LAM Lambourne, BIG Biggin, WIL Willo, TIM
-  Timba). **One shared pool of names, repeated across airports, on purpose:
+  BNN Bovingdon, OCK Ockham, LAM Lambourne, BIG Biggin, WILLO Willo, TIMBA
+  Timba: real identifiers, Heathrow's four stacks and two Gatwick points). **One shared pool of names, repeated across airports, on purpose:
   each name has its own spoken readbacks** (`say_hold_<key>_1/_2`,
   "Holding at Bovingdon"), so a new name means new recordings:
   `tools/final_approach_sounds.py` reads the list from that constant, and a

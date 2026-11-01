@@ -93,7 +93,7 @@ shifts make it harder airport by airport.
   teaches it is cleared. Free play earns no stars and never ranks; the
   records tag it.
 - **Holding and disruptions** (v1.29.0): every airport has two or three hold
-  fixes (BOV, OCK, LAM…): let a route go at one and the aircraft circles
+  fixes (BNN, OCK, LAM…): let a route go at one and the aircraft circles
   there, using fuel, until you draw it out; up to four stack on a fix
   without conflicting. Holding Pattern, the third airport, teaches it, along
   with disruptions: a runway closed by a deer, a dog or a runaway luggage
