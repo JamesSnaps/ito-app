@@ -139,10 +139,13 @@ import Testing
         }
         #expect(decide("https://gamenight.collardserver.co.uk/final-approach/stats") == .stay)
         #expect(decide("https://gamenight.collardserver.co.uk/final-vector/") == .stay)
-        #expect(decide("https://GAMENIGHT.collardserver.co.uk/") == .stay)
+        #expect(decide("https://GAMENIGHT.collardserver.co.uk/") == .closeToHub)   // the web hub: back to the app's
+        #expect(decide("https://gamenight.collardserver.co.uk") == .closeToHub)
+        #expect(decide("https://gamenight.collardserver.co.uk/?from=final-approach") == .closeToHub)
+        #expect(decide("https://gamenight.collardserver.co.uk/me") == .stay)
         #expect(decide("about:blank") == .stay)
         #expect(decide("https://elevenlabs.io/") == .openOutside)
-        #expect(decide("http://gamenight.collardserver.co.uk/") == .openOutside)
+        #expect(decide("http://gamenight.collardserver.co.uk/") == .openOutside)    // another origin, even the hub
         #expect(decide("https://evil.gamenight.collardserver.co.uk/") == .openOutside)
         #expect(decide("mailto:someone@example.org") == .openOutside)
     }

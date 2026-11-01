@@ -143,7 +143,10 @@ nonisolated enum WebSignIn {
 /// the game's screen (its records, another game, the hub); anything else
 /// opens in the system browser (or Mail, Messages…).
 nonisolated enum WebGameLinks {
-    enum Decision: Equatable { case stay, openOutside }
+    /// `closeToHub`: a link to the web hub's front page (a game's "Game
+    /// Night" button) closes the game and goes back to the app's own hub,
+    /// rather than opening the web hub inside the game screen.
+    enum Decision: Equatable { case stay, openOutside, closeToHub }
 
     static func decision(for url: URL, home: URL) -> Decision {
         switch url.scheme?.lowercased() {
@@ -153,7 +156,8 @@ nonisolated enum WebGameLinks {
             guard let origin = WebSignIn.origin(of: url), let homeOrigin = WebSignIn.origin(of: home) else {
                 return .openOutside
             }
-            return origin == homeOrigin ? .stay : .openOutside
+            guard origin == homeOrigin else { return .openOutside }
+            return url.path.isEmpty || url.path == "/" ? .closeToHub : .stay
         default:
             return .openOutside
         }

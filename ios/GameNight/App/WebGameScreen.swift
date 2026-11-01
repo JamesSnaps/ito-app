@@ -42,6 +42,11 @@ struct WebGameScreen: View {
         .overlay(alignment: .top) {
             CloseHandle { dismiss() }
         }
+        // A link back to the web hub (the game's own "Game Night" button)
+        // closes the game: the app's hub is home here.
+        .onChange(of: page.closeRequested) { _, closing in
+            if closing { dismiss() }
+        }
         .statusBarHidden(true)
         .persistentSystemOverlays(.hidden)
         .defersSystemGestures(on: .all)
@@ -74,6 +79,8 @@ final class WebGamePage {
     var loaded = false
     /// Why the first page didn't load, while that's the case.
     var failure: String?
+    /// The page asked to go to the web hub: close the game instead.
+    var closeRequested = false
     @ObservationIgnored weak var webView: WKWebView?
 
     func retry(_ url: URL) {
@@ -149,6 +156,9 @@ private struct GameWebView: UIViewRepresentable {
             case .openOutside:
                 UIApplication.shared.open(url, options: [:], completionHandler: nil)
                 return .cancel
+            case .closeToHub:
+                page.closeRequested = true
+                return .cancel
             }
         }
 
@@ -160,6 +170,7 @@ private struct GameWebView: UIViewRepresentable {
                 switch WebGameLinks.decision(for: url, home: home) {
                 case .stay: webView.load(navigationAction.request)
                 case .openOutside: UIApplication.shared.open(url, options: [:], completionHandler: nil)
+                case .closeToHub: page.closeRequested = true
                 }
             }
             return nil
