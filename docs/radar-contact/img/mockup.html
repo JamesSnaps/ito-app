@@ -1,0 +1,205 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+  @font-face { font-family: Oswald; src: url('../../../static/final-approach/fonts/Oswald-var.woff2') format('woff2'); }
+  @font-face { font-family: Barlow; src: url('../../../static/final-approach/fonts/Barlow-500.woff2') format('woff2'); }
+  html, body { margin: 0; background: #0b1014; color: #cfe3e6; font-family: Barlow, sans-serif; overflow: hidden; }
+  .app { position: relative; width: 1180px; height: 820px; display: grid; grid-template-columns: 236px 1fr; grid-template-rows: 54px 1fr 132px; }
+  .top { grid-column: 1 / -1; display: flex; align-items: center; gap: 22px; padding: 0 18px; background: #10171c; border-bottom: 1px solid #1f2b33; font: 600 13px Oswald, sans-serif; letter-spacing: .14em; text-transform: uppercase; color: #8fb3b9; }
+  .top b { color: #e9f3f2; font-size: 17px; letter-spacing: .1em; }
+  .top .pill { padding: 4px 10px; border-radius: 999px; background: #17222a; color: #cfe3e6; }
+  .top .pill.amber { color: #f2b33d; box-shadow: inset 0 0 0 1px rgba(242,179,61,.5); background: transparent; }
+  .top .sp { flex: 1; }
+  .strips { background: #0f161b; border-right: 1px solid #1f2b33; padding: 10px 10px; overflow: hidden; }
+  .bay { font: 600 11px Oswald; letter-spacing: .2em; color: #6f8f99; margin: 6px 4px 6px; text-transform: uppercase; }
+  .strip { display: grid; grid-template-columns: 6px 1fr auto; gap: 0 8px; margin-bottom: 6px; padding: 7px 8px 7px 0; border-radius: 4px; background: #e9e2cc; color: #1e262c; }
+  .strip i { grid-row: 1 / 3; border-radius: 4px 0 0 4px; }
+  .strip .cs { font: 600 15px Oswald; letter-spacing: .06em; }
+  .strip .ty { font: 600 12px Oswald; color: #5d5a50; text-align: right; }
+  .strip .rt { font: 500 12px Barlow; color: #4c4a43; grid-column: 2 / 4; }
+  .strip.sel { box-shadow: 0 0 0 2px #f2b33d; }
+  .strip.dep { background: #d9e6ea; }
+  .scope { position: relative; }
+  .comms { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 140px; background: #0f161b; border-top: 1px solid #1f2b33; }
+  .log { padding: 10px 18px; font: 500 14px/1.55 Barlow; color: #a9c3c7; overflow: hidden; }
+  .log .me { color: #f2b33d; } .log .p { color: #e9f3f2; } .log .ok { color: #7fd1a3; } .log .warn { color: #ff8a75; } .log small { color: #5f7a82; font-size: 12px; margin-right: 8px; }
+  .ptt { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; border-left: 1px solid #1f2b33; font: 600 11px Oswald; letter-spacing: .2em; color: #8fb3b9; }
+  .ptt div { width: 76px; height: 76px; border-radius: 50%; background: radial-gradient(circle at 50% 40%, #2a3a44, #18232a); box-shadow: 0 0 0 2px #2c3d47, 0 6px 16px rgba(0,0,0,.5); display: flex; align-items: center; justify-content: center; }
+  .ptt.live div { background: radial-gradient(circle at 50% 40%, #d1493a, #8f2a20); box-shadow: 0 0 0 3px rgba(209,73,58,.35), 0 0 24px rgba(209,73,58,.5); }
+  .ptt svg { width: 30px; height: 30px; fill: #e9f3f2; }
+  svg.radar { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .tag { font: 600 12.5px 'Oswald', monospace; letter-spacing: .04em; }
+  .panel { position: absolute; background: rgba(16,23,28,.95); border: 1px solid #2a3a44; border-radius: 10px; box-shadow: 0 14px 40px rgba(0,0,0,.55); }
+  .lesson { left: 16px; top: 14px; width: 300px; padding: 14px 16px; }
+  .lesson h3 { margin: 0 0 2px; font: 600 12px Oswald; letter-spacing: .2em; color: #f2b33d; text-transform: uppercase; }
+  .lesson h2 { margin: 0 0 8px; font: 600 20px Oswald; letter-spacing: .04em; color: #e9f3f2; }
+  .lesson p { margin: 0 0 10px; font: 500 13.5px/1.45 Barlow; color: #b9cfd2; }
+  .lesson ul { list-style: none; margin: 0; padding: 0; font: 500 13.5px/1.4 Barlow; }
+  .lesson li { display: flex; gap: 8px; padding: 4px 0; color: #b9cfd2; }
+  .lesson li::before { content: ""; flex: none; width: 14px; height: 14px; margin-top: 2px; border-radius: 4px; box-shadow: inset 0 0 0 1.5px #4e6a73; }
+  .lesson li.done { color: #6f8f99; text-decoration: line-through; } .lesson li.done::before { background: #7fd1a3; box-shadow: none; }
+  .lesson li.now { color: #e9f3f2; } .lesson li.now::before { box-shadow: inset 0 0 0 2px #f2b33d; }
+  .coach { display: flex; gap: 10px; align-items: flex-start; margin-top: 10px; padding-top: 10px; border-top: 1px solid #22313a; font: 500 13px/1.4 Barlow; color: #cfe3e6; }
+  .coach .face { flex: none; width: 32px; height: 32px; border-radius: 50%; background: #3b5a68; display: flex; align-items: center; justify-content: center; font: 600 13px Oswald; color: #e9f3f2; }
+  .heard { left: 50%; bottom: 14px; transform: translateX(-50%); padding: 10px 16px; font: 500 15px Barlow; color: #e9f3f2; display: flex; gap: 12px; align-items: center; }
+  .heard b { font: 600 11px Oswald; letter-spacing: .2em; color: #d1493a; }
+  .heard em { font-style: normal; color: #f2b33d; }
+  .chip { display: inline-block; padding: 2px 8px; margin-left: 4px; border-radius: 999px; background: #1d2a32; font: 600 11.5px Oswald; letter-spacing: .08em; color: #9fd3c7; }
+</style></head>
+<body>
+<div class="app">
+  <div class="top"><b>Radar Contact</b><span class="pill" id="where">London Approach · Heathrow</span><span class="pill">Rwy 27L / 27R</span><span class="pill">QNH 1013</span><span class="pill">Wind 260/12</span><span class="sp"></span><span id="mode" class="pill amber">Live · 14:32Z</span><span class="pill">Traffic 9</span></div>
+  <div class="strips" id="strips"></div>
+  <div class="scope"><svg class="radar" id="radar" viewBox="0 0 944 634"></svg><div id="overlay"></div></div>
+  <div class="comms"><div class="log" id="log"></div><div class="ptt" id="ptt"><div><svg viewBox="0 0 24 24"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V21h2v-2.1A7 7 0 0 0 19 12z"/></svg></div>Push to talk</div></div>
+</div>
+<script>
+const P = new URLSearchParams(location.search), MODE = P.get('m') || 'scope';
+const svg = document.getElementById('radar');
+const NS = 'http://www.w3.org/2000/svg';
+const el = (tag, attrs, parent = svg) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); parent.appendChild(e); return e; };
+const txt = (x, y, s, attrs = {}) => { const t = el('text', Object.assign({ x, y, fill: '#9fc1c6', 'font-family': 'Oswald', 'font-size': 12 }, attrs)); t.textContent = s; return t; };
+// Geometry: 1 nm = 11 px. Airport near the centre-right; runways 27L/27R.
+const NM = 11, AX = 470, AY = 330;
+// coastline and a river for orientation (very faint)
+el('path', { d: 'M0 520 C140 500 220 560 330 540 S520 600 640 634', fill: 'none', stroke: '#18303a', 'stroke-width': 2 });
+el('path', { d: 'M0 300 C 120 290 220 320 330 300 S 520 250 944 280', fill: 'none', stroke: '#14262e', 'stroke-width': 3 });
+// range rings every 5 nm
+for (let r = 5; r <= 40; r += 5) el('circle', { cx: AX, cy: AY, r: r * NM, fill: 'none', stroke: r % 10 ? '#13212a' : '#1a2e38', 'stroke-width': 1 });
+for (let r = 10; r <= 30; r += 10) txt(AX + 4, AY - r * NM - 4, `${r}`, { fill: '#2f4a55', 'font-size': 10 });
+// sector boundary
+el('path', { d: 'M40 40 L900 30 L930 600 L60 610 Z', fill: 'none', stroke: '#24414d', 'stroke-dasharray': '10 7', 'stroke-width': 1.4 });
+txt(52, 58, 'LONDON TMA · APPROACH SECTOR', { fill: '#2f5361', 'font-size': 11, 'letter-spacing': 2 });
+// runways
+for (const dy of [-8, 8]) { el('line', { x1: AX - 22, y1: AY + dy, x2: AX + 22, y2: AY + dy, stroke: '#d8e6e8', 'stroke-width': 3, 'stroke-linecap': 'round' }); }
+txt(AX - 10, AY + 30, 'EGLL', { fill: '#8fb3b9', 'font-size': 11 });
+// ILS extended centrelines with 1 nm ticks, to 15 nm east (landing west)
+for (const dy of [-8, 8]) {
+  el('line', { x1: AX + 22, y1: AY + dy, x2: AX + 22 + 15 * NM, y2: AY + dy, stroke: '#3c6b7a', 'stroke-width': 1, 'stroke-dasharray': '2 3' });
+  for (let k = 1; k <= 15; k++) el('line', { x1: AX + 22 + k * NM, y1: AY + dy - (k % 5 ? 2 : 4), x2: AX + 22 + k * NM, y2: AY + dy + (k % 5 ? 2 : 4), stroke: '#3c6b7a' });
+}
+// ILS cone for 27L
+el('path', { d: `M${AX + 22} ${AY + 8} L${AX + 22 + 15 * NM} ${AY + 8 - 18} L${AX + 22 + 15 * NM} ${AY + 8 + 18} Z`, fill: 'rgba(80,160,180,0.06)', stroke: 'none' });
+// fixes and stacks
+const fixes = { BNN: [AX - 230, AY - 190], LAM: [AX + 250, AY - 170], BIG: [AX + 230, AY + 200], OCK: [AX - 250, AY + 170], CF27L: [AX + 22 + 10 * NM, AY + 8] };
+for (const [k, [x, y]] of Object.entries(fixes)) {
+  if (k.startsWith('CF')) { el('circle', { cx: x, cy: y, r: 3, fill: '#3c6b7a' }); txt(x - 14, y + 18, 'D10 27L', { fill: '#3c6b7a', 'font-size': 10 }); continue; }
+  el('path', { d: `M${x} ${y - 7} L${x + 6} ${y + 4} L${x - 6} ${y + 4} Z`, fill: 'none', stroke: '#5a8794', 'stroke-width': 1.4 });
+  txt(x + 9, y + 4, k, { fill: '#5a8794', 'font-size': 11 });
+  el('ellipse', { cx: x + (x < AX ? -22 : 22), cy: y, rx: 30, ry: 12, fill: 'none', stroke: '#24414d', 'stroke-dasharray': '3 3' });
+}
+// STAR lines into the stacks
+for (const [a, b] of [[[40, 70], fixes.BNN], [[930, 60], fixes.LAM], [[930, 560], fixes.BIG], [[50, 590], fixes.OCK]]) el('line', { x1: a[0], y1: a[1], x2: b[0], y2: b[1], stroke: '#1b333d', 'stroke-width': 1 });
+// aircraft: [callsign, x, y, heading deg (0 = north), alt (hundreds ft), cleared alt, gs, wake, type, colour flag]
+const ac = [
+  ['SKY412', AX + 150, AY + 70, 300, 60, 40, 210, 'M', 'A320', 'sel'],
+  ['PUF27',  AX + 90, AY + 8, 270, 32, 32, 160, 'M', 'B738', 'ils'],
+  ['KES71', AX + 330, AY - 105, 245, 90, 70, 230, 'H', 'B77W', ''],
+  ['HER3',  AX + 228, AY + 196, 0, 110, 110, 210, 'M', 'A321', 'hold'],
+  ['HER9',  AX + 262, AY + 214, 180, 120, 120, 210, 'M', 'E190', 'hold', 34],
+  ['SWF50', AX - 120, AY - 40, 290, 50, 60, 220, 'M', 'A319', 'dep'],
+  ['GAN8',  AX - 230, AY + 150, 60, 80, 70, 240, 'M', 'A20N', ''],
+  ['MDW6',  AX + 300, AY + 20, 270, 70, 50, 240, 'L', 'AT76', ''],
+];
+const conflict = new Set(['SKY412', 'MDW6']);
+for (const [cs, x, y, hdg, alt, clr, gs, wk, ty, flag, tagDy = 0] of ac) {
+  const a = (hdg - 90) * Math.PI / 180, lx = x + Math.cos(a) * gs / 7, ly = y + Math.sin(a) * gs / 7;
+  const c = flag === 'dep' ? '#9fd3c7' : flag === 'hold' ? '#9fb3c0' : '#e9f3f2';
+  // history dots
+  for (let k = 1; k <= 5; k++) el('circle', { cx: x - Math.cos(a) * k * 9, cy: y - Math.sin(a) * k * 9, r: 1.6, fill: c, opacity: 0.5 - k * 0.08 });
+  el('line', { x1: x, y1: y, x2: lx, y2: ly, stroke: c, 'stroke-width': 1, opacity: 0.8 });
+  el('rect', { x: x - 4.5, y: y - 4.5, width: 9, height: 9, fill: 'none', stroke: c, 'stroke-width': 1.6 });
+  if (conflict.has(cs)) el('circle', { cx: x, cy: y, r: 3 * NM / 2, fill: 'none', stroke: '#e0533f', 'stroke-width': 1.4, 'stroke-dasharray': '4 3' });
+  const tx = x + 12, ty0 = y - 26 + tagDy;
+  el('line', { x1: x + 4, y1: y - 4, x2: tx - 2, y2: ty0 + 18, stroke: c, opacity: 0.5 });
+  const g = el('g', { class: 'tag' });
+  if (flag === 'sel') el('rect', { x: tx - 4, y: ty0 - 13, width: 92, height: 38, rx: 3, fill: 'rgba(242,179,61,0.12)', stroke: '#f2b33d', 'stroke-width': 1.2 }, g);
+  txt(tx, ty0, `${cs}  ${wk}`, { fill: conflict.has(cs) ? '#ff8a75' : c, 'font-size': 12.5 }).remove(); g.appendChild(txt(tx, ty0, `${cs}  ${wk}`, { fill: conflict.has(cs) ? '#ff8a75' : c, 'font-size': 12.5 }));
+  const arrow = clr < alt ? '↓' : clr > alt ? '↑' : ' ';
+  g.appendChild(txt(tx, ty0 + 15, `${String(alt).padStart(3, '0')}${arrow}${String(clr).padStart(3, '0')}  ${gs}`, { fill: c, 'font-size': 12.5 }));
+  if (flag === 'ils') g.appendChild(txt(tx + 92, ty0 + 15, 'LOC', { fill: '#7fd1a3', 'font-size': 10 }));
+}
+// separation warning between SKY412 and MDW6
+txt(AX + 190, AY + 110, '2.4 NM · 1000 FT', { fill: '#ff8a75', 'font-size': 11 });
+// scale
+el('line', { x1: 40, y1: 610, x2: 40 + 5 * NM, y2: 610, stroke: '#4e6a73' }); txt(40, 602, '5 NM', { fill: '#4e6a73', 'font-size': 10 });
+
+// strips
+const strips = document.getElementById('strips');
+const bay = t => { const d = document.createElement('div'); d.className = 'bay'; d.textContent = t; strips.appendChild(d); };
+const strip = (cs, ty, route, colour, cls = '') => { const d = document.createElement('div'); d.className = 'strip ' + cls; d.innerHTML = `<i style="background:${colour}"></i><span class="cs">${cs}</span><span class="ty">${ty}</span><span class="rt">${route}</span>`; strips.appendChild(d); };
+bay('Inbound');
+strip('SKY412', 'A320 / M', 'LAM → ILS 27L · 060↓040', '#f2b33d', 'sel');
+strip('MDW6', 'AT76 / L', 'BIG → 27R · 070↓050', '#e0533f');
+strip('KES71', 'B77W / H', 'LAM 1F · 090↓070', '#5a8794');
+strip('GAN8', 'A20N / M', 'OCK → ILS 27R · 080↓070', '#5a8794');
+bay('Holding · BIG');
+strip('HER3', 'A321 / M', 'BIG stack · FL110', '#9fb3c0');
+strip('HER9', 'E190 / M', 'BIG stack · FL120', '#9fb3c0');
+bay('Departures');
+strip('SWF50', 'A319 / M', 'CPT 3J · climb 060', '#9fd3c7', 'dep');
+
+const log = document.getElementById('log');
+const say = (who, t, s) => { const d = document.createElement('div'); d.innerHTML = `<small>${t}</small><span class="${who}">${s}</span>`; log.appendChild(d); };
+say('p', '14:31:52', 'Heathrow Approach, <b>Puffin two seven</b>, established localiser two seven left.');
+say('me', '14:31:58', 'Puffin two seven, contact Heathrow Tower one one eight decimal five, good day.');
+say('p', '14:32:03', 'Tower one one eight five, Puffin two seven, good day.');
+say('warn', '14:32:10', '⚠ Short-term conflict alert: Skylark four one two and Meadow six, 2.4 miles.');
+
+const ov = document.getElementById('overlay');
+if (MODE === 'lesson') {
+  document.getElementById('where').textContent = 'Academy · Lesson 5 · Intercepting the ILS';
+  document.getElementById('mode').textContent = 'Training';
+  ov.innerHTML = `<div class="panel lesson"><h3>Lesson 5 of 12</h3><h2>Intercepting the ILS</h2>
+  <p>Bring an aircraft onto the localiser at a gentle angle, below the glideslope, then clear it for the approach.</p>
+  <ul><li class="done">Descend SKY412 to 4,000 ft</li><li class="now">Turn it onto heading 300 to intercept (30° or less)</li><li>Clear it: “cleared ILS runway 27 left”</li><li>Hand it to the tower at 8 miles</li></ul>
+  <div class="coach"><span class="face">AN</span><span>“Nice. Now a 30-degree cut: heading three zero zero. Too tight and they'll fly straight through the localiser.”</span></div></div>`;
+  // ghost hint: heading line
+  const a = (300 - 90) * Math.PI / 180, x = AX + 150, y = AY + 70;
+  el('line', { x1: x, y1: y, x2: x + Math.cos(a) * 140, y2: y + Math.sin(a) * 140, stroke: '#f2b33d', 'stroke-width': 1.6, 'stroke-dasharray': '6 5', opacity: 0.9 });
+  txt(x + Math.cos(a) * 140 - 30, y + Math.sin(a) * 140 - 8, 'HDG 300', { fill: '#f2b33d', 'font-size': 12 });
+}
+if (MODE === 'voice') {
+  document.getElementById('ptt').classList.add('live');
+  ov.innerHTML = `<div class="panel heard"><b>● LISTENING</b><span>“Skylark four one two, turn left heading <em>three zero zero</em>, descend <em>four thousand</em> feet”</span>
+  <span class="chip">SKY412</span><span class="chip">HDG 300</span><span class="chip">ALT 4000</span></div>`;
+}
+if (MODE === 'dial') {
+  // the command dial around SKY412
+  const x = AX + 150, y = AY + 70 + 30 /* svg offset vs html */;
+  const R = 112;
+  const d = el('g', {});
+  el('circle', { cx: AX + 150, cy: AY + 70, r: R + 34, fill: 'rgba(12,18,22,0.92)', stroke: '#2a3a44' }, d);
+  el('circle', { cx: AX + 150, cy: AY + 70, r: R, fill: 'none', stroke: '#2f4550', 'stroke-width': 18 }, d);
+  for (let h = 0; h < 360; h += 10) {
+    const a = (h - 90) * Math.PI / 180, big = h % 30 === 0;
+    el('line', { x1: AX + 150 + Math.cos(a) * (R - (big ? 10 : 6)), y1: AY + 70 + Math.sin(a) * (R - (big ? 10 : 6)), x2: AX + 150 + Math.cos(a) * (R + 8), y2: AY + 70 + Math.sin(a) * (R + 8), stroke: big ? '#8fb3b9' : '#4e6a73', 'stroke-width': big ? 1.6 : 1 }, d);
+    if (big) { const t = txt(AX + 150 + Math.cos(a) * (R + 22) - 9, AY + 70 + Math.sin(a) * (R + 22) + 4, String(h).padStart(3, '0'), { fill: '#8fb3b9', 'font-size': 10.5 }); d.appendChild(t); }
+  }
+  // current and new heading
+  const cur = (300 - 90) * Math.PI / 180, nw = (270 - 90) * Math.PI / 180;
+  el('path', { d: `M${AX + 150} ${AY + 70} L${AX + 150 + Math.cos(cur) * (R - 12)} ${AY + 70 + Math.sin(cur) * (R - 12)}`, stroke: '#6f8f99', 'stroke-width': 2 }, d);
+  el('path', { d: `M${AX + 150} ${AY + 70} L${AX + 150 + Math.cos(nw) * (R + 6)} ${AY + 70 + Math.sin(nw) * (R + 6)}`, stroke: '#f2b33d', 'stroke-width': 3, 'stroke-linecap': 'round' }, d);
+  el('circle', { cx: AX + 150 + Math.cos(nw) * R, cy: AY + 70 + Math.sin(nw) * R, r: 11, fill: '#f2b33d' }, d);
+  // arc from current to new (left turn)
+  el('path', { d: `M${AX + 150 + Math.cos(cur) * R} ${AY + 70 + Math.sin(cur) * R} A ${R} ${R} 0 0 0 ${AX + 150 + Math.cos(nw) * R} ${AY + 70 + Math.sin(nw) * R}`, fill: 'none', stroke: '#f2b33d', 'stroke-width': 18, opacity: 0.25 }, d);
+  el('circle', { cx: AX + 150, cy: AY + 70, r: 42, fill: '#10171c', stroke: '#2a3a44' }, d);
+  const c1 = txt(AX + 150 - 26, AY + 70 - 4, 'LEFT', { fill: '#8fb3b9', 'font-size': 11 }); d.appendChild(c1);
+  const c2 = txt(AX + 150 - 26, AY + 70 + 16, '270', { fill: '#f2b33d', 'font-size': 22 }); d.appendChild(c2);
+  ov.innerHTML = `
+  <div class="panel" style="left:${AX + 150 - 146 - 196}px; top:${AY + 70 - 150}px; width:170px; padding:12px;">
+    <div style="font:600 11px Oswald; letter-spacing:.2em; color:#8fb3b9;">SKY412 · A320</div>
+    <div style="display:flex; gap:10px; margin-top:10px;">
+      <div style="flex:1; text-align:center;"><div style="font:600 10px Oswald; letter-spacing:.2em; color:#6f8f99;">ALT</div>
+        ${[70, 60, 50, 40, 30].map(v => `<div style="font:600 ${v === 40 ? 20 : 14}px Oswald; padding:3px 0; color:${v === 40 ? '#f2b33d' : v === 60 ? '#e9f3f2' : '#4e6a73'}; ${v === 40 ? 'background:rgba(242,179,61,.12); border-radius:4px;' : ''}">${v * 100}</div>`).join('')}</div>
+      <div style="flex:1; text-align:center;"><div style="font:600 10px Oswald; letter-spacing:.2em; color:#6f8f99;">SPEED</div>
+        ${[250, 220, 210, 180, 160].map(v => `<div style="font:600 ${v === 210 ? 20 : 14}px Oswald; padding:3px 0; color:${v === 210 ? '#e9f3f2' : '#4e6a73'};">${v}</div>`).join('')}</div>
+    </div>
+    <div style="display:grid; gap:6px; margin-top:12px;">
+      ${['Cleared ILS 27L', 'Direct to fix…', 'Hold at…', 'Contact tower'].map((b, i) => `<div style="padding:7px 10px; border-radius:6px; background:${i === 0 ? '#f2b33d' : '#1d2a32'}; color:${i === 0 ? '#1d1a12' : '#cfe3e6'}; font:600 12px Oswald; letter-spacing:.12em; text-transform:uppercase;">${b}</div>`).join('')}
+    </div>
+    <div style="margin-top:12px; padding:8px 10px; border-radius:6px; background:#f2b33d22; color:#f2b33d; font:600 12px Oswald; letter-spacing:.1em; text-align:center;">SEND ▸ “LEFT 270, 4000”</div>
+  </div>`;
+}
+</script>
+</body></html>
